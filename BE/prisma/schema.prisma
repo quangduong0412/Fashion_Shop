@@ -3,187 +3,173 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlserver"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
-model ChucVu {
-  MaChucVu  Int        @id(map: "PK__ChucVu__D4639533F3B66B9E") @default(autoincrement())
-  TenChucVu String     @db.NVarChar(255)
-  nhanViens NhanVien[]
+model account {
+  MaNhanVien Int    @id
+  UserName   String @unique(map: "UQ__Account__C9F28456A15E34B6") @db.VarChar(255)
+  PassWord   String @db.VarChar(255)
+  Role       String @default("USER") @db.VarChar(50)
 }
 
-model ChiNhanh {
-  MaChiNhanh  Int        @id(map: "PK__ChiNhanh__4B5BA5BD6BD23A50") @default(autoincrement())
-  TenChiNhanh String     @db.NVarChar(255)
-  DiaChi      String     @db.NVarChar(Max)
-  DienThoai   String     @db.NVarChar(50)
-  nhanViens   NhanVien[]
+model baiviet {
+  MaBaiViet Int      @id
+  TieuDe    String   @db.VarChar(255)
+  MoTa      String   @db.VarChar(0)
+  Anh       String   @db.VarChar(0)
+  TheLoai   String   @db.VarChar(50)
+  NgayTao   DateTime @db.DateTime(0)
 }
 
-model NhanVien {
-  MaNhanVien      Int              @id(map: "PK__NhanVien__77B2CA47B98B6A88") @default(autoincrement())
-  TenNhanVien     String           @db.NVarChar(255)
-  MaChucVu        Int
-  MaChiNhanh      Int
-  NgaySinh        DateTime?
-  GioiTinh        String?          @db.NVarChar(50)
-  DiaChi          String?          @db.NVarChar(Max)
-  DienThoai       String?          @db.NVarChar(50)
-  account         Account?
-  chiNhanh        ChiNhanh         @relation(fields: [MaChiNhanh], references: [MaChiNhanh], onUpdate: NoAction, map: "FK__NhanVien__MaChiN__3C69FB99")
-  chucVu          ChucVu           @relation(fields: [MaChucVu], references: [MaChucVu], onUpdate: NoAction, map: "FK__NhanVien__MaChuc__3B75D760")
-  phieuNhaps      PhieuNhap[]
-  phieuXuats      PhieuXuat[]
-  yeuCauNhapHangs YeuCauNhapHang[]
+model chinhanh {
+  MaChiNhanh  Int    @id
+  TenChiNhanh String @db.VarChar(255)
+  DiaChi      String @db.VarChar(0)
+  DienThoai   String @db.VarChar(50)
 }
 
-model Account {
-  MaNhanVien Int      @id(map: "PK__Account__77B2CA473B74F8B2")
-  UserName   String   @unique(map: "UQ__Account__C9F28456A15E34B6") @db.NVarChar(255)
-  PassWord   String   @db.NVarChar(255)
-  Role       String   @default("USER", map: "DF__Account__Role__412EB0B6") @db.NVarChar(50)
-  nhanVien   NhanVien @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__Account__MaNhanV__403A8C7D")
+model chucvu {
+  MaChucVu  Int    @id
+  TenChucVu String @db.VarChar(255)
 }
 
-model KhachHang {
-  MaKhachHang   Int         @id(map: "PK__KhachHan__88D2F0E5149EC548") @default(autoincrement())
-  TenKhach      String      @db.NVarChar(255)
-  Email         String      @unique(map: "UQ__KhachHan__A9D10534A9908EE8") @db.NVarChar(255)
-  MatKhau       String      @db.NVarChar(255)
-  DiaChi        String?     @db.NVarChar(Max)
-  DienThoai     String?     @db.NVarChar(50)
-  HangThanhVien String?     @db.NVarChar(100)
-  phieuXuats    PhieuXuat[]
-}
-
-model LoaiHang {
-  MaLoaiHang  Int       @id(map: "PK__LoaiHang__5EEA41604F2750C8") @default(autoincrement())
-  TenLoaiHang String    @db.NVarChar(255)
-  sanPhams    SanPham[]
-}
-
-model Kho {
-  MaKho      Int         @id(map: "PK__Kho__3BDA935056743F3D") @default(autoincrement())
-  TenKho     String      @db.NVarChar(255)
-  DiaChi     String      @db.NVarChar(Max)
-  phieuNhaps PhieuNhap[]
-  phieuXuats PhieuXuat[]
-  sanPhams   SanPham[]
-}
-
-model NhaCungCap {
-  MaNCC      Int         @id(map: "PK__NhaCungC__3A185DEB79F18321") @default(autoincrement())
-  TenNCC     String      @db.NVarChar(255)
-  DiaChi     String?     @db.NVarChar(Max)
-  DienThoai  String?     @db.NVarChar(50)
-  phieuNhaps PhieuNhap[]
-  sanPhams   SanPham[]
-}
-
-model SanPham {
-  MaSanPham       Int              @id(map: "PK__SanPham__FAC7442DF59F40D9") @default(autoincrement())
-  TenSanPham      String           @db.NVarChar(255)
-  MaLoaiHang      Int
-  SoLuong         Int              @default(0, map: "DF__SanPham__SoLuong__4D94879B")
-  DonGiaNhap      Float
-  DonGiaBan       Float
-  Anh             String?          @db.NVarChar(Max)
-  GhiChu          String?          @db.NVarChar(Max)
-  MaKho           Int
-  MaNCC           Int
-  ctPhieuNhaps    CTPhieuNhap[]
-  ctPhieuXuats    CTPhieuXuat[]
-  kho             Kho              @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__SanPham__MaKho__4E88ABD4")
-  loaiHang        LoaiHang         @relation(fields: [MaLoaiHang], references: [MaLoaiHang], onUpdate: NoAction, map: "FK__SanPham__MaLoaiH__4CA06362")
-  nhaCungCap      NhaCungCap       @relation(fields: [MaNCC], references: [MaNCC], onUpdate: NoAction, map: "FK__SanPham__MaNCC__4F7CD00D")
-  yeuCauNhapHangs YeuCauNhapHang[]
-}
-
-model YeuCauNhapHang {
-  MaNhanVien Int
-  MaSanPham  Int
-  ThoiGian   DateTime @default(now(), map: "DF__YeuCauNha__ThoiG__5441852A")
-  nhanVien   NhanVien @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__YeuCauNha__MaNha__52593CB8")
-  sanPham    SanPham  @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__YeuCauNha__MaSan__534D60F1")
-
-  @@id([MaNhanVien, MaSanPham, ThoiGian], map: "PK__YeuCauNh__65B098099D1D5C0D")
-}
-
-model PhieuNhap {
-  MaPhieuNhap  Int           @id(map: "PK__PhieuNha__1470EF3B7D3F8F07") @default(autoincrement())
-  MaNhanVien   Int
-  NgayNhap     DateTime      @default(now(), map: "DF__PhieuNhap__NgayN__5812160E")
-  MaNCC        Int
-  TongTien     Float
-  MaKho        Int
-  ctPhieuNhaps CTPhieuNhap[]
-  kho          Kho           @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__PhieuNhap__MaKho__59FA5E80")
-  nhaCungCap   NhaCungCap    @relation(fields: [MaNCC], references: [MaNCC], onUpdate: NoAction, map: "FK__PhieuNhap__MaNCC__59063A47")
-  nhanVien     NhanVien      @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__PhieuNhap__MaNha__571DF1D5")
-}
-
-model CTPhieuNhap {
-  STT         Int       @id(map: "PK__CTPhieuN__CA1EB69076E98489") @default(autoincrement())
+model ctphieunhap {
+  STT         Int   @id
   MaPhieuNhap Int
   MaSanPham   Int
   SoLuong     Int
   DonGiaNhap  Float
-  GiamGia     Float     @default(0, map: "DF__CTPhieuNh__GiamG__5EBF139D")
+  GiamGia     Float @default(0)
   ThanhTien   Float
-  phieuNhap   PhieuNhap @relation(fields: [MaPhieuNhap], references: [MaPhieuNhap], onUpdate: NoAction, map: "FK__CTPhieuNh__MaPhi__5CD6CB2B")
-  sanPham     SanPham   @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__CTPhieuNh__MaSan__5DCAEF64")
+
+  @@index([MaPhieuNhap], map: "FK__CTPhieuNh__MaPhi__5CD6CB2B")
+  @@index([MaSanPham], map: "FK__CTPhieuNh__MaSan__5DCAEF64")
 }
 
-model PhieuXuat {
-  MaPhieuXuat  Int           @id(map: "PK__PhieuXua__26C4B5A2B73D6AD0") @default(autoincrement())
-  MaNhanVien   Int
-  NgayXuat     DateTime      @default(now(), map: "DF__PhieuXuat__NgayX__628FA481")
-  MaKhachHang  Int
-  TongTien     Float
-  MaKho        Int
-  TrangThai    String        @default("PENDING", map: "DF__PhieuXuat__Trang__656C112C") @db.NVarChar(50)
-  ctPhieuXuats CTPhieuXuat[]
-  khachHang    KhachHang     @relation(fields: [MaKhachHang], references: [MaKhachHang], onUpdate: NoAction, map: "FK__PhieuXuat__MaKha__6383C8BA")
-  kho          Kho           @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__PhieuXuat__MaKho__6477ECF3")
-  nhanVien     NhanVien      @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__PhieuXuat__MaNha__619B8048")
-}
-
-model CTPhieuXuat {
-  STT         Int       @id(map: "PK__CTPhieuX__CA1EB690F805A1B8") @default(autoincrement())
+model ctphieuxuat {
+  STT         Int   @id
   MaPhieuXuat Int
   MaSanPham   Int
   SoLuong     Int
   DonGiaBan   Float
-  GiamGia     Float     @default(0, map: "DF__CTPhieuXu__GiamG__6A30C649")
+  GiamGia     Float @default(0)
   ThanhTien   Float
-  phieuXuat   PhieuXuat @relation(fields: [MaPhieuXuat], references: [MaPhieuXuat], onUpdate: NoAction, map: "FK__CTPhieuXu__MaPhi__68487DD7")
-  sanPham     SanPham   @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__CTPhieuXu__MaSan__693CA210")
+
+  @@index([MaPhieuXuat], map: "FK__CTPhieuXu__MaPhi__68487DD7")
+  @@index([MaSanPham], map: "FK__CTPhieuXu__MaSan__693CA210")
 }
 
-model BaiViet {
-  MaBaiViet Int      @id(map: "PK__BaiViet__AEDD564717CC86AB") @default(autoincrement())
-  TieuDe    String   @db.NVarChar(255)
-  MoTa      String   @db.NVarChar(Max)
-  Anh       String   @db.NVarChar(Max)
-  TheLoai   String   @db.NVarChar(50)
-  NgayTao   DateTime @default(now(), map: "DF__BaiViet__NgayTao__6D0D32F4")
+model khachhang {
+  MaKhachHang   Int     @id
+  TenKhach      String  @db.VarChar(255)
+  Email         String  @unique(map: "UQ__KhachHan__A9D10534A9908EE8") @db.VarChar(255)
+  MatKhau       String  @db.VarChar(255)
+  DiaChi        String? @db.VarChar(0)
+  DienThoai     String? @db.VarChar(50)
+  HangThanhVien String? @db.VarChar(100)
 }
 
-model LienHe {
-  MaLienHe Int      @id(map: "PK__LienHe__0E73388A7A7651CD") @default(autoincrement())
-  HoTen    String   @db.NVarChar(255)
-  Email    String   @db.NVarChar(255)
-  NoiDung  String   @db.NVarChar(Max)
-  NgayTao  DateTime @default(now(), map: "DF__LienHe__NgayTao__6FE99F9F")
+model kho {
+  MaKho  Int    @id
+  TenKho String @db.VarChar(255)
+  DiaChi String @db.VarChar(0)
+}
+
+model lienhe {
+  MaLienHe Int      @id
+  HoTen    String   @db.VarChar(255)
+  Email    String   @db.VarChar(255)
+  NoiDung  String   @db.VarChar(0)
+  NgayTao  DateTime @db.DateTime(0)
+}
+
+model loaihang {
+  MaLoaiHang  Int    @id
+  TenLoaiHang String @db.VarChar(255)
+}
+
+model nhacungcap {
+  MaNCC     Int     @id
+  TenNCC    String  @db.VarChar(255)
+  DiaChi    String? @db.VarChar(0)
+  DienThoai String? @db.VarChar(50)
+}
+
+model nhanvien {
+  MaNhanVien  Int       @id
+  TenNhanVien String    @db.VarChar(255)
+  MaChucVu    Int
+  MaChiNhanh  Int
+  NgaySinh    DateTime? @db.DateTime(0)
+  GioiTinh    String?   @db.VarChar(50)
+  DiaChi      String?   @db.VarChar(0)
+  DienThoai   String?   @db.VarChar(50)
+
+  @@index([MaChiNhanh], map: "FK__NhanVien__MaChiN__3C69FB99")
+  @@index([MaChucVu], map: "FK__NhanVien__MaChuc__3B75D760")
+}
+
+model phieunhap {
+  MaPhieuNhap Int      @id
+  MaNhanVien  Int
+  NgayNhap    DateTime @db.DateTime(0)
+  MaNCC       Int
+  TongTien    Float
+  MaKho       Int
+
+  @@index([MaKho], map: "FK__PhieuNhap__MaKho__59FA5E80")
+  @@index([MaNCC], map: "FK__PhieuNhap__MaNCC__59063A47")
+  @@index([MaNhanVien], map: "FK__PhieuNhap__MaNha__571DF1D5")
+}
+
+model phieuxuat {
+  MaPhieuXuat Int      @id
+  MaNhanVien  Int
+  NgayXuat    DateTime @db.DateTime(0)
+  MaKhachHang Int
+  TongTien    Float
+  MaKho       Int
+  TrangThai   String   @default("PENDING") @db.VarChar(50)
+
+  @@index([MaKhachHang], map: "FK__PhieuXuat__MaKha__6383C8BA")
+  @@index([MaKho], map: "FK__PhieuXuat__MaKho__6477ECF3")
+  @@index([MaNhanVien], map: "FK__PhieuXuat__MaNha__619B8048")
+}
+
+model sanpham {
+  MaSanPham  Int     @id
+  TenSanPham String  @db.VarChar(255)
+  MaLoaiHang Int
+  SoLuong    Int     @default(0)
+  DonGiaNhap Float
+  DonGiaBan  Float
+  Anh        String? @db.VarChar(0)
+  GhiChu     String? @db.VarChar(0)
+  MaKho      Int
+  MaNCC      Int
+
+  @@index([MaKho], map: "FK__SanPham__MaKho__4E88ABD4")
+  @@index([MaLoaiHang], map: "FK__SanPham__MaLoaiH__4CA06362")
+  @@index([MaNCC], map: "FK__SanPham__MaNCC__4F7CD00D")
 }
 
 model sysdiagrams {
-  name         String @db.NVarChar(128)
+  name         String @db.VarChar(160)
   principal_id Int
-  diagram_id   Int    @id(map: "PK__sysdiagr__C2B05B61DE5795D2") @default(autoincrement())
+  diagram_id   Int    @id
   version      Int?
   definition   Bytes?
 
   @@unique([principal_id, name], map: "UK_principal_name")
+}
+
+model yeucaunhaphang {
+  MaNhanVien Int
+  MaSanPham  Int
+  ThoiGian   DateTime @db.DateTime(0)
+
+  @@id([MaNhanVien, MaSanPham, ThoiGian])
+  @@index([MaSanPham], map: "FK__YeuCauNha__MaSan__534D60F1")
 }
