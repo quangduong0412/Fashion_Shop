@@ -1,0 +1,18 @@
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { CartItem, formatPrice, readCart, saveCart } from '@/components/fashion-data';
+import { FashionHeader } from '@/components/fashion-header';
+import Page from '@/components/Page';
+import { palette } from '@/components/theme';
+
+export default function CartScreen() {
+  const router = useRouter();
+  const [cart, setCart] = useState<CartItem[]>([]);
+  useFocusEffect(useCallback(() => { readCart().then(setCart); }, []));
+  const changeQuantity = async (index: number, amount: number) => { const next = [...cart]; next[index].quantity = Math.max(1, next[index].quantity + amount); setCart(next); await saveCart(next); };
+  const removeItem = async (index: number) => { const next = cart.filter((_, itemIndex) => itemIndex !== index); setCart(next); await saveCart(next); };
+  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  return <View style={styles.root}><FashionHeader /><Page title="Giỏ hàng">{cart.length === 0 ? <View style={styles.empty}><Text style={styles.emptyTitle}>Giỏ hàng đang trống</Text><Text style={styles.emptyText}>Hãy thêm sản phẩm từ trang Sản phẩm.</Text><Pressable style={styles.button} onPress={() => router.push('/products' as never)}><Text style={styles.buttonText}>Xem sản phẩm</Text></Pressable></View> : <><View>{cart.map((item, index) => <View style={styles.item} key={item.id}><Image source={{ uri: item.image }} style={styles.image} /><View style={styles.info}><Text style={styles.name}>{item.name}</Text><Text style={styles.price}>{formatPrice(item.price)}</Text><View style={styles.controls}><Pressable style={styles.control} onPress={() => changeQuantity(index, -1)}><Text>-</Text></Pressable><Text>{item.quantity}</Text><Pressable style={styles.control} onPress={() => changeQuantity(index, 1)}><Text>+</Text></Pressable><Pressable onPress={() => removeItem(index)}><Text style={styles.remove}>Xóa</Text></Pressable></View></View></View>)}</View><View style={styles.summary}><Text style={styles.summaryTitle}>Tạm tính</Text><Text style={styles.total}>{formatPrice(subtotal)}</Text><Pressable style={styles.button} onPress={() => Alert.alert('Thông báo', 'Giỏ hàng đã được cập nhật.') }><Text style={styles.buttonText}>Tiếp tục</Text></Pressable></View></>}</Page></View>;
+}
+const styles = StyleSheet.create({ root: { flex: 1 }, empty: { alignItems: 'center', paddingVertical: 70 }, emptyTitle: { color: palette.ink, fontSize: 21, fontWeight: '800' }, emptyText: { color: palette.muted, marginVertical: 10 }, item: { flexDirection: 'row', backgroundColor: '#fff', borderWidth: 1, borderColor: palette.line, borderRadius: 9, padding: 12, marginBottom: 10 }, image: { width: 84, height: 92, borderRadius: 7 }, info: { flex: 1, paddingLeft: 12 }, name: { color: palette.ink, fontWeight: '800' }, price: { color: palette.red, fontWeight: '800', marginVertical: 8 }, controls: { flexDirection: 'row', alignItems: 'center', gap: 12 }, control: { borderWidth: 1, borderColor: palette.line, borderRadius: 5, width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, remove: { color: palette.red, fontWeight: '700' }, summary: { backgroundColor: palette.blush, borderRadius: 9, padding: 18, marginTop: 12 }, summaryTitle: { color: palette.muted }, total: { color: palette.ink, fontSize: 22, fontWeight: '900', marginVertical: 10 }, button: { backgroundColor: palette.red, padding: 14, borderRadius: 7, alignItems: 'center' }, buttonText: { color: '#fff', fontWeight: '800' } });

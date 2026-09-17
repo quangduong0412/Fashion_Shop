@@ -1,0 +1,1 @@
+export const palette = { ink: '#202124', muted: '#747474', red: '#d9485f', blush: '#fff4f1', line: '#eaded9', white: '#fff' };

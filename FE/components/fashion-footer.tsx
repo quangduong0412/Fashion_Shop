@@ -1,0 +1,3 @@
+import { StyleSheet, Text, View } from 'react-native';
+export function FashionFooter() { return <View style={styles.footer}><Text style={styles.logo}>FashionHeaven</Text><Text style={styles.copy}>Thời trang đương đại - Nâng tầm phong cách</Text><Text style={styles.copy}>© 2025 Fashion Heaven</Text></View>; }
+const styles = StyleSheet.create({ footer: { marginTop: 22, padding: 22, backgroundColor: '#252323', gap: 8 }, logo: { color: '#fff', fontWeight: '900', fontSize: 18 }, copy: { color: '#d8d0cc', fontSize: 13 } });
