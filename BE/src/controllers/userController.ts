@@ -7,10 +7,22 @@ const JWT_SECRET = process.env.JWT_SECRET || 'fashionheaven_super_secret_key';
 
 export const registerUser = async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
+  
+  if (email.toLowerCase().includes('admin') || name.toLowerCase().includes('admin')) {
+    res.status(400).json({ error: 'Không được sử dụng từ khóa "admin" trong tên hoặc email đăng ký.' });
+    return;
+  }
+
   try {
     const userExists = await prisma.khachHang.findUnique({ where: { Email: email } });
     if (userExists) {
-      res.status(400).json({ error: 'User already exists' });
+      res.status(400).json({ error: 'Email này đã được sử dụng.' });
+      return;
+    }
+
+    const adminExists = await prisma.account.findUnique({ where: { UserName: email } });
+    if (adminExists) {
+      res.status(400).json({ error: 'Email này đã được sử dụng bởi hệ thống.' });
       return;
     }
 
@@ -24,8 +36,9 @@ export const registerUser = async (req: Request, res: Response) => {
     const token = jwt.sign({ id: newUser.MaKhachHang, email: newUser.Email, role: 'user' }, JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({ user: newUser, token });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to register user' });
+  } catch (error: any) {
+    console.error('Register Error Details:', error);
+    res.status(500).json({ error: 'Failed to register user: ' + error.message });
   }
 };
 
@@ -139,10 +152,22 @@ export const updateUserProfile = async (req: Request, res: Response) => {
 
 export const createUser = async (req: Request, res: Response) => {
   const { name, email, phone, password } = req.body;
+  
+  if (email.toLowerCase().includes('admin') || name.toLowerCase().includes('admin')) {
+    res.status(400).json({ error: 'Không được tạo tài khoản chứa từ khóa admin.' });
+    return;
+  }
+
   try {
     const userExists = await prisma.khachHang.findUnique({ where: { Email: email } });
     if (userExists) {
       res.status(400).json({ error: 'Email đã tồn tại' });
+      return;
+    }
+
+    const adminExists = await prisma.account.findUnique({ where: { UserName: email } });
+    if (adminExists) {
+      res.status(400).json({ error: 'Email đã được sử dụng bởi hệ thống' });
       return;
     }
 

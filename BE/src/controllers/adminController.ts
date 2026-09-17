@@ -54,10 +54,16 @@ export const getAdminData = async (req: Request, res: Response) => {
     // Map Prisma models to Admin UI format
     const formattedProducts = products.map((p: any) => ({
         id: p.MaSanPham,
+        MaSanPham: p.MaSanPham,
         name: p.TenSanPham,
-        price: p.DonGiaBieuKien,
-        quantity: p.SoLuongTon,
-        image: p.AnhDaiDien || '/images/ao-thun-nu.png',
+        TenSanPham: p.TenSanPham,
+        price: p.DonGiaBan,
+        GiaBan: p.DonGiaBan,
+        GiaGoc: p.DonGiaNhap,
+        quantity: p.SoLuong,
+        SoLuong: p.SoLuong,
+        image: p.Anh || '/images/ao-thun-nu.png',
+        AnhDaiDien: p.Anh || '/images/ao-thun-nu.png',
         category: p.loaiHang?.TenLoaiHang?.toLowerCase(),
         categoryName: p.loaiHang?.TenLoaiHang
     }));
@@ -71,10 +77,15 @@ export const getAdminData = async (req: Request, res: Response) => {
 
     const formattedOrders = orders.map((o: any) => ({
         id: o.MaPhieuXuat,
+        MaDonHang: o.MaPhieuXuat,
         customerName: o.khachHang?.TenKhach,
+        MaKhachHang_id: o.khachHang?.TenKhach,
         customerPhone: o.khachHang?.DienThoai,
-        total: o.cTPhieuXuat.reduce((sum: number, item: any) => sum + item.DonGia * item.SoLuong, 0),
-        status: o.KieuTrangThai || 'PENDING'
+        NgayDat: o.NgayXuat,
+        total: o.cTPhieuXuats?.reduce((sum: number, item: any) => sum + (item.DonGiaBan * item.SoLuong), 0) || o.TongTien,
+        TongTien: o.TongTien,
+        status: o.TrangThai || 'PENDING',
+        TrangThai: o.TrangThai || 'PENDING'
     }));
 
     const formattedCategories = categories.map((c: any) => ({
