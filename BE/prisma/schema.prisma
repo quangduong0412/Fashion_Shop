@@ -7,169 +7,183 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model account {
-  MaNhanVien Int    @id
-  UserName   String @unique(map: "UQ__Account__C9F28456A15E34B6") @db.VarChar(255)
-  PassWord   String @db.VarChar(255)
-  Role       String @default("USER") @db.VarChar(50)
+model ChucVu {
+  MaChucVu  Int        @id @default(autoincrement())
+  TenChucVu String     @db.VarChar(255)
+  nhanViens NhanVien[]
 }
 
-model baiviet {
-  MaBaiViet Int      @id
-  TieuDe    String   @db.VarChar(255)
-  MoTa      String   @db.VarChar(0)
-  Anh       String   @db.VarChar(0)
-  TheLoai   String   @db.VarChar(50)
-  NgayTao   DateTime @db.DateTime(0)
+model ChiNhanh {
+  MaChiNhanh  Int        @id @default(autoincrement())
+  TenChiNhanh String     @db.VarChar(255)
+  DiaChi      String     @db.Text
+  DienThoai   String     @db.VarChar(50)
+  nhanViens   NhanVien[]
 }
 
-model chinhanh {
-  MaChiNhanh  Int    @id
-  TenChiNhanh String @db.VarChar(255)
-  DiaChi      String @db.VarChar(0)
-  DienThoai   String @db.VarChar(50)
+model NhanVien {
+  MaNhanVien      Int              @id @default(autoincrement())
+  TenNhanVien     String           @db.VarChar(255)
+  MaChucVu        Int
+  MaChiNhanh      Int
+  NgaySinh        DateTime?
+  GioiTinh        String?          @db.VarChar(50)
+  DiaChi          String?          @db.Text
+  DienThoai       String?          @db.VarChar(50)
+  account         Account?
+  chiNhanh        ChiNhanh         @relation(fields: [MaChiNhanh], references: [MaChiNhanh], onUpdate: NoAction, map: "FK__NhanVien__MaChiN__3C69FB99")
+  chucVu          ChucVu           @relation(fields: [MaChucVu], references: [MaChucVu], onUpdate: NoAction, map: "FK__NhanVien__MaChuc__3B75D760")
+  phieuNhaps      PhieuNhap[]
+  phieuXuats      PhieuXuat[]
+  yeuCauNhapHangs YeuCauNhapHang[]
 }
 
-model chucvu {
-  MaChucVu  Int    @id
-  TenChucVu String @db.VarChar(255)
+model Account {
+  MaNhanVien Int      @id
+  UserName   String   @unique @db.VarChar(255)
+  PassWord   String   @db.VarChar(255)
+  Role       String   @default("USER") @db.VarChar(50)
+  nhanVien   NhanVien @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__Account__MaNhanV__403A8C7D")
 }
 
-model ctphieunhap {
-  STT         Int   @id
+model KhachHang {
+  MaKhachHang   Int         @id @default(autoincrement())
+  TenKhach      String      @db.VarChar(255)
+  Email         String      @unique @db.VarChar(255)
+  MatKhau       String      @db.VarChar(255)
+  DiaChi        String?     @db.Text
+  DienThoai     String?     @db.VarChar(50)
+  HangThanhVien String?     @db.VarChar(100)
+  phieuXuats    PhieuXuat[]
+}
+
+model LoaiHang {
+  MaLoaiHang  Int       @id @default(autoincrement())
+  TenLoaiHang String    @db.VarChar(255)
+  sanPhams    SanPham[]
+}
+
+model Kho {
+  MaKho      Int         @id @default(autoincrement())
+  TenKho     String      @db.VarChar(255)
+  DiaChi     String      @db.Text
+  phieuNhaps PhieuNhap[]
+  phieuXuats PhieuXuat[]
+  sanPhams   SanPham[]
+}
+
+model NhaCungCap {
+  MaNCC      Int         @id @default(autoincrement())
+  TenNCC     String      @db.VarChar(255)
+  DiaChi     String?     @db.Text
+  DienThoai  String?     @db.VarChar(50)
+  phieuNhaps PhieuNhap[]
+  sanPhams   SanPham[]
+}
+
+model SanPham {
+  MaSanPham       Int              @id @default(autoincrement())
+  TenSanPham      String           @db.VarChar(255)
+  MaLoaiHang      Int
+  SoLuong         Int              @default(0)
+  DonGiaNhap      Float
+  DonGiaBan       Float
+  Anh             String?          @db.Text
+  GhiChu          String?          @db.Text
+  MaKho           Int
+  MaNCC           Int
+  ctPhieuNhaps    CTPhieuNhap[]
+  ctPhieuXuats    CTPhieuXuat[]
+  kho             Kho              @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__SanPham__MaKho__4E88ABD4")
+  loaiHang        LoaiHang         @relation(fields: [MaLoaiHang], references: [MaLoaiHang], onUpdate: NoAction, map: "FK__SanPham__MaLoaiH__4CA06362")
+  nhaCungCap      NhaCungCap       @relation(fields: [MaNCC], references: [MaNCC], onUpdate: NoAction, map: "FK__SanPham__MaNCC__4F7CD00D")
+  yeuCauNhapHangs YeuCauNhapHang[]
+}
+
+model YeuCauNhapHang {
+  MaNhanVien Int
+  MaSanPham  Int
+  ThoiGian   DateTime @default(now())
+  nhanVien   NhanVien @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__YeuCauNha__MaNha__52593CB8")
+  sanPham    SanPham  @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__YeuCauNha__MaSan__534D60F1")
+
+  @@id([MaNhanVien, MaSanPham, ThoiGian])
+}
+
+model PhieuNhap {
+  MaPhieuNhap  Int           @id @default(autoincrement())
+  MaNhanVien   Int
+  NgayNhap     DateTime      @default(now())
+  MaNCC        Int
+  TongTien     Float
+  MaKho        Int
+  ctPhieuNhaps CTPhieuNhap[]
+  kho          Kho           @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__PhieuNhap__MaKho__59FA5E80")
+  nhaCungCap   NhaCungCap    @relation(fields: [MaNCC], references: [MaNCC], onUpdate: NoAction, map: "FK__PhieuNhap__MaNCC__59063A47")
+  nhanVien     NhanVien      @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__PhieuNhap__MaNha__571DF1D5")
+}
+
+model CTPhieuNhap {
+  STT         Int       @id @default(autoincrement())
   MaPhieuNhap Int
   MaSanPham   Int
   SoLuong     Int
   DonGiaNhap  Float
-  GiamGia     Float @default(0)
+  GiamGia     Float     @default(0)
   ThanhTien   Float
-
-  @@index([MaPhieuNhap], map: "FK__CTPhieuNh__MaPhi__5CD6CB2B")
-  @@index([MaSanPham], map: "FK__CTPhieuNh__MaSan__5DCAEF64")
+  phieuNhap   PhieuNhap @relation(fields: [MaPhieuNhap], references: [MaPhieuNhap], onUpdate: NoAction, map: "FK__CTPhieuNh__MaPhi__5CD6CB2B")
+  sanPham     SanPham   @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__CTPhieuNh__MaSan__5DCAEF64")
 }
 
-model ctphieuxuat {
-  STT         Int   @id
+model PhieuXuat {
+  MaPhieuXuat  Int           @id @default(autoincrement())
+  MaNhanVien   Int
+  NgayXuat     DateTime      @default(now())
+  MaKhachHang  Int
+  TongTien     Float
+  MaKho        Int
+  TrangThai    String        @default("PENDING") @db.VarChar(50)
+  ctPhieuXuats CTPhieuXuat[]
+  khachHang    KhachHang     @relation(fields: [MaKhachHang], references: [MaKhachHang], onUpdate: NoAction, map: "FK__PhieuXuat__MaKha__6383C8BA")
+  kho          Kho           @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__PhieuXuat__MaKho__6477ECF3")
+  nhanVien     NhanVien      @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__PhieuXuat__MaNha__619B8048")
+}
+
+model CTPhieuXuat {
+  STT         Int       @id @default(autoincrement())
   MaPhieuXuat Int
   MaSanPham   Int
   SoLuong     Int
   DonGiaBan   Float
-  GiamGia     Float @default(0)
+  GiamGia     Float     @default(0)
   ThanhTien   Float
-
-  @@index([MaPhieuXuat], map: "FK__CTPhieuXu__MaPhi__68487DD7")
-  @@index([MaSanPham], map: "FK__CTPhieuXu__MaSan__693CA210")
+  phieuXuat   PhieuXuat @relation(fields: [MaPhieuXuat], references: [MaPhieuXuat], onUpdate: NoAction, map: "FK__CTPhieuXu__MaPhi__68487DD7")
+  sanPham     SanPham   @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__CTPhieuXu__MaSan__693CA210")
 }
 
-model khachhang {
-  MaKhachHang   Int     @id
-  TenKhach      String  @db.VarChar(255)
-  Email         String  @unique(map: "UQ__KhachHan__A9D10534A9908EE8") @db.VarChar(255)
-  MatKhau       String  @db.VarChar(255)
-  DiaChi        String? @db.VarChar(0)
-  DienThoai     String? @db.VarChar(50)
-  HangThanhVien String? @db.VarChar(100)
+model BaiViet {
+  MaBaiViet Int      @id @default(autoincrement())
+  TieuDe    String   @db.VarChar(255)
+  MoTa      String   @db.Text
+  Anh       String   @db.Text
+  TheLoai   String   @db.VarChar(50)
+  NgayTao   DateTime @default(now())
 }
 
-model kho {
-  MaKho  Int    @id
-  TenKho String @db.VarChar(255)
-  DiaChi String @db.VarChar(0)
-}
-
-model lienhe {
-  MaLienHe Int      @id
+model LienHe {
+  MaLienHe Int      @id @default(autoincrement())
   HoTen    String   @db.VarChar(255)
   Email    String   @db.VarChar(255)
-  NoiDung  String   @db.VarChar(0)
-  NgayTao  DateTime @db.DateTime(0)
-}
-
-model loaihang {
-  MaLoaiHang  Int    @id
-  TenLoaiHang String @db.VarChar(255)
-}
-
-model nhacungcap {
-  MaNCC     Int     @id
-  TenNCC    String  @db.VarChar(255)
-  DiaChi    String? @db.VarChar(0)
-  DienThoai String? @db.VarChar(50)
-}
-
-model nhanvien {
-  MaNhanVien  Int       @id
-  TenNhanVien String    @db.VarChar(255)
-  MaChucVu    Int
-  MaChiNhanh  Int
-  NgaySinh    DateTime? @db.DateTime(0)
-  GioiTinh    String?   @db.VarChar(50)
-  DiaChi      String?   @db.VarChar(0)
-  DienThoai   String?   @db.VarChar(50)
-
-  @@index([MaChiNhanh], map: "FK__NhanVien__MaChiN__3C69FB99")
-  @@index([MaChucVu], map: "FK__NhanVien__MaChuc__3B75D760")
-}
-
-model phieunhap {
-  MaPhieuNhap Int      @id
-  MaNhanVien  Int
-  NgayNhap    DateTime @db.DateTime(0)
-  MaNCC       Int
-  TongTien    Float
-  MaKho       Int
-
-  @@index([MaKho], map: "FK__PhieuNhap__MaKho__59FA5E80")
-  @@index([MaNCC], map: "FK__PhieuNhap__MaNCC__59063A47")
-  @@index([MaNhanVien], map: "FK__PhieuNhap__MaNha__571DF1D5")
-}
-
-model phieuxuat {
-  MaPhieuXuat Int      @id
-  MaNhanVien  Int
-  NgayXuat    DateTime @db.DateTime(0)
-  MaKhachHang Int
-  TongTien    Float
-  MaKho       Int
-  TrangThai   String   @default("PENDING") @db.VarChar(50)
-
-  @@index([MaKhachHang], map: "FK__PhieuXuat__MaKha__6383C8BA")
-  @@index([MaKho], map: "FK__PhieuXuat__MaKho__6477ECF3")
-  @@index([MaNhanVien], map: "FK__PhieuXuat__MaNha__619B8048")
-}
-
-model sanpham {
-  MaSanPham  Int     @id
-  TenSanPham String  @db.VarChar(255)
-  MaLoaiHang Int
-  SoLuong    Int     @default(0)
-  DonGiaNhap Float
-  DonGiaBan  Float
-  Anh        String? @db.VarChar(0)
-  GhiChu     String? @db.VarChar(0)
-  MaKho      Int
-  MaNCC      Int
-
-  @@index([MaKho], map: "FK__SanPham__MaKho__4E88ABD4")
-  @@index([MaLoaiHang], map: "FK__SanPham__MaLoaiH__4CA06362")
-  @@index([MaNCC], map: "FK__SanPham__MaNCC__4F7CD00D")
+  NoiDung  String   @db.Text
+  NgayTao  DateTime @default(now())
 }
 
 model sysdiagrams {
-  name         String @db.VarChar(160)
+  name         String @db.VarChar(128)
   principal_id Int
-  diagram_id   Int    @id
+  diagram_id   Int    @id @default(autoincrement())
   version      Int?
   definition   Bytes?
 
-  @@unique([principal_id, name], map: "UK_principal_name")
-}
-
-model yeucaunhaphang {
-  MaNhanVien Int
-  MaSanPham  Int
-  ThoiGian   DateTime @db.DateTime(0)
-
-  @@id([MaNhanVien, MaSanPham, ThoiGian])
-  @@index([MaSanPham], map: "FK__YeuCauNha__MaSan__534D60F1")
+  @@unique([principal_id, name])
 }
