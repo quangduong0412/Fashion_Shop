@@ -6,7 +6,7 @@ export const getAdminData = async (req: Request, res: Response) => {
   try {
     const products = await prisma.sanPham.findMany({ include: { loaiHang: true } });
     const users = await prisma.khachHang.findMany();
-    const orders = await prisma.phieuXuat.findMany({ include: { khachHang: true } });
+    const orders = await prisma.phieuXuat.findMany() as any[];
     const suppliers = await prisma.nhaCungCap.findMany();
     const contacts = await prisma.lienHe.findMany({ orderBy: { NgayTao: 'desc' } });
     const posts = await prisma.baiViet.findMany({ orderBy: { NgayTao: 'desc' } });
@@ -14,9 +14,9 @@ export const getAdminData = async (req: Request, res: Response) => {
     const roles = await prisma.chucVu.findMany();
     const categories = await prisma.loaiHang.findMany();
     const warehouses = await prisma.kho.findMany();
-    const employees = await prisma.nhanVien.findMany({ include: { chucVu: true, chiNhanh: true, account: true } });
-    const importReceipts = await prisma.phieuNhap.findMany({ include: { nhanVien: true, nhaCungCap: true } });
-    const exportReceipts = await prisma.phieuXuat.findMany({ include: { nhanVien: true, khachHang: true } });
+    const employees = await prisma.nhanVien.findMany() as any[];
+    const importReceipts = await prisma.phieuNhap.findMany() as any[];
+    const exportReceipts = await prisma.phieuXuat.findMany() as any[];
 
     res.json({
       categories: categories.map(c => ({ id: c.MaLoaiHang, name: c.TenLoaiHang })),
@@ -103,8 +103,9 @@ export const getAdminData = async (req: Request, res: Response) => {
         status: r.TrangThai
       }))
     });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch admin data' });
+  } catch (error: any) {
+    console.error('getAdminData Error:', error);
+    res.status(500).json({ error: 'Failed to fetch admin data: ' + error.message });
   }
 };
 

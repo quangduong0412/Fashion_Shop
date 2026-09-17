@@ -13,16 +13,16 @@ export const registerUser = async (req: Request, res: Response) => {
       res.status(400).json({ error: 'User already exists' });
       return;
     }
-    
+
     const hashedPassword = await bcrypt.hash(password, 10);
-    
+
     const newUser = await prisma.khachHang.create({
       data: { TenKhach: name, Email: email, MatKhau: hashedPassword }
     });
-    
+
     // Generate token
     const token = jwt.sign({ id: newUser.MaKhachHang, email: newUser.Email, role: 'user' }, JWT_SECRET, { expiresIn: '7d' });
-    
+
     res.status(201).json({ user: newUser, token });
   } catch (error) {
     res.status(500).json({ error: 'Failed to register user' });
@@ -38,12 +38,12 @@ export const loginUser = async (req: Request, res: Response) => {
       let isMatch = false;
       // Hỗ trợ cả mật khẩu bcrypt và plaintext (từ seed)
       if (admin.PassWord.startsWith('$2a$') || admin.PassWord.startsWith('$2b$')) {
-          isMatch = await bcrypt.compare(password, admin.PassWord);
+        isMatch = await bcrypt.compare(password, admin.PassWord);
       } else {
-          isMatch = (admin.PassWord === password);
-          if (isMatch) {
-              // Có thể update hash lại vào DB ở đây nếu muốn chuẩn hóa
-          }
+        isMatch = (admin.PassWord === password);
+        if (isMatch) {
+          // Có thể update hash lại vào DB ở đây nếu muốn chuẩn hóa
+        }
       }
 
       if (isMatch) {
@@ -63,9 +63,9 @@ export const loginUser = async (req: Request, res: Response) => {
     if (user) {
       let isMatch = false;
       if (user.MatKhau.startsWith('$2a$') || user.MatKhau.startsWith('$2b$')) {
-          isMatch = await bcrypt.compare(password, user.MatKhau);
+        isMatch = await bcrypt.compare(password, user.MatKhau);
       } else {
-          isMatch = (user.MatKhau === password);
+        isMatch = (user.MatKhau === password);
       }
 
       if (isMatch) {
@@ -124,13 +124,13 @@ export const updateUserProfile = async (req: Request, res: Response) => {
       res.json({ MaKhachHang: userId, TenKhach: name, Email: (req as any).user.email, DiaChi: address, DienThoai: phone, HangThanhVien: 'Admin' });
       return;
     }
-    
+
     const updatedUser = await prisma.khachHang.update({
       where: { MaKhachHang: userId },
       data: { TenKhach: name, DienThoai: phone, DiaChi: address },
       select: { MaKhachHang: true, TenKhach: true, Email: true, DiaChi: true, DienThoai: true, HangThanhVien: true }
     });
-    
+
     res.json(updatedUser);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update profile' });
@@ -145,13 +145,13 @@ export const createUser = async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Email đã tồn tại' });
       return;
     }
-    
+
     const hashedPassword = await bcrypt.hash(password || '123456', 10); // default password if not provided
-    
+
     const newUser = await prisma.khachHang.create({
       data: { TenKhach: name, Email: email, DienThoai: phone, MatKhau: hashedPassword, HangThanhVien: 'Thành viên mới' }
     });
-    
+
     res.status(201).json(newUser);
   } catch (error) {
     res.status(500).json({ error: 'Lỗi tạo khách hàng' });
@@ -163,7 +163,7 @@ export const updateUser = async (req: Request, res: Response) => {
   const { name, phone, email, password } = req.body;
   try {
     const dataToUpdate: any = { TenKhach: name, DienThoai: phone };
-    
+
     if (email) {
       // Kiểm tra email trùng nếu email thay đổi
       const existing = await prisma.khachHang.findUnique({ where: { Email: email } });
@@ -173,11 +173,11 @@ export const updateUser = async (req: Request, res: Response) => {
       }
       dataToUpdate.Email = email;
     }
-    
+
     if (password && password.trim() !== '') {
       dataToUpdate.MatKhau = await bcrypt.hash(password, 10);
     }
-    
+
     const user = await prisma.khachHang.update({
       where: { MaKhachHang: Number(id) },
       data: dataToUpdate
@@ -200,7 +200,7 @@ export const deleteUser = async (req: Request, res: Response) => {
       await prisma.cTPhieuXuat.deleteMany({ where: { MaPhieuXuat: px.MaPhieuXuat } });
       await prisma.phieuXuat.delete({ where: { MaPhieuXuat: px.MaPhieuXuat } });
     }
-    
+
     await prisma.khachHang.delete({ where: { MaKhachHang: Number(id) } });
     res.json({ message: 'User deleted successfully' });
   } catch (error: any) {
@@ -220,19 +220,19 @@ export const changePassword = async (req: Request, res: Response) => {
         res.status(404).json({ error: 'Not found' });
         return;
       }
-      
+
       let isMatch = false;
       if (admin.PassWord.startsWith('$2a$') || admin.PassWord.startsWith('$2b$')) {
-          isMatch = await bcrypt.compare(oldPassword, admin.PassWord);
+        isMatch = await bcrypt.compare(oldPassword, admin.PassWord);
       } else {
-          isMatch = (admin.PassWord === oldPassword);
+        isMatch = (admin.PassWord === oldPassword);
       }
-      
+
       if (!isMatch) {
         res.status(400).json({ error: 'Mật khẩu cũ không đúng' });
         return;
       }
-      
+
       const hashed = await bcrypt.hash(newPassword, 10);
       await prisma.account.update({ where: { MaNhanVien: userId }, data: { PassWord: hashed } });
       res.json({ message: 'Đổi mật khẩu thành công' });
@@ -244,19 +244,19 @@ export const changePassword = async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Not found' });
       return;
     }
-    
+
     let isMatch = false;
     if (user.MatKhau.startsWith('$2a$') || user.MatKhau.startsWith('$2b$')) {
-        isMatch = await bcrypt.compare(oldPassword, user.MatKhau);
+      isMatch = await bcrypt.compare(oldPassword, user.MatKhau);
     } else {
-        isMatch = (user.MatKhau === oldPassword);
+      isMatch = (user.MatKhau === oldPassword);
     }
-    
+
     if (!isMatch) {
       res.status(400).json({ error: 'Mật khẩu cũ không đúng' });
       return;
     }
-    
+
     const hashed = await bcrypt.hash(newPassword, 10);
     await prisma.khachHang.update({ where: { MaKhachHang: userId }, data: { MatKhau: hashed } });
     res.json({ message: 'Đổi mật khẩu thành công' });

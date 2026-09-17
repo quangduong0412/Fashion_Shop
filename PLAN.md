@@ -22,10 +22,10 @@ Hệ thống đồng bộ dữ liệu thời gian thực (Real-time) qua Backend
 Tài liệu này liệt kê chi tiết các chức năng cần phát triển cho dự án Fashion Haven, được chia theo từng phân hệ. Bạn có thể sử dụng file này như một Checklist để theo dõi tiến độ công việc.
 
 ### 1. Phân hệ Xác thực & Tài khoản (Authentication & Account)
-- [ ] Khách hàng: Đăng ký tài khoản mới.
-- [ ] Khách hàng: Đăng nhập.
+- [x] Khách hàng: Đăng ký tài khoản mới.
+- [x] Khách hàng: Đăng nhập.
 - [ ] Khách hàng: Xem và cập nhật hồ sơ cá nhân (thông tin, mật khẩu).
-- [ ] Nhân viên/Admin: Đăng nhập hệ thống quản trị.
+- [x] Nhân viên/Admin: Đăng nhập hệ thống quản trị.
 - [ ] Hệ thống: Phân quyền truy cập (Role-based access control - Admin vs Staff vs User).
 
 ### 2. Phân hệ Mua sắm & Khách hàng (Client Side - Frontend)
