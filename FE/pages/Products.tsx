@@ -28,8 +28,8 @@ export default function ProductsScreen() {
   const insets = useSafeAreaInsets();
   const [activeCategory, setActiveCategory] = useState('all');
 
-  const filteredProducts = activeCategory === 'all' 
-    ? dummyProducts 
+  const filteredProducts = activeCategory === 'all'
+    ? dummyProducts
     : dummyProducts.filter(p => p.category === activeCategory);
 
   return (
@@ -40,20 +40,20 @@ export default function ProductsScreen() {
       </View>
 
       <View style={styles.searchSection}>
-        <SearchBar 
-          placeholder="Tìm kiếm sản phẩm, xu hướng..." 
-          showFilterBtn 
-          onFilterPress={() => {}}
+        <SearchBar
+          placeholder="Tìm kiếm sản phẩm, xu hướng..."
+          showFilterBtn
+          onFilterPress={() => { }}
         />
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroll}>
         {categories.map(c => (
-          <CategoryChip 
-            key={c.id} 
-            label={c.label} 
-            isActive={activeCategory === c.id} 
-            onPress={() => setActiveCategory(c.id)} 
+          <CategoryChip
+            key={c.id}
+            label={c.label}
+            isActive={activeCategory === c.id}
+            onPress={() => setActiveCategory(c.id)}
           />
         ))}
       </ScrollView>
@@ -70,10 +70,26 @@ export default function ProductsScreen() {
         <View style={styles.productGrid}>
           {filteredProducts.map(p => (
             <View style={styles.productCol} key={p.id}>
-              <ProductCard 
-                product={p as any} 
-                onAdd={() => {}} 
-                onPress={() => router.push(`/product/${p.id}` as never)} 
+              <ProductCard
+                product={p as any}
+                onAdd={async () => {
+                  try {
+                    const { readCart, saveCart } = require('../components/fashion-data');
+                    const { Alert } = require('react-native');
+                    const cart = await readCart();
+                    const existingItem = cart.find((item: any) => item.id === p.id);
+                    if (existingItem) {
+                      existingItem.quantity += 1;
+                    } else {
+                      cart.push({ ...p, quantity: 1 });
+                    }
+                    await saveCart(cart);
+                    Alert.alert('Thành công', 'Đã thêm sản phẩm vào giỏ hàng');
+                  } catch (error) {
+                    console.error(error);
+                  }
+                }}
+                onPress={() => router.push(`/product/${p.id}` as never)}
               />
             </View>
           ))}
@@ -143,4 +159,4 @@ const styles = StyleSheet.create({
     width: '50%',
     paddingHorizontal: 4,
   },
-});
+});

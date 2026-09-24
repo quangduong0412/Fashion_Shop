@@ -43,7 +43,6 @@ export default function CartScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Giỏ hàng của tôi</Text>
-        <Text style={styles.headerSub}>({cart.length} sản phẩm)</Text>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -96,7 +95,7 @@ export default function CartScreen() {
                           <MaterialIcons name="close" size={18} color={Colors.light.outline} />
                         </Pressable>
                       </View>
-                      <Text style={styles.itemVariant}>Size M • Đỏ</Text>
+                      <Text style={styles.itemVariant}>Size {item.size || 'M'} • {item.color || 'Đỏ'}</Text>
                     </View>
                     <View style={styles.itemPriceRow}>
                       <Text style={styles.itemPrice}>{formatPrice(item.price)}</Text>
@@ -126,10 +125,10 @@ export default function CartScreen() {
               <View style={styles.voucherInputRow}>
                 <View style={styles.voucherInputBox}>
                   <MaterialIcons name="confirmation-number" size={18} color={Colors.light.outline} />
-                  <TextInput 
-                    style={styles.voucherInput} 
-                    placeholder="Nhập mã giảm giá..." 
-                    placeholderTextColor={Colors.light.outline} 
+                  <TextInput
+                    style={styles.voucherInput}
+                    placeholder="Nhập mã giảm giá..."
+                    placeholderTextColor={Colors.light.outline}
                   />
                 </View>
                 <Pressable style={styles.voucherApplyBtn}>
@@ -213,15 +212,15 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 16, height: 56, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(251, 248, 255, 0.9)' },
   headerTitle: { fontFamily: 'Playfair Display', fontSize: 24, fontWeight: '600', color: Colors.light.onSurface },
   headerSub: { fontFamily: 'Inter', fontSize: 13, fontWeight: '600', color: Colors.light.primary },
-  
+
   scrollContent: { paddingHorizontal: 16, paddingBottom: 100, paddingTop: 12 },
-  
+
   actionRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 },
   clearBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8 },
   clearBtnText: { fontFamily: 'Inter', fontSize: 12, color: Colors.light.onSurfaceVariant },
-  
+
   card: { backgroundColor: Colors.light.surfaceContainerLowest, borderRadius: 12, padding: 12, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
-  
+
   progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   progressTextRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   progressText: { fontFamily: 'Inter', fontSize: 12, color: Colors.light.secondary },
@@ -230,7 +229,7 @@ const styles = StyleSheet.create({
   progressBadgeText: { fontFamily: 'Inter', fontSize: 11, fontWeight: '700', color: Colors.light.onPrimary },
   progressBarBg: { height: 6, backgroundColor: Colors.light.surfaceContainerHigh, borderRadius: 3, overflow: 'hidden' },
   progressBarFill: { height: '100%', backgroundColor: Colors.light.primary, borderRadius: 3 },
-  
+
   itemsContainer: { gap: 12, marginBottom: 16 },
   cartItem: { flexDirection: 'row', backgroundColor: Colors.light.surfaceContainerLowest, borderRadius: 12, padding: 12, gap: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
   itemImageWrapper: { width: 80, height: 96, borderRadius: 8, backgroundColor: Colors.light.surfaceContainer, overflow: 'hidden' },
@@ -278,7 +277,7 @@ const styles = StyleSheet.create({
   totalAmount: { fontFamily: 'Playfair Display', fontSize: 22, fontWeight: '700', color: Colors.light.primary },
   totalSaving: { fontFamily: 'Inter', fontSize: 11, fontWeight: '600', color: Colors.light.tertiary, marginTop: 2 },
 
-  bottomBar: { paddingHorizontal: 16, paddingVertical: 12, paddingBottom: 24, backgroundColor: Colors.light.surfaceContainerLowest, borderTopWidth: 1, borderTopColor: 'rgba(30,58,95,0.05)' },
+  bottomBar: { paddingHorizontal: 16, paddingVertical: 12, paddingBottom: 12, marginBottom: 68, backgroundColor: Colors.light.surfaceContainerLowest, borderTopWidth: 1, borderTopColor: 'rgba(30,58,95,0.05)' },
   checkoutBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: Colors.light.primary, height: 48, borderRadius: 24, paddingHorizontal: 24, shadowColor: Colors.light.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
   checkoutBtnText: { fontFamily: 'Inter', fontSize: 15, fontWeight: '600', color: Colors.light.onPrimary },
   checkoutBtnTotal: { fontFamily: 'Inter', fontSize: 15, fontWeight: '700', color: Colors.light.onPrimary },
@@ -288,4 +287,4 @@ const styles = StyleSheet.create({
   emptyText: { fontFamily: 'Inter', fontSize: 14, color: Colors.light.onSurfaceVariant, marginBottom: 24 },
   emptyBtn: { backgroundColor: Colors.light.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 999 },
   emptyBtnText: { fontFamily: 'Inter', fontSize: 14, fontWeight: '600', color: Colors.light.onPrimary },
-});
+});

@@ -1,9 +1,24 @@
 import { Tabs } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../constants/theme';
-import { View } from 'react-native';
+import { View, Text } from 'react-native';
+import { useState, useEffect } from 'react';
+import { readCart } from '../../components/fashion-data';
 
 export default function TabLayout() {
+  const [cartCount, setCartCount] = useState(0);
+
+  useEffect(() => {
+    const fetchCart = async () => {
+      const cart = await readCart();
+      const count = cart.reduce((sum: number, item: any) => sum + item.quantity, 0);
+      setCartCount(count);
+    };
+    fetchCart();
+    const interval = setInterval(fetchCart, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <Tabs
       screenOptions={{
@@ -50,7 +65,11 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => (
             <View>
               <MaterialIcons name="local-mall" size={24} color={color} />
-              {/* Optional: Add badge here if needed */}
+              {cartCount > 0 && (
+                <View style={{ position: 'absolute', top: -4, right: -8, backgroundColor: Colors.light.primary, borderRadius: 10, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center' }}>
+                  <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>{cartCount}</Text>
+                </View>
+              )}
             </View>
           )
         }} 

@@ -196,11 +196,63 @@ export default function ProductDetailScreen() {
           <MaterialIcons name="chat-bubble-outline" size={20} color={Colors.light.secondary} />
           <Text style={styles.chatText}>Tư vấn</Text>
         </Pressable>
-        <Pressable style={styles.addCartBtn} onPress={() => Alert.alert('Thông báo', 'Đã thêm vào giỏ')}>
+        <Pressable style={styles.addCartBtn} onPress={async () => {
+          try {
+            const { readCart, saveCart, products } = require('../../components/fashion-data');
+            const cart = await readCart();
+            // Try to find the product in dummy products or fashion-data products
+            // For now, since the page is mocked, we'll create a mock product item if not found
+            const productToAdd = {
+              id: id,
+              name: 'Đầm Lụa Satin Cúp Ngực Crimson Elegance', // Hardcoded as per the UI
+              price: 1350000,
+              image: productImages[0],
+              category: 'dress',
+              size: selectedSize,
+              color: selectedColor.name
+            };
+
+            const existingItem = cart.find((item: any) => item.id === productToAdd.id && item.size === productToAdd.size && item.color === productToAdd.color);
+            if (existingItem) {
+              existingItem.quantity += 1;
+            } else {
+              cart.push({ ...productToAdd, quantity: 1 });
+            }
+            await saveCart(cart);
+            Alert.alert('Thành công', 'Đã thêm vào giỏ');
+          } catch (error) {
+            console.error(error);
+          }
+        }}>
           <MaterialIcons name="shopping-bag" size={18} color={Colors.light.primary} />
           <Text style={styles.addCartText}>Thêm vào giỏ</Text>
         </Pressable>
-        <Pressable style={styles.buyBtn} onPress={() => router.push('/cart' as never)}>
+        <Pressable style={styles.buyBtn} onPress={async () => {
+          try {
+            const { readCart, saveCart, products } = require('../../components/fashion-data');
+            const cart = await readCart();
+            const productToAdd = {
+              id: id,
+              name: 'Đầm Lụa Satin Cúp Ngực Crimson Elegance',
+              price: 1350000,
+              image: productImages[0],
+              category: 'dress',
+              size: selectedSize,
+              color: selectedColor.name
+            };
+
+            const existingItem = cart.find((item: any) => item.id === productToAdd.id && item.size === productToAdd.size && item.color === productToAdd.color);
+            if (existingItem) {
+              existingItem.quantity += 1;
+            } else {
+              cart.push({ ...productToAdd, quantity: 1 });
+            }
+            await saveCart(cart);
+            router.push('/cart' as never);
+          } catch (error) {
+            console.error(error);
+          }
+        }}>
           <Text style={styles.buyText}>Mua ngay</Text>
         </Pressable>
       </View>
