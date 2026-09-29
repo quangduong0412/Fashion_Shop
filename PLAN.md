@@ -24,7 +24,7 @@ Tài liệu này liệt kê chi tiết các chức năng cần phát triển cho
 ### 1. Phân hệ Xác thực & Tài khoản (Authentication & Account)
 - [x] Khách hàng: Đăng ký tài khoản mới.
 - [x] Khách hàng: Đăng nhập.
-- [ ] Khách hàng: Xem và cập nhật hồ sơ cá nhân (thông tin, mật khẩu).
+- [x] Khách hàng: Xem và cập nhật hồ sơ cá nhân (thông tin, mật khẩu).
 - [x] Nhân viên/Admin: Đăng nhập hệ thống quản trị.
 - [ ] Hệ thống: Phân quyền truy cập (Role-based access control - Admin vs Staff vs User).
 

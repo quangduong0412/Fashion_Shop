@@ -20,17 +20,10 @@ Tôi đã hoàn tất việc nâng cấp giao diện Frontend theo thiết kế 
 - **Trang Khám phá (`Products.tsx`)**: 
   - Tích hợp `SearchBar` và `CategoryChip`.
   - Bộ lọc sắp xếp sản phẩm và grid danh sách sản phẩm.
-- **Trang Giỏ hàng (`Cart.tsx`)**: 
-  - Giao diện giỏ hàng trống thân thiện.
-  - Thanh tiến trình freeship 100%.
-  - Danh sách sản phẩm với nút tăng/giảm số lượng đẹp mắt.
-  - Chọn voucher, hiển thị địa chỉ nhận hàng và khối tổng kết đơn hàng chi tiết.
-- **[MỚI] Trang Chi tiết sản phẩm (`product/[id].tsx`)**:
-  - Image Gallery ngang với phân trang bằng dấu chấm (dots).
-  - Chọn màu sắc (hiển thị vòng tròn màu) và chọn Size.
-  - Phần Accordion giới thiệu đặc điểm nổi bật.
-  - Danh sách đánh giá của khách hàng.
-  - Thanh Bottom Bar chứa các nút Gọi tư vấn, Thêm giỏ hàng, Mua ngay.
 
-## Kết quả
-Toàn bộ UI của ứng dụng Mobile giờ đây đã mang dáng vẻ "Premium", sang trọng và mượt mà hơn rất nhiều, sử dụng thuần túy StyleSheet (không dùng Tailwind) để tránh xung đột thư viện theo đúng yêu cầu của bạn.
+## 4. Tính Năng Mới: Cập Nhật Hồ Sơ (Edit Profile)
+- [NEW] Tạo màn hình `EditProfile.tsx` với giao diện Form nhập liệu sạch sẽ, trực quan.
+- Hỗ trợ chia Tab giữa: **Thông tin** (đổi tên, số điện thoại, địa chỉ) và **Mật khẩu** (đổi mật khẩu an toàn).
+- Đã liên kết API `PUT /api/users/profile` và `POST /api/users/change-password`.
+- Tính năng đồng bộ `AsyncStorage` để ngay lập tức hiển thị tên và địa chỉ mới trên màn hình Profile.
+- Đã sửa lỗi hiển thị nút Chỉnh sửa và cập nhật trường Địa chỉ giao hàng đúng nguồn.

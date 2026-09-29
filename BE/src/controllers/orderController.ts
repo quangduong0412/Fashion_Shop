@@ -37,6 +37,8 @@ export const createOrder = async (req: Request, res: Response) => {
           TongTien: Number(totalAmount),
           MaKho: 1, // Default Kho
           TrangThai: 'PENDING',
+          PhuongThucThanhToan: req.body.paymentMethod || 'Tiền mặt',
+          TrangThaiThanhToan: req.body.paymentMethod === 'Thanh toán Online' ? 'Đã thanh toán' : 'Chưa thanh toán',
           ctPhieuXuats: {
             create: items.map((item: any) => ({
               MaSanPham: Number(item.id),
@@ -72,7 +74,7 @@ export const getUserOrders = async (req: Request, res: Response) => {
 
 export const updateOrderStatus = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status, paymentStatus, shippingProvider, trackingCode } = req.body;
   try {
     const updatedOrder = await prisma.$transaction(async (tx) => {
       // Lấy thông tin đơn hàng hiện tại
@@ -104,9 +106,15 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
       }
 
       // Cập nhật trạng thái
+      let updateData: any = {};
+      if (status) updateData.TrangThai = status;
+      if (paymentStatus) updateData.TrangThaiThanhToan = paymentStatus;
+      if (shippingProvider) updateData.DonViVanChuyen = shippingProvider;
+      if (trackingCode !== undefined) updateData.MaVanDon = trackingCode;
+
       return await tx.phieuXuat.update({
         where: { MaPhieuXuat: Number(id) },
-        data: { TrangThai: status }
+        data: updateData
       });
     });
 

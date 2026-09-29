@@ -92,12 +92,23 @@ model SanPham {
   GhiChu          String?          @db.Text
   MaKho           Int
   MaNCC           Int
+  TrangThai       String           @default("Đang mở bán") @db.VarChar(50)
   ctPhieuNhaps    CTPhieuNhap[]
   ctPhieuXuats    CTPhieuXuat[]
+  bienThes        BienTheSanPham[]
   kho             Kho              @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__SanPham__MaKho__4E88ABD4")
   loaiHang        LoaiHang         @relation(fields: [MaLoaiHang], references: [MaLoaiHang], onUpdate: NoAction, map: "FK__SanPham__MaLoaiH__4CA06362")
   nhaCungCap      NhaCungCap       @relation(fields: [MaNCC], references: [MaNCC], onUpdate: NoAction, map: "FK__SanPham__MaNCC__4F7CD00D")
   yeuCauNhapHangs YeuCauNhapHang[]
+}
+
+model BienTheSanPham {
+  MaBienThe Int     @id @default(autoincrement())
+  MaSanPham Int
+  KichCo    String  @db.VarChar(10)
+  MauSac    String? @db.VarChar(50)
+  SoLuong   Int     @default(0)
+  sanPham   SanPham @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, onDelete: Cascade, map: "FK__BienThe__MaSan__XX")
 }
 
 model YeuCauNhapHang {
@@ -117,6 +128,7 @@ model PhieuNhap {
   MaNCC        Int
   TongTien     Float
   MaKho        Int
+  TrangThai    String        @default("Chờ kiểm duyệt") @db.VarChar(50)
   ctPhieuNhaps CTPhieuNhap[]
   kho          Kho           @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__PhieuNhap__MaKho__59FA5E80")
   nhaCungCap   NhaCungCap    @relation(fields: [MaNCC], references: [MaNCC], onUpdate: NoAction, map: "FK__PhieuNhap__MaNCC__59063A47")
@@ -140,13 +152,17 @@ model PhieuXuat {
   MaNhanVien   Int
   NgayXuat     DateTime      @default(now())
   MaKhachHang  Int
-  TongTien     Float
-  MaKho        Int
-  TrangThai    String        @default("PENDING") @db.VarChar(50)
-  ctPhieuXuats CTPhieuXuat[]
-  khachHang    KhachHang     @relation(fields: [MaKhachHang], references: [MaKhachHang], onUpdate: NoAction, map: "FK__PhieuXuat__MaKha__6383C8BA")
-  kho          Kho           @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__PhieuXuat__MaKho__6477ECF3")
-  nhanVien     NhanVien      @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__PhieuXuat__MaNha__619B8048")
+  TongTien             Float
+  MaKho                Int
+  TrangThai            String        @default("PENDING") @db.VarChar(50)
+  PhuongThucThanhToan  String?       @db.VarChar(50)
+  TrangThaiThanhToan   String?       @db.VarChar(50)
+  DonViVanChuyen       String?       @db.VarChar(100)
+  MaVanDon             String?       @db.VarChar(100)
+  ctPhieuXuats         CTPhieuXuat[]
+  khachHang            KhachHang     @relation(fields: [MaKhachHang], references: [MaKhachHang], onUpdate: NoAction, map: "FK__PhieuXuat__MaKha__6383C8BA")
+  kho                  Kho           @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__PhieuXuat__MaKho__6477ECF3")
+  nhanVien             NhanVien      @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__PhieuXuat__MaNha__619B8048")
 }
 
 model CTPhieuXuat {

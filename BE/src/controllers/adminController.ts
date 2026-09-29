@@ -18,40 +18,24 @@ export const getAdminData = async (req: Request, res: Response) => {
         }
     });
 
-    // Mock data cho các thực thể chưa có bảng tương ứng hoàn chỉnh hoặc để UI khỏi sập
-    const suppliers = [
-        { id: 1, name: 'Công ty TNHH Vải Vóc Sài Gòn', phone: '0901234567', email: 'contact@vaivocsg.com', products: 15 },
-        { id: 2, name: 'Xưởng may thời trang Nam', phone: '0987654321', email: 'xuongmaynam@gmail.com', products: 8 }
-    ];
-
-    const contacts = [
-        { id: 1, date: '2025-01-10', name: 'Nguyễn Văn A', email: 'nva@gmail.com', message: 'Cho mình hỏi áo khoác bomber còn size L không?' },
-        { id: 2, date: '2025-01-11', name: 'Trần Thị B', email: 'ttb@yahoo.com', message: 'Sản phẩm bên shop chất lượng rất tốt, cảm ơn shop.' }
-    ];
-
-    const posts = [
-        { id: 1, title: 'Xu hướng thời trang Xuân Hè 2025', type: 'Xu hướng', image: '/images/Thu-Dong.jpg', description: 'Đón đầu những xu hướng sẽ bùng nổ trong năm tới.' }
-    ];
-
-    const branches = [
-        { id: 1, name: 'Chi nhánh Quận 1', address: '123 Lê Lợi, Q1, TP HCM', phone: '028 1234 5678' }
-    ];
-
-    const roles = [
-        { id: 1, name: 'Quản Trị Viên' },
-        { id: 2, name: 'Nhân Viên Bán Hàng' }
-    ];
-
-    const employees = [
-        { id: 1, name: 'Nguyễn Quản Trị', phone: '0911223344', branchName: 'Chi nhánh Quận 1', roleName: 'Quản Trị Viên' }
-    ];
-
-    const importReceipts = [];
-    const exportReceipts = [];
+    // Fetch real data from DB
+    const suppliersData = await prisma.nhaCungCap.findMany();
+    const contactsData = await prisma.lienHe.findMany();
+    const postsData = await prisma.baiViet.findMany();
+    const branchesData = await prisma.chiNhanh.findMany();
+    const rolesData = await prisma.chucVu.findMany();
+    const employeesData = await prisma.nhanVien.findMany({
+        include: { chucVu: true, chiNhanh: true }
+    });
+    const importReceiptsData = await prisma.phieuNhap.findMany({
+        include: { nhaCungCap: true, nhanVien: true }
+    });
+    const exportReceiptsData = await prisma.phieuXuat.findMany({
+        include: { khachHang: true, nhanVien: true }
+    });
 
     const categories = await prisma.loaiHang.findMany();
 
-    // Map Prisma models to Admin UI format
     const formattedProducts = products.map((p: any) => ({
         id: p.MaSanPham,
         MaSanPham: p.MaSanPham,
@@ -65,14 +49,17 @@ export const getAdminData = async (req: Request, res: Response) => {
         image: p.Anh || '/images/ao-thun-nu.png',
         AnhDaiDien: p.Anh || '/images/ao-thun-nu.png',
         category: p.loaiHang?.TenLoaiHang?.toLowerCase(),
-        categoryName: p.loaiHang?.TenLoaiHang
+        categoryName: p.loaiHang?.TenLoaiHang,
+        status: p.TrangThai || 'Đang mở bán',
+        variants: p.bienThes || []
     }));
 
     const formattedUsers = users.map((u: any) => ({
         id: u.MaKhachHang,
         name: u.TenKhach,
         email: u.Email,
-        phone: u.DienThoai
+        phone: u.DienThoai,
+        HangThanhVien: u.HangThanhVien || 'Tiêu chuẩn'
     }));
 
     const formattedOrders = orders.map((o: any) => ({
@@ -85,7 +72,11 @@ export const getAdminData = async (req: Request, res: Response) => {
         total: o.cTPhieuXuats?.reduce((sum: number, item: any) => sum + (item.DonGiaBan * item.SoLuong), 0) || o.TongTien,
         TongTien: o.TongTien,
         status: o.TrangThai || 'PENDING',
-        TrangThai: o.TrangThai || 'PENDING'
+        TrangThai: o.TrangThai || 'PENDING',
+        paymentMethod: o.PhuongThucThanhToan || 'Tiền mặt',
+        paymentStatus: o.TrangThaiThanhToan || 'Chưa thanh toán',
+        shippingProvider: o.DonViVanChuyen || 'Chưa điều phối',
+        trackingCode: o.MaVanDon || ''
     }));
 
     const formattedCategories = categories.map((c: any) => ({
@@ -97,14 +88,14 @@ export const getAdminData = async (req: Request, res: Response) => {
         products: formattedProducts,
         users: formattedUsers,
         orders: formattedOrders,
-        suppliers,
-        contacts,
-        posts,
-        branches,
-        roles,
-        employees,
-        importReceipts,
-        exportReceipts,
+        suppliers: suppliersData.map(s => ({ id: s.MaNCC, name: s.TenNCC, phone: s.DienThoai, address: s.DiaChi })),
+        contacts: contactsData.map(c => ({ id: c.MaLienHe, date: c.NgayTao, name: c.HoTen, email: c.Email, message: c.NoiDung })),
+        posts: postsData.map(p => ({ id: p.MaBaiViet, title: p.TieuDe, type: p.TheLoai, image: p.Anh, description: p.MoTa })),
+        branches: branchesData.map(b => ({ id: b.MaChiNhanh, name: b.TenChiNhanh, address: b.DiaChi, phone: b.DienThoai })),
+        roles: rolesData.map(r => ({ id: r.MaChucVu, name: r.TenChucVu })),
+        employees: employeesData.map(e => ({ id: e.MaNhanVien, name: e.TenNhanVien, phone: e.DienThoai, branchName: e.chiNhanh?.TenChiNhanh, roleName: e.chucVu?.TenChucVu })),
+        importReceipts: importReceiptsData.map(r => ({ id: r.MaPhieuNhap, date: r.NgayNhap, supplier: r.nhaCungCap?.TenNCC, total: r.TongTien })),
+        exportReceipts: exportReceiptsData.map(r => ({ id: r.MaPhieuXuat, date: r.NgayXuat, customer: r.khachHang?.TenKhach, total: r.TongTien, status: r.TrangThai })),
         categories: formattedCategories
     });
   } catch (error) {

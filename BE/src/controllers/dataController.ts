@@ -4,9 +4,18 @@ import bcrypt from 'bcryptjs';
 
 export const getAdminData = async (req: Request, res: Response) => {
   try {
-    const products = await prisma.sanPham.findMany({ include: { loaiHang: true } });
+    const products = await prisma.sanPham.findMany({
+      include: { loaiHang: true, kho: true, nhaCungCap: true }
+    });
     const users = await prisma.khachHang.findMany();
-    const orders = await prisma.phieuXuat.findMany() as any[];
+    const orders = await prisma.phieuXuat.findMany({
+      include: {
+        khachHang: true,
+        nhanVien: true,
+        kho: true,
+        ctPhieuXuats: { include: { sanPham: true } }
+      }
+    });
     const suppliers = await prisma.nhaCungCap.findMany();
     const contacts = await prisma.lienHe.findMany({ orderBy: { NgayTao: 'desc' } });
     const posts = await prisma.baiViet.findMany({ orderBy: { NgayTao: 'desc' } });
@@ -14,9 +23,15 @@ export const getAdminData = async (req: Request, res: Response) => {
     const roles = await prisma.chucVu.findMany();
     const categories = await prisma.loaiHang.findMany();
     const warehouses = await prisma.kho.findMany();
-    const employees = await prisma.nhanVien.findMany() as any[];
-    const importReceipts = await prisma.phieuNhap.findMany() as any[];
-    const exportReceipts = await prisma.phieuXuat.findMany() as any[];
+    const employees = await prisma.nhanVien.findMany({
+      include: { chucVu: true, chiNhanh: true, account: true }
+    });
+    const importReceipts = await prisma.phieuNhap.findMany({
+      include: { nhanVien: true, nhaCungCap: true, kho: true }
+    });
+    const exportReceipts = await prisma.phieuXuat.findMany({
+      include: { nhanVien: true, khachHang: true, kho: true }
+    });
 
     res.json({
       categories: categories.map(c => ({ id: c.MaLoaiHang, name: c.TenLoaiHang })),
@@ -28,21 +43,42 @@ export const getAdminData = async (req: Request, res: Response) => {
         image: p.Anh,
         category: p.loaiHang?.TenLoaiHang || 'fashion',
         categoryId: p.MaLoaiHang,
+        categoryName: p.loaiHang?.TenLoaiHang,
+        khoId: p.MaKho,
+        khoName: p.kho?.TenKho,
+        nccId: p.MaNCC,
+        nccName: p.nhaCungCap?.TenNCC,
+        status: p.TrangThai,
+        originalPrice: p.DonGiaNhap,
         quantity: p.SoLuong
       })),
       users: users.map(u => ({
         id: u.MaKhachHang,
         name: u.TenKhach,
         email: u.Email,
-        phone: u.DienThoai
+        phone: u.DienThoai,
+        address: u.DiaChi,
+        HangThanhVien: u.HangThanhVien,
+        totalSpent: 0 // TODO: calculate from orders
       })),
       orders: orders.map(o => ({
         id: o.MaPhieuXuat,
+        MaDonHang: `PX${String(o.MaPhieuXuat).padStart(5, '0')}`,
         customerName: o.khachHang?.TenKhach || 'Khách vãng lai',
         customerPhone: o.khachHang?.DienThoai || '',
+        KhachHang: {
+          TenKhach: o.khachHang?.TenKhach,
+          DienThoai: o.khachHang?.DienThoai
+        },
+        productName: o.ctPhieuXuats?.[0]?.sanPham?.TenSanPham || 'Nhiều sản phẩm',
         total: o.TongTien,
+        TongTien: o.TongTien,
         status: o.TrangThai,
-        date: o.NgayXuat
+        TrangThai: o.TrangThai,
+        paymentMethod: o.PhuongThucThanhToan || 'Tiền mặt',
+        date: o.NgayXuat,
+        NgayXuat: o.NgayXuat,
+        NgayDat: o.NgayXuat
       })),
       suppliers: suppliers.map(s => ({
         id: s.MaNCC,
@@ -374,3 +410,65 @@ export const deleteEmployee = async (req: Request, res: Response) => {
   } catch (error) { res.status(500).json({ error: 'Failed to delete employee' }); }
 };
 
+export const createImport = async (req: Request, res: Response) => {
+  const { supplierId, employeeId, total, items } = req.body;
+  try {
+    const receipt = await prisma.phieuNhap.create({
+      data: {
+        MaNCC: Number(supplierId),
+        MaNhanVien: Number(employeeId) || 1,
+        MaKho: 1,
+        TongTien: Number(total) || 0,
+        ctPhieuNhaps: {
+          create: items?.map((item: any) => ({
+            MaSanPham: Number(item.productId),
+            SoLuong: Number(item.quantity),
+            DonGiaNhap: Number(item.price)
+          })) || []
+        }
+      }
+    });
+    res.status(201).json(receipt);
+  } catch (error) { res.status(500).json({ error: 'Failed to create import receipt' }); }
+};
+
+export const deleteImport = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await prisma.cTPhieuNhap.deleteMany({ where: { MaPhieuNhap: Number(id) } });
+    await prisma.phieuNhap.delete({ where: { MaPhieuNhap: Number(id) } });
+    res.json({ message: 'Deleted' });
+  } catch (error) { res.status(500).json({ error: 'Failed to delete import receipt' }); }
+};
+
+export const createExport = async (req: Request, res: Response) => {
+  const { customerId, employeeId, total, items, status } = req.body;
+  try {
+    const receipt = await prisma.phieuXuat.create({
+      data: {
+        MaKhachHang: Number(customerId),
+        MaNhanVien: Number(employeeId) || 1,
+        MaKho: 1,
+        TongTien: Number(total) || 0,
+        TrangThai: status || 'PENDING',
+        ctPhieuXuats: {
+          create: items?.map((item: any) => ({
+            MaSanPham: Number(item.productId),
+            SoLuong: Number(item.quantity),
+            DonGiaBan: Number(item.price)
+          })) || []
+        }
+      }
+    });
+    res.status(201).json(receipt);
+  } catch (error) { res.status(500).json({ error: 'Failed to create export receipt' }); }
+};
+
+export const deleteExport = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await prisma.cTPhieuXuat.deleteMany({ where: { MaPhieuXuat: Number(id) } });
+    await prisma.phieuXuat.delete({ where: { MaPhieuXuat: Number(id) } });
+    res.json({ message: 'Deleted' });
+  } catch (error) { res.status(500).json({ error: 'Failed to delete export receipt' }); }
+};
