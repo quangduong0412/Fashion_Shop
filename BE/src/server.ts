@@ -28,7 +28,8 @@ import {
   createSupplier, updateSupplier, deleteSupplier, deleteContact,
   createBranch, updateBranch, deleteBranch,
   createRole, updateRole, deleteRole,
-  createEmployee, updateEmployee, deleteEmployee
+  createEmployee, updateEmployee, deleteEmployee,
+  createImport, deleteImport, createExport, deleteExport
 } from './controllers/dataController';
 
 app.get('/api/admin', authenticateToken, requireAdmin, getAdminData);
@@ -56,6 +57,12 @@ app.delete('/api/roles/:id', authenticateToken, requireAdmin, deleteRole);
 app.post('/api/employees', authenticateToken, requireAdmin, createEmployee);
 app.put('/api/employees/:id', authenticateToken, requireAdmin, updateEmployee);
 app.delete('/api/employees/:id', authenticateToken, requireAdmin, deleteEmployee);
+
+app.post('/api/imports', authenticateToken, requireAdmin, createImport);
+app.delete('/api/imports/:id', authenticateToken, requireAdmin, deleteImport);
+
+app.post('/api/exports', authenticateToken, requireAdmin, createExport);
+app.delete('/api/exports/:id', authenticateToken, requireAdmin, deleteExport);
 
 
 app.listen(port, () => {

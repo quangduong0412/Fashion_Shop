@@ -7,33 +7,33 @@ interface HeaderProps {
 
 export default function Header({ adminName, jobTitle }: HeaderProps) {
   return (
-    <header className="fixed top-0 left-64 right-0 h-16 bg-surface/90 backdrop-blur-xl z-40 flex items-center justify-between px-space-lg shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
-      <div className="flex items-center gap-space-md">
+    <header className="fixed top-0 left-64 right-0 h-20 bg-white z-40 flex items-center justify-between px-8 border-b border-gray-100">
+      <div className="flex items-center gap-6">
         <div className="relative flex items-center">
-          <span className="material-symbols-outlined absolute left-3 text-secondary">search</span>
-          <input className="w-96 pl-10 pr-4 py-2 bg-surface-container-low rounded-full font-body-sm text-body-sm text-on-surface placeholder:text-secondary focus:outline-none focus:bg-surface-container transition-all" placeholder="Tìm đơn hàng, SKU sản phẩm, VIP client..." type="text"/>
+          <span className="material-symbols-outlined absolute left-4 text-gray-400">search</span>
+          <input className="w-[400px] pl-12 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-full text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:bg-white focus:border-gray-300 transition-all shadow-sm" placeholder="Tìm đơn hàng, SKU sản phẩm, VIP client..." type="text"/>
         </div>
-        <div className="hidden lg:flex items-center gap-space-xs bg-surface-container-low px-space-sm py-1.5 rounded-lg text-on-surface font-label-md text-label-md cursor-pointer hover:bg-surface-container">
-          <span className="material-symbols-outlined text-[18px] text-primary">storefront</span>
+        <div className="hidden lg:flex items-center gap-2 bg-red-50 text-red-900 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-red-100 transition-colors">
+          <span className="material-symbols-outlined text-[18px] text-[#b6152b]">storefront</span>
           <span>Flagship Boutique - Q.1</span>
-          <span className="material-symbols-outlined text-[16px] text-secondary">expand_more</span>
+          <span className="material-symbols-outlined text-[16px] text-[#b6152b]">expand_more</span>
         </div>
       </div>
-      <div className="flex items-center gap-space-md">
-        <button className="relative p-2 rounded-full text-secondary hover:bg-surface-container-low hover:text-on-surface transition-all">
-          <span className="material-symbols-outlined text-[22px]">notifications</span>
-          <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-primary rounded-full ring-2 ring-surface"></span>
+      <div className="flex items-center gap-6">
+        <button className="relative p-2 rounded-full text-gray-400 hover:bg-gray-50 hover:text-gray-600 transition-all">
+          <span className="material-symbols-outlined text-[24px]">notifications</span>
+          <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-[#b6152b] rounded-full ring-2 ring-white"></span>
         </button>
-        <button className="p-2 rounded-full text-secondary hover:bg-surface-container-low hover:text-on-surface transition-all">
-          <span className="material-symbols-outlined text-[22px]">receipt_long</span>
+        <button className="p-2 rounded-full text-gray-400 hover:bg-gray-50 hover:text-gray-600 transition-all">
+          <span className="material-symbols-outlined text-[24px]">receipt_long</span>
         </button>
-        <div className="flex items-center gap-space-sm pl-space-xs">
+        <div className="flex items-center gap-3 pl-4 border-l border-gray-100">
           <div className="flex flex-col items-end hidden sm:flex">
-            <span className="font-label-lg text-label-lg font-semibold text-on-surface">{adminName}</span>
-            <span className="font-label-sm text-label-sm text-primary font-medium uppercase tracking-wider">{jobTitle}</span>
+            <span className="text-sm font-bold text-gray-800">{adminName}</span>
+            <span className="text-[10px] text-[#b6152b] font-bold uppercase tracking-widest">{jobTitle}</span>
           </div>
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white font-bold">
-            {adminName.charAt(0)}
+          <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-bold overflow-hidden border border-gray-200">
+            <img src="https://ui-avatars.com/api/?name=Admin&background=f3f4f6&color=4b5563" alt="avatar" className="w-full h-full object-cover" />
           </div>
         </div>
       </div>

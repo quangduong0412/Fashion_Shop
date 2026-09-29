@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View, Image, ScrollView, Platform } from 'react-native';
-import { clearSession, currentUser } from '@/components/fashion-data';
+import { clearSession, currentUser, apiRequest } from '@/components/fashion-data';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,13 +13,20 @@ export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
 
   useFocusEffect(useCallback(() => {
-    currentUser().then(value => {
-      if (!value) {
+    const loadProfile = async () => {
+      const sessionUser = await currentUser();
+      if (!sessionUser) {
         router.replace('/login' as never);
         return;
       }
-      setUser(value);
-    });
+      try {
+        const latestData = await apiRequest('/users/profile');
+        setUser({ ...sessionUser, ...latestData });
+      } catch (error) {
+        setUser(sessionUser);
+      }
+    };
+    loadProfile();
   }, [router]));
 
   const logout = async () => {
@@ -92,7 +99,7 @@ export default function ProfileScreen() {
                 <Text style={styles.vipText}>DIAMOND VIP</Text>
               </View>
             </View>
-            <Pressable style={styles.editBtn}>
+            <Pressable style={styles.editBtn} onPress={() => router.push('/edit-profile' as never)}>
               <MaterialIcons name="edit" size={20} color="#f1efff" />
             </Pressable>
           </View>
@@ -172,7 +179,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.menuItemTextContainer}>
                 <Text style={styles.menuItemTitle}>Sổ địa chỉ giao hàng</Text>
-                <Text style={styles.menuItemSub} numberOfLines={1}>{user?.address || 'Chưa thiết lập'}</Text>
+                <Text style={styles.menuItemSub} numberOfLines={1}>{user?.DiaChi || user?.address || 'Chưa thiết lập'}</Text>
               </View>
             </View>
             <MaterialIcons name="chevron-right" size={20} color="#455f87" />

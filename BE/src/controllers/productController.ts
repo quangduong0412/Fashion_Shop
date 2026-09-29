@@ -4,7 +4,7 @@ import prisma from '../db';
 export const getProducts = async (req: Request, res: Response) => {
   try {
     const products = await prisma.sanPham.findMany({
-      include: { loaiHang: true }
+      include: { loaiHang: true, bienThes: true }
     });
     
     if(products.length === 0) {
@@ -19,7 +19,9 @@ export const getProducts = async (req: Request, res: Response) => {
       price: p.DonGiaBan,
       image: p.Anh,
       category: p.loaiHang?.TenLoaiHang || 'fashion',
-      quantity: p.SoLuong
+      quantity: p.SoLuong,
+      status: p.TrangThai || 'Đang mở bán',
+      variants: p.bienThes || []
     }));
 
     res.json(formattedProducts);
@@ -51,19 +53,33 @@ export const getProductById = async (req: Request, res: Response) => {
 };
 
 export const createProduct = async (req: Request, res: Response) => {
-  const { name, price, image, categoryId, khoId, nccId, stock } = req.body;
+  const { name, price, image, categoryId, khoId, nccId, stock, status, variants } = req.body;
   try {
+    const data: any = { 
+      TenSanPham: name, 
+      DonGiaNhap: price * 0.7, 
+      DonGiaBan: price, 
+      Anh: image, 
+      SoLuong: stock || 0,
+      MaLoaiHang: categoryId || 1,
+      MaKho: khoId || 1,
+      MaNCC: nccId || 1,
+      TrangThai: status || 'Đang mở bán'
+    };
+
+    if (variants && variants.length > 0) {
+      data.bienThes = {
+        create: variants.map((v: any) => ({
+          KichCo: v.size || v.KichCo,
+          MauSac: v.color || v.MauSac,
+          SoLuong: Number(v.quantity || v.SoLuong || 0)
+        }))
+      };
+    }
+
     const newProduct = await prisma.sanPham.create({
-      data: { 
-        TenSanPham: name, 
-        DonGiaNhap: price * 0.7, 
-        DonGiaBan: price, 
-        Anh: image, 
-        SoLuong: stock || 0,
-        MaLoaiHang: categoryId || 1,
-        MaKho: khoId || 1,
-        MaNCC: nccId || 1
-      }
+      data,
+      include: { bienThes: true }
     });
     res.status(201).json(newProduct);
   } catch (error) {
@@ -73,7 +89,7 @@ export const createProduct = async (req: Request, res: Response) => {
 
 export const updateProduct = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { name, price, image, categoryId, khoId, nccId, stock } = req.body;
+  const { name, price, image, categoryId, khoId, nccId, stock, status, variants } = req.body;
   try {
     const updatedProduct = await prisma.sanPham.update({
       where: { MaSanPham: Number(id) },
@@ -84,10 +100,33 @@ export const updateProduct = async (req: Request, res: Response) => {
         SoLuong: stock,
         MaLoaiHang: categoryId,
         MaKho: khoId,
-        MaNCC: nccId
+        MaNCC: nccId,
+        TrangThai: status
       }
     });
-    res.json(updatedProduct);
+
+    // Handle variants update if provided
+    if (variants && Array.isArray(variants)) {
+      // Simplest approach: delete old variants and create new ones
+      await prisma.bienTheSanPham.deleteMany({ where: { MaSanPham: Number(id) } });
+      if (variants.length > 0) {
+        await prisma.bienTheSanPham.createMany({
+          data: variants.map((v: any) => ({
+            MaSanPham: Number(id),
+            KichCo: v.size || v.KichCo,
+            MauSac: v.color || v.MauSac,
+            SoLuong: Number(v.quantity || v.SoLuong || 0)
+          }))
+        });
+      }
+    }
+
+    const finalProduct = await prisma.sanPham.findUnique({
+      where: { MaSanPham: Number(id) },
+      include: { bienThes: true }
+    });
+
+    res.json(finalProduct);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update product' });
   }
