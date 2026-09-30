@@ -11,6 +11,8 @@ model ChucVu {
   MaChucVu  Int        @id @default(autoincrement())
   TenChucVu String     @db.VarChar(255)
   nhanViens NhanVien[]
+
+  @@map("chucvu")
 }
 
 model ChiNhanh {
@@ -19,6 +21,8 @@ model ChiNhanh {
   DiaChi      String     @db.Text
   DienThoai   String     @db.VarChar(50)
   nhanViens   NhanVien[]
+
+  @@map("chinhanh")
 }
 
 model NhanVien {
@@ -36,6 +40,8 @@ model NhanVien {
   phieuNhaps      PhieuNhap[]
   phieuXuats      PhieuXuat[]
   yeuCauNhapHangs YeuCauNhapHang[]
+
+  @@map("nhanvien")
 }
 
 model Account {
@@ -44,6 +50,8 @@ model Account {
   PassWord   String   @db.VarChar(255)
   Role       String   @default("USER") @db.VarChar(50)
   nhanVien   NhanVien @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__Account__MaNhanV__403A8C7D")
+
+  @@map("account")
 }
 
 model KhachHang {
@@ -55,12 +63,16 @@ model KhachHang {
   DienThoai     String?     @db.VarChar(50)
   HangThanhVien String?     @db.VarChar(100)
   phieuXuats    PhieuXuat[]
+
+  @@map("khachhang")
 }
 
 model LoaiHang {
   MaLoaiHang  Int       @id @default(autoincrement())
   TenLoaiHang String    @db.VarChar(255)
   sanPhams    SanPham[]
+
+  @@map("loaihang")
 }
 
 model Kho {
@@ -70,6 +82,8 @@ model Kho {
   phieuNhaps PhieuNhap[]
   phieuXuats PhieuXuat[]
   sanPhams   SanPham[]
+
+  @@map("kho")
 }
 
 model NhaCungCap {
@@ -79,6 +93,8 @@ model NhaCungCap {
   DienThoai  String?     @db.VarChar(50)
   phieuNhaps PhieuNhap[]
   sanPhams   SanPham[]
+
+  @@map("nhacungcap")
 }
 
 model SanPham {
@@ -100,6 +116,8 @@ model SanPham {
   loaiHang        LoaiHang         @relation(fields: [MaLoaiHang], references: [MaLoaiHang], onUpdate: NoAction, map: "FK__SanPham__MaLoaiH__4CA06362")
   nhaCungCap      NhaCungCap       @relation(fields: [MaNCC], references: [MaNCC], onUpdate: NoAction, map: "FK__SanPham__MaNCC__4F7CD00D")
   yeuCauNhapHangs YeuCauNhapHang[]
+
+  @@map("sanpham")
 }
 
 model BienTheSanPham {
@@ -109,6 +127,8 @@ model BienTheSanPham {
   MauSac    String? @db.VarChar(50)
   SoLuong   Int     @default(0)
   sanPham   SanPham @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, onDelete: Cascade, map: "FK__BienThe__MaSan__XX")
+
+  @@map("bienthesanpham")
 }
 
 model YeuCauNhapHang {
@@ -119,6 +139,7 @@ model YeuCauNhapHang {
   sanPham    SanPham  @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__YeuCauNha__MaSan__534D60F1")
 
   @@id([MaNhanVien, MaSanPham, ThoiGian])
+  @@map("yeucaunhaphang")
 }
 
 model PhieuNhap {
@@ -133,6 +154,8 @@ model PhieuNhap {
   kho          Kho           @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__PhieuNhap__MaKho__59FA5E80")
   nhaCungCap   NhaCungCap    @relation(fields: [MaNCC], references: [MaNCC], onUpdate: NoAction, map: "FK__PhieuNhap__MaNCC__59063A47")
   nhanVien     NhanVien      @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__PhieuNhap__MaNha__571DF1D5")
+
+  @@map("phieunhap")
 }
 
 model CTPhieuNhap {
@@ -145,6 +168,8 @@ model CTPhieuNhap {
   ThanhTien   Float
   phieuNhap   PhieuNhap @relation(fields: [MaPhieuNhap], references: [MaPhieuNhap], onUpdate: NoAction, map: "FK__CTPhieuNh__MaPhi__5CD6CB2B")
   sanPham     SanPham   @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__CTPhieuNh__MaSan__5DCAEF64")
+
+  @@map("ctphieunhap")
 }
 
 model PhieuXuat {
@@ -163,6 +188,8 @@ model PhieuXuat {
   khachHang            KhachHang     @relation(fields: [MaKhachHang], references: [MaKhachHang], onUpdate: NoAction, map: "FK__PhieuXuat__MaKha__6383C8BA")
   kho                  Kho           @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__PhieuXuat__MaKho__6477ECF3")
   nhanVien             NhanVien      @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__PhieuXuat__MaNha__619B8048")
+
+  @@map("phieuxuat")
 }
 
 model CTPhieuXuat {
@@ -175,6 +202,8 @@ model CTPhieuXuat {
   ThanhTien   Float
   phieuXuat   PhieuXuat @relation(fields: [MaPhieuXuat], references: [MaPhieuXuat], onUpdate: NoAction, map: "FK__CTPhieuXu__MaPhi__68487DD7")
   sanPham     SanPham   @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__CTPhieuXu__MaSan__693CA210")
+
+  @@map("ctphieuxuat")
 }
 
 model BaiViet {
@@ -184,6 +213,8 @@ model BaiViet {
   Anh       String   @db.Text
   TheLoai   String   @db.VarChar(50)
   NgayTao   DateTime @default(now())
+
+  @@map("baiviet")
 }
 
 model LienHe {
@@ -192,6 +223,8 @@ model LienHe {
   Email    String   @db.VarChar(255)
   NoiDung  String   @db.Text
   NgayTao  DateTime @default(now())
+
+  @@map("lienhe")
 }
 
 model sysdiagrams {
