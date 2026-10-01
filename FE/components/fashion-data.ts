@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-const defaultHost = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
+const defaultHost = Platform.OS === 'web' && typeof window !== 'undefined'
+  ? window.location.hostname
+  : Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
 export const API_URL = process.env.EXPO_PUBLIC_API_URL || `http://${defaultHost}:4000/api`;
 export const SERVER_URL = API_URL.replace(/\/api\/?$/, '');
 
@@ -89,19 +91,52 @@ export async function saveCart(cart: CartItem[]) {
 
 export async function currentUser() {
   const value = await AsyncStorage.getItem('currentUser');
-  return value ? JSON.parse(value) : null;
+  if (!value) return null;
+  const user = JSON.parse(value);
+  // Restore sessions saved by the previous registration response.
+  if (!user.role && user.MaKhachHang) {
+    const restored = { id: user.MaKhachHang, name: user.TenKhach, email: user.Email, role: 'user' };
+    await AsyncStorage.setItem('currentUser', JSON.stringify(restored));
+    return restored;
+  }
+  return user;
 }
 
 export async function clearSession() {
   await Promise.all(['token', 'currentUser', 'isAdmin'].map(key => AsyncStorage.removeItem(key)));
 }
 
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 export async function apiRequest(path: string, options: RequestInit = {}) {
   const token = await AsyncStorage.getItem('token');
-  const response = await fetch(`${API_URL}${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers } });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Không thể kết nối máy chủ.');
-  return data;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(`${API_URL}${path}`, {
+      ...options, signal: options.signal || controller.signal,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers }
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = response.status === 401 || response.status === 403
+        ? 'Phiên đăng nhập không hợp lệ hoặc tài khoản không có quyền. Vui lòng đăng nhập lại.'
+        : 'Không thể xử lý yêu cầu. Vui lòng thử lại.';
+      throw new ApiError(data?.error || message, response.status);
+    }
+    if (data === null) throw new ApiError('Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại.', response.status);
+    return data;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError('Không thể kết nối cửa hàng. Vui lòng kiểm tra kết nối và thử lại.', 0);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function setSession(user: unknown, token: string, isAdmin: boolean) {

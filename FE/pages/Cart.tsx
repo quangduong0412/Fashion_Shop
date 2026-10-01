@@ -1,8 +1,8 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View, ScrollView, Pressable, TextInput } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View, ScrollView, Pressable, TextInput } from 'react-native';
 import { Image } from 'expo-image';
-import { apiRequest, CartItem, currentUser, formatPrice, readCart, saveCart } from '@/components/fashion-data';
+import { ApiError, apiRequest, CartItem, clearSession, currentUser, formatPrice, readCart, saveCart } from '@/components/fashion-data';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +12,9 @@ export default function CartScreen() {
   const insets = useSafeAreaInsets();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const checkoutLock = useRef(false);
+  const [checkoutError, setCheckoutError] = useState('');
+  const [needsLogin, setNeedsLogin] = useState(false);
 
   useFocusEffect(useCallback(() => { readCart().then(setCart); }, []));
 
@@ -39,20 +42,24 @@ export default function CartScreen() {
   const total = subtotal - discount + shipping;
 
   const checkout = async () => {
-    if (isCheckingOut || cart.length === 0) return;
+    if (checkoutLock.current || cart.length === 0) return;
+    checkoutLock.current = true;
+    setIsCheckingOut(true);
+    setCheckoutError('');
+    setNeedsLogin(false);
 
     try {
       const user = await currentUser();
       if (!user) {
-        router.push('/login' as never);
+        router.push({ pathname: '/login', params: { returnTo: '/cart' } } as never);
         return;
       }
       if (user.role !== 'user') {
-        Alert.alert('Không thể đặt hàng', 'Vui lòng đăng nhập bằng tài khoản khách hàng để đặt hàng.');
+        setCheckoutError('Vui lòng đăng nhập bằng tài khoản khách hàng để đặt hàng.');
+        setNeedsLogin(true);
         return;
       }
 
-      setIsCheckingOut(true);
       await apiRequest('/orders/checkout', {
         method: 'POST',
         body: JSON.stringify({
@@ -65,8 +72,10 @@ export default function CartScreen() {
       setCart([]);
       router.replace('/orders' as never);
     } catch (error) {
-      Alert.alert('Đặt hàng chưa thành công', error instanceof Error ? error.message : 'Không thể kết nối máy chủ.');
+      setCheckoutError(error instanceof Error ? error.message : 'Không thể kết nối máy chủ.');
+      setNeedsLogin(error instanceof ApiError && [401, 403].includes(error.status));
     } finally {
+      checkoutLock.current = false;
       setIsCheckingOut(false);
     }
   };
@@ -235,7 +244,16 @@ export default function CartScreen() {
       {/* Bottom Bar */}
       {cart.length > 0 && (
         <View style={styles.bottomBar}>
-          <Pressable style={[styles.checkoutBtn, isCheckingOut && styles.checkoutBtnDisabled]} onPress={checkout} disabled={isCheckingOut}>
+          {!!checkoutError && <Text accessibilityRole="alert" style={styles.checkoutError}>{checkoutError}</Text>}
+          {needsLogin && (
+            <Pressable accessibilityRole="button" onPress={async () => {
+              await clearSession();
+              router.push({ pathname: '/login', params: { returnTo: '/cart' } } as never);
+            }} style={styles.loginButton}>
+              <Text style={styles.loginButtonText}>Đăng nhập tài khoản khách hàng</Text>
+            </Pressable>
+          )}
+          <Pressable accessibilityRole="button" accessibilityLabel="Đặt hàng ngay" style={[styles.checkoutBtn, isCheckingOut && styles.checkoutBtnDisabled]} onPress={checkout} disabled={isCheckingOut}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               {isCheckingOut ? <ActivityIndicator size="small" color={Colors.light.onPrimary} /> : <MaterialIcons name="lock" size={20} color={Colors.light.onPrimary} />}
               <Text style={styles.checkoutBtnText}>{isCheckingOut ? 'Đang lưu đơn hàng...' : 'Đặt hàng ngay'}</Text>
@@ -256,6 +274,9 @@ const styles = StyleSheet.create({
 
   scrollContent: { paddingHorizontal: 16, paddingBottom: 100, paddingTop: 12 },
   checkoutBtnDisabled: { opacity: 0.7 },
+  checkoutError: { color: Colors.light.primary, fontFamily: 'Inter', fontSize: 13, marginBottom: 10 },
+  loginButton: { paddingVertical: 10, marginBottom: 8 },
+  loginButtonText: { color: Colors.light.primary, fontFamily: 'Inter', fontWeight: '600', textDecorationLine: 'underline' },
 
   actionRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 },
   clearBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8 },

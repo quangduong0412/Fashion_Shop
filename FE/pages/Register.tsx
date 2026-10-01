@@ -1,6 +1,6 @@
-import { Link, useRouter } from 'expo-router';
+import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View, ImageBackground, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View, ImageBackground, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { apiRequest, setSession } from '@/components/fashion-data';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -8,31 +8,35 @@ import { BlurView } from 'expo-blur';
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
+  const destination = returnTo === '/cart' ? '/cart' : '/profile';
   const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   
   const update = (key: keyof typeof form, value: string) => setForm({ ...form, [key]: value });
   
   const submit = async () => {
     if (!form.name || !form.email || !form.password) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng điền đủ các trường bắt buộc.');
+      setErrorMessage('Vui lòng điền đủ các trường bắt buộc.');
       return;
     }
     if (form.password !== form.confirm) { 
-      Alert.alert('Lỗi', 'Mật khẩu xác nhận không khớp.'); 
+      setErrorMessage('Mật khẩu xác nhận không khớp.');
       return; 
     }
     setLoading(true);
+    setErrorMessage('');
     try { 
       const data = await apiRequest('/users/register', { 
         method: 'POST', 
         body: JSON.stringify({ name: form.name, email: form.email, password: form.password }) 
       }); 
       await setSession(data.user, data.token, false); 
-      router.replace('/profile' as never); 
+      router.replace(destination as never);
     } catch (error) { 
-      Alert.alert('Đăng ký thất bại', error instanceof Error ? error.message : 'Vui lòng thử lại.'); 
+      setErrorMessage(error instanceof Error ? error.message : 'Đăng ký thất bại. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -61,6 +65,7 @@ export default function RegisterScreen() {
 
           <BlurView intensity={20} tint="dark" style={styles.formCard}>
             <Text style={styles.title}>Đăng Ký Tài Khoản</Text>
+            {!!errorMessage && <Text accessibilityRole="alert" style={{ color: '#fff', marginBottom: 16 }}>{errorMessage}</Text>}
             
             <View style={styles.inputContainer}>
               <Ionicons name="person-outline" size={20} color="#ddd" style={styles.inputIcon} />
@@ -134,7 +139,7 @@ export default function RegisterScreen() {
             </View>
 
             <Text style={styles.switchText}>
-              Đã có tài khoản? <Link href={'/login' as never} style={styles.link}>Đăng nhập</Link>
+              Đã có tài khoản? <Link href={{ pathname: '/login', params: { returnTo: destination } } as never} style={styles.link}>Đăng nhập</Link>
             </Text>
           </BlurView>
         </ScrollView>
@@ -145,7 +150,7 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({ 
   container: { flex: 1, width: '100%', height: '100%' }, 
-  overlay: { ...StyleSheet.absoluteFillObject },
+  overlay: { ...StyleSheet.absoluteFill },
   keyboardView: { flex: 1 },
   scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 20, paddingTop: 60, paddingBottom: 40 },
   backButton: { position: 'absolute', top: 50, left: 20, zIndex: 10 },
@@ -167,7 +172,7 @@ const styles = StyleSheet.create({
   divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 25 },
   line: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.2)' },
   orText: { color: '#aaa', paddingHorizontal: 15, fontSize: 14 },
-  socialRow: { flexDirection: 'row', justifyContent: 'space-center', gap: 20, marginBottom: 25 },
+  socialRow: { flexDirection: 'row', justifyContent: 'center', gap: 20, marginBottom: 25 },
   socialBtn: { flex: 1, backgroundColor: 'rgba(255,255,255,0.9)', padding: 12, borderRadius: 12, alignItems: 'center' },
   switchText: { textAlign: 'center', color: '#ccc', fontSize: 15 }, 
   link: { color: '#e63946', fontWeight: 'bold' } 

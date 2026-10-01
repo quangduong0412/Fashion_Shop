@@ -11,6 +11,11 @@ const hashPassword = (password: string) => bcrypt.hash(password, 10);
 
 export const registerUser = async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
+
+  if (typeof name !== 'string' || !name.trim() || typeof email !== 'string' || !email.trim() || typeof password !== 'string' || !password) {
+    res.status(400).json({ error: 'Vui lòng nhập đầy đủ họ tên, email và mật khẩu.' });
+    return;
+  }
   
   if (email.toLowerCase().includes('admin') || name.toLowerCase().includes('admin')) {
     res.status(400).json({ error: 'Không được sử dụng từ khóa "admin" trong tên hoặc email đăng ký.' });
@@ -37,7 +42,10 @@ export const registerUser = async (req: Request, res: Response) => {
     // Generate token
     const token = jwt.sign({ id: newUser.MaKhachHang, email: newUser.Email, role: 'user' }, JWT_SECRET, { expiresIn: '7d' });
 
-    res.status(201).json({ user: newUser, token });
+    res.status(201).json({
+      user: { id: newUser.MaKhachHang, name: newUser.TenKhach, email: newUser.Email, role: 'user' },
+      token
+    });
   } catch (error: any) {
     console.error('Register Error Details:', error);
     res.status(500).json({ error: 'Failed to register user: ' + error.message });

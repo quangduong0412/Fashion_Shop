@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   
   heroWrapper: { paddingHorizontal: 16, marginBottom: 24 },
   hero: { height: 320, borderRadius: 16, overflow: 'hidden', backgroundColor: Colors.light.surfaceContainer },
-  heroImage: { ...StyleSheet.absoluteFillObject },
+  heroImage: { ...StyleSheet.absoluteFill },
   heroOverlay: { flex: 1, justifyContent: 'flex-end', padding: 20, backgroundColor: 'rgba(45, 47, 68, 0.4)' },
   heroTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.light.primary, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, marginBottom: 8 },
   heroTagText: { color: Colors.light.onPrimary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase' },
