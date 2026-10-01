@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 
-interface OrdersViewProps { orders: any[]; onUpdateStatus?: (id: any, status: string) => void; }
+interface OrdersViewProps {
+  orders: any[];
+  onUpdateStatus?: (id: number, status: string) => void;
+  onDeleteOrder?: (id: number) => void;
+}
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string }> = {
   'PENDING':         { label: 'Chờ xác nhận',      bg: 'bg-yellow-50', text: 'text-yellow-700', dot: 'bg-yellow-500' },
@@ -15,9 +19,10 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; d
   'Đã hủy':          { label: 'Đã hủy',            bg: 'bg-red-50',    text: 'text-red-700',    dot: 'bg-red-500'    },
 };
 
-export default function OrdersView({ orders, onUpdateStatus }: OrdersViewProps) {
+export default function OrdersView({ orders, onUpdateStatus, onDeleteOrder }: OrdersViewProps) {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [selectedOrder, setSelectedOrder] = useState<any>(null);
 
   const filtered = orders.filter(o => {
     const q = search.toLowerCase();
@@ -120,9 +125,11 @@ export default function OrdersView({ orders, onUpdateStatus }: OrdersViewProps) 
             </thead>
             <tbody className="text-gray-800 divide-y divide-gray-50">
               {filtered.map((o, idx) => {
-                const sc = getStatusCfg(o.status || o.TrangThai || '');
+                const rawStatus = o.status || o.TrangThai || '';
+                const displayStatus = STATUS_CONFIG[rawStatus]?.label || rawStatus || 'Chờ xác nhận';
+                const sc = getStatusCfg(rawStatus);
                 return (
-                  <tr key={idx} className="hover:bg-red-50/30 transition-colors cursor-pointer group">
+                  <tr key={o.id || idx} className="hover:bg-red-50/30 transition-colors group">
                     <td className="py-4 px-5">
                       <span className="font-bold text-red-700">#{o.id || o.MaDonHang}</span>
                       <div className="text-xs text-gray-400 mt-0.5">
@@ -148,18 +155,36 @@ export default function OrdersView({ orders, onUpdateStatus }: OrdersViewProps) 
                       <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-full whitespace-nowrap">{o.paymentMethod || 'Tiền mặt'}</span>
                     </td>
                     <td className="py-4 px-5">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${sc.bg} ${sc.text}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`}></span>
-                        {sc.label}
-                      </span>
+                      <select
+                        aria-label={`Trạng thái đơn ${o.id}`}
+                        value={displayStatus}
+                        onChange={event => onUpdateStatus?.(Number(o.id), event.target.value)}
+                        className={`max-w-44 rounded-full border-0 px-3 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-red-300 ${sc.bg} ${sc.text}`}
+                      >
+                        {['Chờ xác nhận', 'Đang đóng gói', 'Đang giao hàng', 'Đã giao', 'Đã hủy'].map(status => (
+                          <option key={status} value={status}>{status}</option>
+                        ))}
+                      </select>
                     </td>
                     <td className="py-4 px-5 text-right">
-                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          type="button"
+                          title="Xem chi tiết đơn hàng"
+                          aria-label={`Xem chi tiết đơn ${o.id}`}
+                          onClick={() => setSelectedOrder(o)}
+                          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-800"
+                        >
                           <span className="material-symbols-outlined text-lg">visibility</span>
                         </button>
-                        <button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
-                          <span className="material-symbols-outlined text-lg">edit</span>
+                        <button
+                          type="button"
+                          title="Xóa đơn hàng"
+                          aria-label={`Xóa đơn ${o.id}`}
+                          onClick={() => onDeleteOrder?.(Number(o.id))}
+                          className="p-1.5 rounded-lg hover:bg-red-50 text-gray-500 hover:text-red-700"
+                        >
+                          <span className="material-symbols-outlined text-lg">delete</span>
                         </button>
                       </div>
                     </td>
@@ -182,6 +207,45 @@ export default function OrdersView({ orders, onUpdateStatus }: OrdersViewProps) 
           </div>
         </div>
       </div>
+
+      {selectedOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onMouseDown={event => {
+          if (event.target === event.currentTarget) setSelectedOrder(null);
+        }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="order-detail-title" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-2xl">
+            <header className="sticky top-0 flex items-start justify-between border-b border-gray-100 bg-white px-6 py-5">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-red-700">Chi tiết đơn hàng</p>
+                <h2 id="order-detail-title" className="mt-1 text-xl font-bold text-gray-900">#{selectedOrder.MaDonHang || selectedOrder.id}</h2>
+              </div>
+              <button type="button" aria-label="Đóng chi tiết" onClick={() => setSelectedOrder(null)} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </header>
+            <div className="space-y-6 p-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div><p className="text-xs text-gray-500">Khách hàng</p><p className="mt-1 font-semibold text-gray-900">{selectedOrder.customerName || 'Khách hàng'}</p><p className="text-sm text-gray-500">{selectedOrder.customerPhone || ''}</p></div>
+                <div><p className="text-xs text-gray-500">Ngày đặt</p><p className="mt-1 font-semibold text-gray-900">{selectedOrder.NgayDat ? new Date(selectedOrder.NgayDat).toLocaleString('vi-VN') : '—'}</p></div>
+                <div><p className="text-xs text-gray-500">Thanh toán</p><p className="mt-1 font-semibold text-gray-900">{selectedOrder.paymentMethod || 'Tiền mặt'} · {selectedOrder.paymentStatus || 'Chưa thanh toán'}</p></div>
+                <div><p className="text-xs text-gray-500">Vận chuyển</p><p className="mt-1 font-semibold text-gray-900">{selectedOrder.shippingProvider || 'Chưa điều phối'}{selectedOrder.trackingCode ? ` · ${selectedOrder.trackingCode}` : ''}</p></div>
+              </div>
+              <div>
+                <h3 className="mb-3 font-bold text-gray-900">Sản phẩm</h3>
+                <div className="divide-y divide-gray-100 rounded-lg border border-gray-100">
+                  {(selectedOrder.items || []).map((item: any) => (
+                    <div key={item.productId} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
+                      <div><p className="font-medium text-gray-900">{item.productName}</p><p className="text-gray-500">{item.quantity} × {Number(item.unitPrice || 0).toLocaleString('vi-VN')} đ</p></div>
+                      <p className="shrink-0 font-semibold text-gray-900">{Number(item.subtotal || 0).toLocaleString('vi-VN')} đ</p>
+                    </div>
+                  ))}
+                  {(!selectedOrder.items || selectedOrder.items.length === 0) && <p className="px-4 py-5 text-sm text-gray-500">Không có chi tiết sản phẩm.</p>}
+                </div>
+                <div className="mt-4 flex justify-between border-t border-gray-200 pt-4 text-base font-bold"><span>Tổng thanh toán</span><span>{Number(selectedOrder.total || selectedOrder.TongTien || 0).toLocaleString('vi-VN')} đ</span></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

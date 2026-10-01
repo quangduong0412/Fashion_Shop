@@ -167,8 +167,8 @@ DELETE /api/roles/:id            // Xóa chức vụ
 - **BienTheSanPham**: Biến thể sản phẩm (size, màu)
 - **PhieuNhap**: Phiếu nhập hàng
 - **CTPhieuNhap**: Chi tiết phiếu nhập
-- **PhieuXuat**: Phiếu xuất hàng/Đơn hàng
-- **CTPhieuXuat**: Chi tiết phiếu xuất
+- **DonHang**: Đơn hàng
+- **CTDonHang**: Chi tiết đơn hàng
 - **BaiViet**: Bài viết/Nội dung
 - **LienHe**: Liên hệ khách hàng
 

@@ -119,7 +119,7 @@ CREATE TABLE CTPhieuNhap (
     FOREIGN KEY (MaSanPham) REFERENCES SanPham(MaSanPham)
 );
 
-CREATE TABLE PhieuXuat (
+CREATE TABLE donhang (
     MaPhieuXuat INT AUTO_INCREMENT PRIMARY KEY,
     MaNhanVien INT NOT NULL,
     NgayXuat DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -132,7 +132,7 @@ CREATE TABLE PhieuXuat (
     FOREIGN KEY (MaKho) REFERENCES Kho(MaKho)
 );
 
-CREATE TABLE CTPhieuXuat (
+CREATE TABLE CTDonHang (
     STT INT AUTO_INCREMENT PRIMARY KEY,
     MaPhieuXuat INT NOT NULL,
     MaSanPham INT NOT NULL,
@@ -140,7 +140,7 @@ CREATE TABLE CTPhieuXuat (
     DonGiaBan FLOAT NOT NULL,
     GiamGia FLOAT DEFAULT 0 NOT NULL,
     ThanhTien FLOAT NOT NULL,
-    FOREIGN KEY (MaPhieuXuat) REFERENCES PhieuXuat(MaPhieuXuat),
+    FOREIGN KEY (MaPhieuXuat) REFERENCES donhang(MaPhieuXuat),
     FOREIGN KEY (MaSanPham) REFERENCES SanPham(MaSanPham)
 );
 
@@ -194,12 +194,12 @@ INSERT INTO SanPham (TenSanPham, MaLoaiHang, SoLuong, DonGiaNhap, DonGiaBan, Anh
 ('Giày Boots Nam', 3, 12, 1200000, 1850000, '/images/giay-boots-nam.jpg', 1, 1);
 
 -- Phiếu xuất (Đơn hàng)
-INSERT INTO PhieuXuat (MaNhanVien, MaKhachHang, TongTien, MaKho) VALUES
+INSERT INTO donhang (MaNhanVien, MaKhachHang, TongTien, MaKho) VALUES
 (1, 1, 3200000, 1),
 (1, 2, 850000, 1);
 
--- CT Phiếu xuất
-INSERT INTO CTPhieuXuat (MaPhieuXuat, MaSanPham, SoLuong, DonGiaBan, ThanhTien) VALUES
+-- Chi tiết đơn hàng
+INSERT INTO CTDonHang (MaPhieuXuat, MaSanPham, SoLuong, DonGiaBan, ThanhTien) VALUES
 (1, 1, 1, 3200000, 3200000),
 (2, 5, 1, 850000, 850000);
 

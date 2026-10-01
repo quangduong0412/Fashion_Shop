@@ -60,6 +60,11 @@ export const loginUser = async (req: Request, res: Response) => {
       }
 
       if (isMatch) {
+        if (admin.Role.toUpperCase() !== 'ADMIN') {
+          res.status(403).json({ error: 'Tài khoản nhân viên này không có quyền quản trị.' });
+          return;
+        }
+
         const nhanVien = await prisma.nhanVien.findUnique({
           where: { MaNhanVien: admin.MaNhanVien },
           include: { chucVu: true }
@@ -218,11 +223,11 @@ export const deleteUser = async (req: Request, res: Response) => {
   try {
     // Để an toàn với khóa ngoại (nếu có user mua hàng), chúng ta dùng transaction
     // Tuy nhiên Prisma tự bắt lỗi foreign key nếu không cascade.
-    // Tạm thời xóa nếu không có đơn hàng, nếu có đơn thì phải xóa ctphieuxuat -> phieuxuat.
+    // Tạm thời xóa nếu không có đơn hàng, nếu có đơn thì phải xóa chi tiết đơn hàng trước.
     // Ta xóa PhieuXuat trước (nếu có đơn)
     const phieuXuats = await prisma.phieuXuat.findMany({ where: { MaKhachHang: Number(id) } });
     for (const px of phieuXuats) {
-      await prisma.cTPhieuXuat.deleteMany({ where: { MaPhieuXuat: px.MaPhieuXuat } });
+      await prisma.cTDonHang.deleteMany({ where: { MaPhieuXuat: px.MaPhieuXuat } });
       await prisma.phieuXuat.delete({ where: { MaPhieuXuat: px.MaPhieuXuat } });
     }
 

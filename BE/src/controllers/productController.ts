@@ -136,7 +136,7 @@ export const deleteProduct = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     // Kiểm tra xem sản phẩm có nằm trong chi tiết phiếu xuất hoặc phiếu nhập nào không
-    const usedInExport = await prisma.cTPhieuXuat.findFirst({ where: { MaSanPham: Number(id) } });
+    const usedInExport = await prisma.cTDonHang.findFirst({ where: { MaSanPham: Number(id) } });
     const usedInImport = await prisma.cTPhieuNhap.findFirst({ where: { MaSanPham: Number(id) } });
 
     if (usedInExport || usedInImport) {

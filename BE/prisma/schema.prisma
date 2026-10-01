@@ -110,7 +110,7 @@ model SanPham {
   MaNCC           Int
   TrangThai       String           @default("Đang mở bán") @db.VarChar(50)
   ctPhieuNhaps    CTPhieuNhap[]
-  ctPhieuXuats    CTPhieuXuat[]
+  ctDonHangs      CTDonHang[]
   bienThes        BienTheSanPham[]
   kho             Kho              @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__SanPham__MaKho__4E88ABD4")
   loaiHang        LoaiHang         @relation(fields: [MaLoaiHang], references: [MaLoaiHang], onUpdate: NoAction, map: "FK__SanPham__MaLoaiH__4CA06362")
@@ -184,15 +184,15 @@ model PhieuXuat {
   TrangThaiThanhToan   String?       @db.VarChar(50)
   DonViVanChuyen       String?       @db.VarChar(100)
   MaVanDon             String?       @db.VarChar(100)
-  ctPhieuXuats         CTPhieuXuat[]
+  ctDonHangs           CTDonHang[]
   khachHang            KhachHang     @relation(fields: [MaKhachHang], references: [MaKhachHang], onUpdate: NoAction, map: "FK__PhieuXuat__MaKha__6383C8BA")
   kho                  Kho           @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__PhieuXuat__MaKho__6477ECF3")
   nhanVien             NhanVien      @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__PhieuXuat__MaNha__619B8048")
 
-  @@map("phieuxuat")
+  @@map("donhang")
 }
 
-model CTPhieuXuat {
+model CTDonHang {
   STT         Int       @id @default(autoincrement())
   MaPhieuXuat Int
   MaSanPham   Int
@@ -200,10 +200,10 @@ model CTPhieuXuat {
   DonGiaBan   Float
   GiamGia     Float     @default(0)
   ThanhTien   Float
-  phieuXuat   PhieuXuat @relation(fields: [MaPhieuXuat], references: [MaPhieuXuat], onUpdate: NoAction, map: "FK__CTPhieuXu__MaPhi__68487DD7")
+  donHang     PhieuXuat @relation(fields: [MaPhieuXuat], references: [MaPhieuXuat], onUpdate: NoAction, map: "FK__CTPhieuXu__MaPhi__68487DD7")
   sanPham     SanPham   @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__CTPhieuXu__MaSan__693CA210")
 
-  @@map("ctphieuxuat")
+  @@map("ctdonhang")
 }
 
 model BaiViet {

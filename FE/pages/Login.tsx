@@ -24,8 +24,21 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const data = await apiRequest('/users/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+      console.log('Login Response Data:', data); // Xóa dòng này sau nếu muốn
       await setSession(data.user, data.token, data.user.role === 'admin');
-      router.replace('/' as never);
+      if (data.user?.role === 'admin') {
+        if (Platform.OS === 'web') {
+          window.location.href = '/admin';
+        } else {
+          router.replace('/admin' as never);
+        }
+      } else {
+        if (Platform.OS === 'web') {
+          window.location.href = '/';
+        } else {
+          router.replace('/' as never);
+        }
+      }
     } catch (error) { 
       Alert.alert('Đăng nhập thất bại', error instanceof Error ? error.message : 'Vui lòng thử lại.'); 
     } finally {

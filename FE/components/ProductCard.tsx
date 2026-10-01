@@ -45,9 +45,6 @@ export default function ProductCard({ product, onAdd, onPress, style }: { produc
               <Text style={styles.ratingText}>4.9</Text>
             </View>
           </View>
-          <Pressable style={styles.addBtn} onPress={onAdd}>
-            <MaterialIcons name="add" size={18} color={Colors.light.onPrimary} />
-          </Pressable>
         </View>
       </View>
     </Pressable>

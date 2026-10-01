@@ -13,7 +13,7 @@ export const getAdminData = async (req: Request, res: Response) => {
         khachHang: true,
         nhanVien: true,
         kho: true,
-        ctPhieuXuats: { include: { sanPham: true } }
+        ctDonHangs: { include: { sanPham: true } }
       }
     });
     const suppliers = await prisma.nhaCungCap.findMany();
@@ -70,12 +70,22 @@ export const getAdminData = async (req: Request, res: Response) => {
           TenKhach: o.khachHang?.TenKhach,
           DienThoai: o.khachHang?.DienThoai
         },
-        productName: o.ctPhieuXuats?.[0]?.sanPham?.TenSanPham || 'Nhiều sản phẩm',
+        productName: o.ctDonHangs?.map(item => `${item.sanPham?.TenSanPham || 'Sản phẩm'} × ${item.SoLuong}`).join(', ') || 'Nhiều sản phẩm',
         total: o.TongTien,
         TongTien: o.TongTien,
         status: o.TrangThai,
         TrangThai: o.TrangThai,
         paymentMethod: o.PhuongThucThanhToan || 'Tiền mặt',
+        paymentStatus: o.TrangThaiThanhToan || 'Chưa thanh toán',
+        shippingProvider: o.DonViVanChuyen || '',
+        trackingCode: o.MaVanDon || '',
+        items: o.ctDonHangs?.map(item => ({
+          productId: item.MaSanPham,
+          productName: item.sanPham?.TenSanPham || 'Sản phẩm',
+          quantity: item.SoLuong,
+          unitPrice: item.DonGiaBan,
+          subtotal: item.ThanhTien
+        })) || [],
         date: o.NgayXuat,
         NgayXuat: o.NgayXuat,
         NgayDat: o.NgayXuat
@@ -451,7 +461,7 @@ export const createExport = async (req: Request, res: Response) => {
         MaKho: 1,
         TongTien: Number(total) || 0,
         TrangThai: status || 'PENDING',
-        ctPhieuXuats: {
+        ctDonHangs: {
           create: items?.map((item: any) => ({
             MaSanPham: Number(item.productId),
             SoLuong: Number(item.quantity),
@@ -467,7 +477,7 @@ export const createExport = async (req: Request, res: Response) => {
 export const deleteExport = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    await prisma.cTPhieuXuat.deleteMany({ where: { MaPhieuXuat: Number(id) } });
+    await prisma.cTDonHang.deleteMany({ where: { MaPhieuXuat: Number(id) } });
     await prisma.phieuXuat.delete({ where: { MaPhieuXuat: Number(id) } });
     res.json({ message: 'Deleted' });
   } catch (error) { res.status(500).json({ error: 'Failed to delete export receipt' }); }

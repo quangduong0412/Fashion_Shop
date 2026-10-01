@@ -1,11 +1,11 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, Pressable, Dimensions, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { formatPrice } from '../../components/fashion-data';
+import { apiRequest, formatPrice, readCart, saveCart } from '../../components/fashion-data';
 
 const { width } = Dimensions.get('window');
 
@@ -33,6 +33,13 @@ export default function ProductDetailScreen() {
   const [selectedColor, setSelectedColor] = useState(colors[0]);
   const [selectedSize, setSelectedSize] = useState('M');
   const [isFavorite, setIsFavorite] = useState(false);
+  const [product, setProduct] = useState<any>(null);
+
+  useEffect(() => {
+    const productId = Array.isArray(id) ? id[0] : id;
+    if (!productId) return;
+    apiRequest(`/products/${productId}`).then(setProduct).catch(() => setProduct(null));
+  }, [id]);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -66,7 +73,7 @@ export default function ProductDetailScreen() {
           >
             {productImages.map((img, i) => (
               <View key={i} style={styles.galleryItem}>
-                <Image source={img} style={styles.galleryImage} contentFit="cover" />
+                <Image source={i === 0 && product?.image ? product.image : img} style={styles.galleryImage} contentFit="cover" />
               </View>
             ))}
           </ScrollView>
@@ -91,7 +98,7 @@ export default function ProductDetailScreen() {
             <Text style={styles.brandText}>FASHIONHEAVEN STUDIO</Text>
             <View style={styles.skuBadge}><Text style={styles.skuText}>Mã: FH-2024-88</Text></View>
           </View>
-          <Text style={styles.title}>Đầm Lụa Satin Cúp Ngực Crimson Elegance</Text>
+          <Text style={styles.title}>{product?.name || 'Đang tải sản phẩm...'}</Text>
           
           <View style={styles.ratingRow}>
             <View style={styles.ratingBadge}>
@@ -108,9 +115,7 @@ export default function ProductDetailScreen() {
 
           <View style={styles.priceBox}>
             <View style={styles.priceRow}>
-              <Text style={styles.currentPrice}>{formatPrice(1350000)}</Text>
-              <Text style={styles.oldPrice}>{formatPrice(1690000)}</Text>
-              <View style={styles.savingBadge}><Text style={styles.savingText}>Tiết kiệm 340k</Text></View>
+              <Text style={styles.currentPrice}>{formatPrice(Number(product?.price || 0))}</Text>
             </View>
           </View>
 
@@ -196,23 +201,20 @@ export default function ProductDetailScreen() {
           <MaterialIcons name="chat-bubble-outline" size={20} color={Colors.light.secondary} />
           <Text style={styles.chatText}>Tư vấn</Text>
         </Pressable>
-        <Pressable style={styles.addCartBtn} onPress={async () => {
+        <Pressable style={styles.addCartBtn} disabled={!product} onPress={async () => {
           try {
-            const { readCart, saveCart, products } = require('../../components/fashion-data');
             const cart = await readCart();
-            // Try to find the product in dummy products or fashion-data products
-            // For now, since the page is mocked, we'll create a mock product item if not found
             const productToAdd = {
-              id: id,
-              name: 'Đầm Lụa Satin Cúp Ngực Crimson Elegance', // Hardcoded as per the UI
-              price: 1350000,
-              image: productImages[0],
-              category: 'dress',
+              id: Number(product.id),
+              name: product.name,
+              price: Number(product.price),
+              image: product.image || productImages[0],
+              category: product.category || 'fashion',
               size: selectedSize,
               color: selectedColor.name
             };
 
-            const existingItem = cart.find((item: any) => item.id === productToAdd.id && item.size === productToAdd.size && item.color === productToAdd.color);
+            const existingItem = cart.find(item => Number(item.id) === productToAdd.id && item.size === productToAdd.size && item.color === productToAdd.color);
             if (existingItem) {
               existingItem.quantity += 1;
             } else {
@@ -227,21 +229,20 @@ export default function ProductDetailScreen() {
           <MaterialIcons name="shopping-bag" size={18} color={Colors.light.primary} />
           <Text style={styles.addCartText}>Thêm vào giỏ</Text>
         </Pressable>
-        <Pressable style={styles.buyBtn} onPress={async () => {
+        <Pressable style={styles.buyBtn} disabled={!product} onPress={async () => {
           try {
-            const { readCart, saveCart, products } = require('../../components/fashion-data');
             const cart = await readCart();
             const productToAdd = {
-              id: id,
-              name: 'Đầm Lụa Satin Cúp Ngực Crimson Elegance',
-              price: 1350000,
-              image: productImages[0],
-              category: 'dress',
+              id: Number(product.id),
+              name: product.name,
+              price: Number(product.price),
+              image: product.image || productImages[0],
+              category: product.category || 'fashion',
               size: selectedSize,
               color: selectedColor.name
             };
 
-            const existingItem = cart.find((item: any) => item.id === productToAdd.id && item.size === productToAdd.size && item.color === productToAdd.color);
+            const existingItem = cart.find(item => Number(item.id) === productToAdd.id && item.size === productToAdd.size && item.color === productToAdd.color);
             if (existingItem) {
               existingItem.quantity += 1;
             } else {

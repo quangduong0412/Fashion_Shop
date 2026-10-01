@@ -14,7 +14,7 @@ export const getAdminData = async (req: Request, res: Response) => {
     const orders = await prisma.phieuXuat.findMany({
         include: {
             khachHang: true,
-            cTPhieuXuat: true
+            ctDonHangs: true
         }
     });
 
@@ -69,7 +69,7 @@ export const getAdminData = async (req: Request, res: Response) => {
         MaKhachHang_id: o.khachHang?.TenKhach,
         customerPhone: o.khachHang?.DienThoai,
         NgayDat: o.NgayXuat,
-        total: o.cTPhieuXuats?.reduce((sum: number, item: any) => sum + (item.DonGiaBan * item.SoLuong), 0) || o.TongTien,
+        total: o.ctDonHangs?.reduce((sum: number, item: any) => sum + (item.DonGiaBan * item.SoLuong), 0) || o.TongTien,
         TongTien: o.TongTien,
         status: o.TrangThai || 'PENDING',
         TrangThai: o.TrangThai || 'PENDING',

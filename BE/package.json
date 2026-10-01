@@ -6,6 +6,7 @@
   "scripts": {
     "start": "ts-node src/server.ts",
     "dev": "nodemon src/server.ts",
+    "seed:catalog": "ts-node seed_catalog.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

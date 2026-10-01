@@ -1,307 +1,244 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View, Image, ScrollView, Platform } from 'react-native';
-import { clearSession, currentUser, apiRequest } from '@/components/fashion-data';
+import { useCallback, useState, type ComponentProps } from 'react';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
+import { apiRequest, clearSession, currentUser } from '@/components/fashion-data';
+
+type IconName = ComponentProps<typeof MaterialIcons>['name'];
+
+function AccountRow({
+  icon,
+  iconColor,
+  iconBackground,
+  title,
+  detail,
+  onPress,
+  last = false,
+}: {
+  icon: IconName;
+  iconColor: string;
+  iconBackground: string;
+  title: string;
+  detail: string;
+  onPress: () => void;
+  last?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.accountRow, !last && styles.accountRowDivider, pressed && styles.rowPressed]}
+    >
+      <View style={[styles.rowIcon, { backgroundColor: iconBackground }]}>
+        <MaterialIcons name={icon} size={22} color={iconColor} />
+      </View>
+      <View style={styles.rowCopy}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        <Text numberOfLines={1} style={styles.rowDetail}>{detail}</Text>
+      </View>
+      <MaterialIcons name="chevron-right" size={24} color="#938982" />
+    </Pressable>
+  );
+}
 
 export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useFocusEffect(useCallback(() => {
+    let active = true;
+
     const loadProfile = async () => {
-      const sessionUser = await currentUser();
-      if (!sessionUser) {
-        router.replace('/login' as never);
-        return;
-      }
       try {
-        const latestData = await apiRequest('/users/profile');
-        setUser({ ...sessionUser, ...latestData });
-      } catch (error) {
-        setUser(sessionUser);
+        const sessionUser = await currentUser();
+        if (!sessionUser) {
+          router.replace('/login' as never);
+          return;
+        }
+
+        let profile = sessionUser;
+        try {
+          profile = { ...sessionUser, ...await apiRequest('/users/profile') };
+        } catch {
+          profile = sessionUser;
+        }
+
+        if (active) setUser(profile);
+      } finally {
+        if (active) setLoading(false);
       }
     };
-    loadProfile();
+
+    void loadProfile();
+    return () => { active = false; };
   }, [router]));
 
   const logout = async () => {
+    const confirmLogout = async () => {
+      await clearSession();
+      router.replace('/' as never);
+    };
+
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm('Bạn có chắc chắn muốn đăng xuất khỏi FashionHeaven?');
-      if (confirmed) {
-        await clearSession();
-        router.replace('/' as never);
+      if (window.confirm('Bạn có chắc chắn muốn đăng xuất khỏi FashionHeaven?')) {
+        await confirmLogout();
       }
       return;
     }
 
-    Alert.alert(
-      'Đăng xuất',
-      'Bạn có chắc chắn muốn đăng xuất khỏi FashionHeaven?',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { 
-          text: 'Đăng xuất', 
-          style: 'destructive',
-          onPress: async () => {
-            await clearSession();
-            router.replace('/' as never);
-          }
-        }
-      ]
-    );
+    Alert.alert('Đăng xuất', 'Bạn có chắc chắn muốn đăng xuất khỏi FashionHeaven?', [
+      { text: 'Ở lại', style: 'cancel' },
+      { text: 'Đăng xuất', style: 'destructive', onPress: () => { void confirmLogout(); } },
+    ]);
   };
 
-  const displayName = user?.name || user?.TenKhach || 'Khách hàng VIP';
+  if (loading) {
+    return (
+      <View style={[styles.root, styles.loadingRoot, { paddingTop: insets.top }]}>
+        <ActivityIndicator size="large" color="#9f2438" />
+      </View>
+    );
+  }
+
+  const displayName = user?.name || user?.TenKhach || 'Khách hàng';
   const displayEmail = user?.email || user?.Email || 'Chưa cập nhật email';
+  const displayPhone = user?.DienThoai || user?.phone || 'Thêm số điện thoại';
+  const displayAddress = user?.DiaChi || user?.address || 'Thêm địa chỉ nhận hàng';
+  const isAdmin = user?.role === 'admin';
+  const memberLabel = isAdmin ? 'QUẢN TRỊ VIÊN' : (user?.HangThanhVien || 'THÀNH VIÊN').toLocaleUpperCase('vi-VN');
+  const initials = displayName.trim().split(/\s+/).slice(-2).map((part: string) => part[0]).join('').toLocaleUpperCase('vi-VN');
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <View style={styles.headerBrand}>
-          <Image source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDK-XTbEeqsbxnXBcKYycJVtAofK1QFbqfmmhpBlL34O57HsgeZXsMdp0Z4fSGEKlL85SILizLiVxqc6IX-CvrXtrV53d1EiyLvWdiNZw5ZY9WXfs2Kk-tg4iibKuIRItL_7nCK_WSlhnF1yX6qF_fQ3QAu6xo6aKEk0Ep6Is7x97XiGRh80Kc0h6-hrANbxKG3alpgse8w9VaymLibsxEk5ebulpZI6aDAipwXPphHf5p-yKWXvvXBiA' }} style={styles.headerLogo} resizeMode="contain" />
-          <Text style={styles.headerTitle}>FashionHeaven</Text>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 18) + 94 }]}
+      >
+        <View style={styles.intro}>
+          <Text style={styles.eyebrow}>FASHIONHEAVEN · TÀI KHOẢN</Text>
+          <Text style={styles.greeting}>Xin chào, bạn!</Text>
+          <Text style={styles.subtitle}>Không gian riêng cho phong cách của bạn.</Text>
         </View>
-        <View style={styles.headerActions}>
-          <Pressable style={styles.iconBtn}>
-            <MaterialIcons name="search" size={24} color="#455f87" />
-          </Pressable>
-          <Pressable style={styles.iconBtn}>
-            <MaterialIcons name="settings" size={24} color="#455f87" />
-          </Pressable>
-        </View>
-      </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
-        
-        {/* Profile Card */}
         <View style={styles.profileCard}>
-          <LinearGradient colors={['#2d2f44', '#1e2030']} style={StyleSheet.absoluteFillObject} borderRadius={16} />
-          
-          <View style={styles.profileRow}>
-            <View style={styles.avatarContainer}>
-              <Image source={{ uri: 'https://lh3.googleusercontent.com/aida/AEtjO1VPJmyPVqAjbC-l0rkFrqmh7zJpks3ge7Tlw3k1u7vROxk3ZkaC1HSTQznCL3kL8C6Dg_FcrOeRsPsVHqn4hXTJ8V37FssBYdyv1x0xIsMc0aFXMb06kuEUI1shjyt-Gya2a5GHI-sdLfhl4Kteq73hyDZJpVpFjeTweqagRLK4q6ODvMpvEuxXcDVhlI78ofPCZV8NMEPkveyjSnu70GZ-KBk9uY1ucE321cxHNoHywYamyf0VixLZwJzU' }} style={styles.avatar} />
-              <View style={styles.avatarBadge}>
-                <MaterialIcons name="workspace-premium" size={14} color="#fff" />
-              </View>
+          <View style={styles.profileTopline}>
+            <Text style={styles.cardEyebrow}>{isAdmin ? 'FASHIONHEAVEN · STAFF' : 'FASHIONHEAVEN · MEMBER'}</Text>
+            <MaterialIcons name={isAdmin ? 'admin-panel-settings' : 'workspace-premium'} size={20} color="#e7c77b" />
+          </View>
+          <View style={styles.profileMain}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initials || 'FH'}</Text>
             </View>
-            <View style={styles.profileInfo}>
-              <View style={styles.nameRow}>
-                <Text style={styles.profileName} numberOfLines={1}>{displayName}</Text>
-                <MaterialIcons name="verified" size={16} color="#e9c349" />
-              </View>
-              <View style={styles.vipTag}>
-                <View style={styles.vipDot} />
-                <Text style={styles.vipText}>DIAMOND VIP</Text>
-              </View>
+            <View style={styles.profileCopy}>
+              <Text numberOfLines={1} style={styles.profileName}>{displayName}</Text>
+              <Text style={styles.memberLabel}>{memberLabel}</Text>
+              <Text numberOfLines={1} style={styles.profileContact}>{displayEmail}</Text>
+              <Text numberOfLines={1} style={styles.profileContact}>{displayPhone}</Text>
             </View>
-            <Pressable style={styles.editBtn} onPress={() => router.push('/edit-profile' as never)}>
-              <MaterialIcons name="edit" size={20} color="#f1efff" />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Sửa hồ sơ"
+              onPress={() => router.push('/edit-profile' as never)}
+              style={({ pressed }) => [styles.editButton, pressed && styles.editButtonPressed]}
+            >
+              <MaterialIcons name="edit" size={23} color="#4a1825" />
             </Pressable>
           </View>
-
-          {/* VIP Progress */}
-          <View style={styles.vipProgress}>
-            <View style={styles.vipProgressHeader}>
-              <View style={styles.vipProgressHeaderLeft}>
-                <MaterialIcons name="stars" size={16} color="#e9c349" />
-                <Text style={styles.vipLevelText}>Hạng Diamond VIP</Text>
-              </View>
-              <Text style={styles.vipPointsText}>2.450 / 3.000 pts</Text>
-            </View>
-            <View style={styles.progressBarBg}>
-              <LinearGradient colors={['#e9c349', '#b6152b']} style={[styles.progressBarFill, { width: '81.6%' }]} start={{x:0, y:0}} end={{x:1, y:0}} />
-            </View>
+          <View style={styles.cardRule} />
+          <View style={styles.memberFooter}>
+            <MaterialIcons name="auto-awesome" size={16} color="#e7c77b" />
+            <Text style={styles.memberFooterText}>{isAdmin ? 'Đang quản lý cửa hàng' : 'Cảm ơn bạn đã đồng hành cùng chúng tôi'}</Text>
           </View>
         </View>
 
-        {/* Order Lifecycle */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <MaterialIcons name="inventory-2" size={20} color="#455f87" />
-              <Text style={styles.sectionTitle}>Đơn mua của tôi</Text>
-            </View>
-            <Pressable style={styles.viewAllBtn}>
-              <Text style={styles.viewAllText}>Xem tất cả</Text>
-              <MaterialIcons name="chevron-right" size={16} color="#455f87" />
-            </Pressable>
+        <Text style={styles.sectionLabel}>MUA SẮM & GIAO NHẬN</Text>
+        <View style={styles.menuGroup}>
+          <AccountRow
+            icon="receipt-long"
+            iconColor="#8f2639"
+            iconBackground="#f8e9e7"
+            title="Đơn hàng của tôi"
+            detail="Theo dõi đơn và lịch sử mua sắm"
+            onPress={() => router.push('/orders' as never)}
+          />
+          <AccountRow
+            icon="shopping-cart"
+            iconColor="#9a6d19"
+            iconBackground="#f7f0dc"
+            title="Giỏ hàng"
+            detail="Xem các thiết kế bạn đã chọn"
+            onPress={() => router.push('/(tabs)/cart' as never)}
+          />
+          <AccountRow
+            icon="location-on"
+            iconColor="#37675b"
+            iconBackground="#e8f0e9"
+            title="Địa chỉ nhận hàng"
+            detail={displayAddress}
+            onPress={() => router.push('/edit-profile' as never)}
+            last
+          />
+        </View>
+
+        <View style={styles.brandNote}>
+          <View style={styles.brandNoteIcon}>
+            <MaterialIcons name="diamond" size={22} color="#9a6d19" />
           </View>
-
-          <View style={styles.orderSteps}>
-            <View style={styles.orderStep}>
-              <View style={styles.orderIconWrapper}>
-                <MaterialIcons name="pending-actions" size={22} color="#455f87" />
-                <View style={styles.badge}><Text style={styles.badgeText}>1</Text></View>
-              </View>
-              <Text style={styles.orderStepText}>Chờ duyệt</Text>
-            </View>
-            <View style={styles.orderStep}>
-              <View style={styles.orderIconWrapper}>
-                <MaterialIcons name="inventory" size={22} color="#455f87" />
-              </View>
-              <Text style={styles.orderStepText}>Chờ lấy</Text>
-            </View>
-            <View style={styles.orderStep}>
-              <View style={[styles.orderIconWrapper, styles.orderIconActive]}>
-                <MaterialIcons name="local-shipping" size={22} color="#b6152b" />
-                <View style={styles.badge}><Text style={styles.badgeText}>1</Text></View>
-              </View>
-              <Text style={[styles.orderStepText, styles.orderStepTextActive]}>Đang giao</Text>
-            </View>
-            <View style={styles.orderStep}>
-              <View style={styles.orderIconWrapper}>
-                <MaterialIcons name="rate-review" size={22} color="#455f87" />
-              </View>
-              <Text style={styles.orderStepText}>Đánh giá</Text>
-            </View>
-            <View style={styles.orderStep}>
-              <View style={styles.orderIconWrapper}>
-                <MaterialIcons name="assignment-return" size={22} color="#455f87" />
-              </View>
-              <Text style={styles.orderStepText}>Hoàn tiền</Text>
-            </View>
-          </View>
+          <Text style={styles.brandNoteText}>Cảm ơn bạn đã chọn FashionHeaven. Chúc bạn tìm thấy thiết kế dành riêng cho mình.</Text>
         </View>
 
-        {/* Utilities */}
-        <View style={styles.menuCard}>
-          <Text style={styles.menuHeader}>Tiện ích quản lý</Text>
-          
-          <Pressable style={styles.menuItem}>
-            <View style={styles.menuItemLeft}>
-              <View style={styles.menuIconWrapper}>
-                <MaterialIcons name="location-on" size={20} color="#455f87" />
-              </View>
-              <View style={styles.menuItemTextContainer}>
-                <Text style={styles.menuItemTitle}>Sổ địa chỉ giao hàng</Text>
-                <Text style={styles.menuItemSub} numberOfLines={1}>{user?.DiaChi || user?.address || 'Chưa thiết lập'}</Text>
-              </View>
-            </View>
-            <MaterialIcons name="chevron-right" size={20} color="#455f87" />
-          </Pressable>
-
-          <Pressable style={styles.menuItem}>
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIconWrapper, {backgroundColor: '#ffdad8'}]}>
-                <MaterialIcons name="local-activity" size={20} color="#b6152b" />
-              </View>
-              <View style={styles.menuItemTextContainer}>
-                <Text style={styles.menuItemTitle}>Ví voucher & Khuyến mãi</Text>
-                <Text style={styles.menuItemSub} numberOfLines={1}>3 mã giảm giá độc quyền VIP</Text>
-              </View>
-            </View>
-            <View style={styles.menuItemRight}>
-              <View style={styles.tagPrimary}><Text style={styles.tagPrimaryText}>3 mã</Text></View>
-              <MaterialIcons name="chevron-right" size={20} color="#455f87" />
-            </View>
-          </Pressable>
-
-          <Pressable style={styles.menuItem}>
-            <View style={styles.menuItemLeft}>
-              <View style={styles.menuIconWrapper}>
-                <MaterialIcons name="favorite" size={20} color="#b6152b" />
-              </View>
-              <View style={styles.menuItemTextContainer}>
-                <Text style={styles.menuItemTitle}>Sản phẩm đã lưu</Text>
-                <Text style={styles.menuItemSub} numberOfLines={1}>Danh sách bộ sưu tập Thu Đông</Text>
-              </View>
-            </View>
-            <MaterialIcons name="chevron-right" size={20} color="#455f87" />
-          </Pressable>
-          
-          <Pressable style={styles.menuItem}>
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIconWrapper, {backgroundColor: '#ffe088'}]}>
-                <MaterialIcons name="diamond" size={20} color="#735c00" />
-              </View>
-              <View style={styles.menuItemTextContainer}>
-                <Text style={styles.menuItemTitle}>Đặc quyền VIP & Sinh nhật</Text>
-                <Text style={styles.menuItemSub} numberOfLines={1}>Giảm 25% & Miễn phí stylist</Text>
-              </View>
-            </View>
-            <MaterialIcons name="chevron-right" size={20} color="#455f87" />
-          </Pressable>
-        </View>
-
-        {/* Logout */}
-        <View style={styles.logoutContainer}>
-          <Pressable style={styles.logoutBtn} onPress={logout}>
-            <MaterialIcons name="logout" size={20} color="#ba1a1a" />
-            <Text style={styles.logoutBtnText}>Đăng xuất tài khoản</Text>
-          </Pressable>
-          <Text style={styles.versionText}>FashionHeaven Mobile App v3.4.1</Text>
-        </View>
-
+        <Pressable
+          accessibilityRole="button"
+          onPress={logout}
+          style={({ pressed }) => [styles.logoutButton, pressed && styles.logoutPressed]}
+        >
+          <MaterialIcons name="logout" size={21} color="#a8323e" />
+          <Text style={styles.logoutText}>Đăng xuất</Text>
+        </Pressable>
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fbf8ff' },
-  header: { height: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(30,58,95,0.05)' },
-  headerBrand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerLogo: { width: 32, height: 32 },
-  headerTitle: { fontFamily: 'Playfair Display', fontSize: 22, fontWeight: '600', color: '#181a2e' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22 },
-  content: { flex: 1 },
-  contentContainer: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 100 },
-  
-  profileCard: { padding: 16, borderRadius: 16, marginBottom: 16, position: 'relative', overflow: 'hidden' },
-  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  avatarContainer: { position: 'relative' },
-  avatar: { width: 64, height: 64, borderRadius: 32 },
-  avatarBadge: { position: 'absolute', bottom: -2, right: -2, backgroundColor: '#b6152b', width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#2d2f44' },
-  profileInfo: { flex: 1 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
-  profileName: { fontFamily: 'Playfair Display', fontSize: 20, fontWeight: '600', color: '#f1efff', flexShrink: 1 },
-  vipTag: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(230,230,255,0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start' },
-  vipDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#e9c349' },
-  vipText: { fontFamily: 'Inter', fontSize: 11, fontWeight: '700', color: '#e9c349', letterSpacing: 0.5 },
-  editBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(224,224,252,0.2)', alignItems: 'center', justifyContent: 'center' },
-  vipProgress: { marginTop: 16, backgroundColor: 'rgba(224,224,252,0.1)', padding: 12, borderRadius: 12 },
-  vipProgressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  vipProgressHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  vipLevelText: { fontFamily: 'Inter', fontSize: 12, fontWeight: '600', color: '#f4f2ff' },
-  vipPointsText: { fontFamily: 'Inter', fontSize: 11, color: '#d7d8f4' },
-  progressBarBg: { height: 6, backgroundColor: 'rgba(241,239,255,0.2)', borderRadius: 3, overflow: 'hidden' },
-  progressBarFill: { height: '100%', borderRadius: 3 },
-  
-  sectionCard: { backgroundColor: '#ffffff', borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  sectionTitle: { fontFamily: 'Inter', fontSize: 16, fontWeight: '700', color: '#181a2e' },
-  viewAllBtn: { flexDirection: 'row', alignItems: 'center' },
-  viewAllText: { fontFamily: 'Inter', fontSize: 12, fontWeight: '600', color: '#455f87' },
-  orderSteps: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 },
-  orderStep: { alignItems: 'center', gap: 8, width: 64 },
-  orderIconWrapper: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#edecff', alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  orderIconActive: { backgroundColor: '#ffdad8' },
-  orderStepText: { fontFamily: 'Inter', fontSize: 11, color: '#5b403f', textAlign: 'center' },
-  orderStepTextActive: { color: '#b6152b', fontWeight: '700' },
-  badge: { position: 'absolute', top: -2, right: -2, backgroundColor: '#b6152b', minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1.5, borderColor: '#fff' },
-  badgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  
-  menuCard: { backgroundColor: '#ffffff', borderRadius: 16, overflow: 'hidden', marginBottom: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-  menuHeader: { fontFamily: 'Inter', fontSize: 11, fontWeight: '700', color: '#5b403f', textTransform: 'uppercase', letterSpacing: 0.5, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
-  menuItemLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  menuIconWrapper: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#edecff', alignItems: 'center', justifyContent: 'center' },
-  menuItemTextContainer: { flex: 1, paddingRight: 8 },
-  menuItemTitle: { fontFamily: 'Inter', fontSize: 14, fontWeight: '600', color: '#181a2e', marginBottom: 2 },
-  menuItemSub: { fontFamily: 'Inter', fontSize: 12, color: '#5b403f' },
-  menuItemRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  tagPrimary: { backgroundColor: '#b6152b', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 },
-  tagPrimaryText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  
-  logoutContainer: { paddingHorizontal: 16, paddingBottom: 32 },
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#ffdad6', height: 48, borderRadius: 24 },
-  logoutBtnText: { fontFamily: 'Inter', fontSize: 14, fontWeight: '600', color: '#ba1a1a' },
-  versionText: { fontFamily: 'Inter', fontSize: 11, color: 'rgba(91,64,63,0.7)', textAlign: 'center', marginTop: 16 }
+  root: { flex: 1, backgroundColor: '#f7f5ef' },
+  loadingRoot: { alignItems: 'center', justifyContent: 'center' },
+  content: { paddingHorizontal: 18, paddingTop: 24, gap: 0 },
+  intro: { marginBottom: 24 },
+  eyebrow: { color: '#8c2838', fontFamily: 'Inter', fontSize: 11, fontWeight: '700', letterSpacing: 1.8, marginBottom: 10 },
+  greeting: { color: '#261d1b', fontFamily: 'Playfair Display', fontSize: 31, fontWeight: '700', lineHeight: 38 },
+  subtitle: { color: '#7f7770', fontFamily: 'Inter', fontSize: 14, marginTop: 6 },
+  profileCard: { backgroundColor: '#4b1927', borderColor: '#d8c5a2', borderRadius: 22, borderWidth: 1, marginBottom: 29, overflow: 'hidden', padding: 19 },
+  profileTopline: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 18 },
+  cardEyebrow: { color: '#e7c77b', fontFamily: 'Inter', fontSize: 10, fontWeight: '700', letterSpacing: 1.4 },
+  profileMain: { alignItems: 'center', flexDirection: 'row', gap: 13 },
+  avatar: { alignItems: 'center', backgroundColor: '#74424a', borderColor: 'rgba(231,199,123,0.42)', borderRadius: 36, borderWidth: 1, height: 70, justifyContent: 'center', width: 70 },
+  avatarText: { color: '#fffaf1', fontFamily: 'Playfair Display', fontSize: 23, fontWeight: '700' },
+  profileCopy: { flex: 1, minWidth: 0 },
+  profileName: { color: '#fffaf1', fontFamily: 'Playfair Display', fontSize: 19, fontWeight: '700', marginBottom: 3 },
+  memberLabel: { color: '#e7c77b', fontFamily: 'Inter', fontSize: 9, fontWeight: '700', letterSpacing: 1, marginBottom: 9 },
+  profileContact: { color: '#e6dcd3', fontFamily: 'Inter', fontSize: 12, lineHeight: 19 },
+  editButton: { alignItems: 'center', backgroundColor: '#e7c77b', borderRadius: 15, height: 48, justifyContent: 'center', width: 48 },
+  editButtonPressed: { opacity: 0.78, transform: [{ scale: 0.96 }] },
+  cardRule: { backgroundColor: 'rgba(255,250,241,0.18)', height: 1, marginTop: 17 },
+  memberFooter: { alignItems: 'center', flexDirection: 'row', gap: 8, paddingTop: 13 },
+  memberFooterText: { color: '#e6dcd3', flex: 1, fontFamily: 'Inter', fontSize: 11 },
+  sectionLabel: { color: '#81776f', fontFamily: 'Inter', fontSize: 10, fontWeight: '700', letterSpacing: 1.7, marginBottom: 11 },
+  menuGroup: { backgroundColor: '#fffefa', borderColor: '#e9e4dc', borderRadius: 20, borderWidth: 1, marginBottom: 20, overflow: 'hidden' },
+  accountRow: { alignItems: 'center', flexDirection: 'row', minHeight: 76, paddingHorizontal: 15, paddingVertical: 12 },
+  accountRowDivider: { borderBottomColor: '#eee9e1', borderBottomWidth: StyleSheet.hairlineWidth },
+  rowPressed: { backgroundColor: '#faf7f0' },
+  rowIcon: { alignItems: 'center', borderRadius: 14, height: 43, justifyContent: 'center', marginRight: 13, width: 43 },
+  rowCopy: { flex: 1, minWidth: 0, paddingRight: 8 },
+  rowTitle: { color: '#2f2925', fontFamily: 'Inter', fontSize: 14, fontWeight: '700' },
+  rowDetail: { color: '#898078', fontFamily: 'Inter', fontSize: 11, marginTop: 4 },
+  brandNote: { alignItems: 'center', backgroundColor: '#eee8dc', borderRadius: 18, flexDirection: 'row', gap: 13, marginBottom: 22, paddingHorizontal: 16, paddingVertical: 17 },
+  brandNoteIcon: { alignItems: 'center', backgroundColor: '#f8f5ed', borderRadius: 22, height: 42, justifyContent: 'center', width: 42 },
+  brandNoteText: { color: '#6f675f', flex: 1, fontFamily: 'Inter', fontSize: 12, lineHeight: 19 },
+  logoutButton: { alignItems: 'center', backgroundColor: '#fffefa', borderColor: '#e4ddd4', borderRadius: 17, borderWidth: 1, flexDirection: 'row', gap: 9, height: 56, justifyContent: 'center' },
+  logoutPressed: { backgroundColor: '#f9eeeb' },
+  logoutText: { color: '#a8323e', fontFamily: 'Inter', fontSize: 15, fontWeight: '700' },
 });

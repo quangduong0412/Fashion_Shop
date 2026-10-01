@@ -151,20 +151,33 @@ const Admin: React.FC = () => {
   };
 
   // --- HÀM X? LÝ ÐON HÀNG ---
-  const handleUpdateOrderStatus = (id: number, status: string) => {
+  const handleUpdateOrderStatus = async (id: number, status: string) => {
     const token = localStorage.getItem('token');
-    fetch(`http://localhost:4000/api/orders/${id}/status`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ status })
-    }).then(() => loadAllData());
+    try {
+      const response = await fetch(`http://localhost:4000/api/orders/${id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ status })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Không cập nhật được trạng thái đơn hàng.');
+      loadAllData();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Không thể kết nối máy chủ.');
+    }
   };
 
-  const handleDeleteOrder = (id: number) => {
-    if(!window.confirm('Xóa don hàng này?')) return;
+  const handleDeleteOrder = async (id: number) => {
+    if (!window.confirm(`Xóa đơn #${id}? Tồn kho sẽ được hoàn lại nếu đơn chưa bị hủy.`)) return;
     const token = localStorage.getItem('token');
-    fetch(`http://localhost:4000/api/orders/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
-      .then(() => loadAllData());
+    try {
+      const response = await fetch(`http://localhost:4000/api/orders/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Không xóa được đơn hàng.');
+      loadAllData();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Không thể kết nối máy chủ.');
+    }
   };
 
   // --- HÀM X? LÝ BÀI VI?T ---
@@ -404,7 +417,7 @@ const Admin: React.FC = () => {
               openProductModal={(p) => { setEditingProduct(p || {}); setShowProductModal(true); }}
             />
           )}
-          {activeTab === 'orders' && <OrdersView orders={filteredOrders} />}
+          {activeTab === 'orders' && <OrdersView orders={filteredOrders} onUpdateStatus={handleUpdateOrderStatus} onDeleteOrder={handleDeleteOrder} />}
           {activeTab === 'customers' && <CustomersView users={users} />}
           {activeTab === 'employees' && <EmployeesView employees={employees} branches={branches} roles={roles} onSave={handleSaveEmployee} onDelete={handleDeleteEmployee} />}
           {activeTab === 'suppliers' && <SuppliersView suppliers={suppliers} onSave={handleSaveSupplier} onDelete={handleDeleteSupplier} />}

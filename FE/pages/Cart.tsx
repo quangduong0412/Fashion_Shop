@@ -1,8 +1,8 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, StyleSheet, Text, View, ScrollView, Pressable, TextInput } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, View, ScrollView, Pressable, TextInput } from 'react-native';
 import { Image } from 'expo-image';
-import { CartItem, formatPrice, readCart, saveCart } from '@/components/fashion-data';
+import { apiRequest, CartItem, currentUser, formatPrice, readCart, saveCart } from '@/components/fashion-data';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,7 +11,7 @@ export default function CartScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState('momo');
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
 
   useFocusEffect(useCallback(() => { readCart().then(setCart); }, []));
 
@@ -34,9 +34,42 @@ export default function CartScreen() {
   };
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const discount = subtotal > 0 ? subtotal * 0.1 : 0;
+  const discount = 0;
   const shipping = 0;
   const total = subtotal - discount + shipping;
+
+  const checkout = async () => {
+    if (isCheckingOut || cart.length === 0) return;
+
+    try {
+      const user = await currentUser();
+      if (!user) {
+        router.push('/login' as never);
+        return;
+      }
+      if (user.role !== 'user') {
+        Alert.alert('Không thể đặt hàng', 'Vui lòng đăng nhập bằng tài khoản khách hàng để đặt hàng.');
+        return;
+      }
+
+      setIsCheckingOut(true);
+      await apiRequest('/orders/checkout', {
+        method: 'POST',
+        body: JSON.stringify({
+          paymentMethod: 'Tiền mặt',
+          items: cart.map(item => ({ id: Number(item.id), quantity: item.quantity })),
+        }),
+      });
+
+      await saveCart([]);
+      setCart([]);
+      router.replace('/orders' as never);
+    } catch (error) {
+      Alert.alert('Đặt hàng chưa thành công', error instanceof Error ? error.message : 'Không thể kết nối máy chủ.');
+    } finally {
+      setIsCheckingOut(false);
+    }
+  };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -194,10 +227,10 @@ export default function CartScreen() {
       {/* Bottom Bar */}
       {cart.length > 0 && (
         <View style={styles.bottomBar}>
-          <Pressable style={styles.checkoutBtn} onPress={() => Alert.alert('Thông báo', 'Đặt hàng thành công!')}>
+          <Pressable style={[styles.checkoutBtn, isCheckingOut && styles.checkoutBtnDisabled]} onPress={checkout} disabled={isCheckingOut}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <MaterialIcons name="lock" size={20} color={Colors.light.onPrimary} />
-              <Text style={styles.checkoutBtnText}>Đặt hàng ngay</Text>
+              {isCheckingOut ? <ActivityIndicator size="small" color={Colors.light.onPrimary} /> : <MaterialIcons name="lock" size={20} color={Colors.light.onPrimary} />}
+              <Text style={styles.checkoutBtnText}>{isCheckingOut ? 'Đang lưu đơn hàng...' : 'Đặt hàng ngay'}</Text>
             </View>
             <Text style={styles.checkoutBtnTotal}>{formatPrice(total)} →</Text>
           </Pressable>
@@ -214,6 +247,7 @@ const styles = StyleSheet.create({
   headerSub: { fontFamily: 'Inter', fontSize: 13, fontWeight: '600', color: Colors.light.primary },
 
   scrollContent: { paddingHorizontal: 16, paddingBottom: 100, paddingTop: 12 },
+  checkoutBtnDisabled: { opacity: 0.7 },
 
   actionRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 },
   clearBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8 },

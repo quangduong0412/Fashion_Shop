@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createOrder, getUserOrders, updateOrderStatus, deleteOrder } from '../controllers/orderController';
+import { cancelUserOrder, createOrder, getUserOrders, updateOrderStatus, deleteOrder } from '../controllers/orderController';
 import { authenticateToken, requireAdmin } from '../middlewares/authMiddleware';
 
 const router = Router();
@@ -7,6 +7,7 @@ const router = Router();
 // Bất kỳ ai đăng nhập đều có thể đặt hàng và xem đơn của họ
 router.post('/checkout', authenticateToken, createOrder);
 router.get('/me', authenticateToken, getUserOrders);
+router.post('/:id/cancel', authenticateToken, cancelUserOrder);
 
 // Admin
 router.put('/:id/status', authenticateToken, requireAdmin, updateOrderStatus);
