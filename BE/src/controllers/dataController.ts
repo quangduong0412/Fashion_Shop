@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../db';
 import { readVariantAttributeDefinitions, serializeVariant } from '../services/productVariants';
+import { deleteOrder } from './orderController';
 
 export const getAdminData = async (req: Request, res: Response) => {
   try {
@@ -65,12 +66,13 @@ export const getAdminData = async (req: Request, res: Response) => {
       })),
       orders: orders.map(o => ({
         id: o.MaPhieuXuat,
-        MaDonHang: `PX${String(o.MaPhieuXuat).padStart(5, '0')}`,
-        customerName: o.khachHang?.TenKhach || 'Khách vãng lai',
-        customerPhone: o.khachHang?.DienThoai || '',
+        MaDonHang: `DH${String(o.MaPhieuXuat).padStart(5, '0')}`,
+        customerName: o.TenNguoiNhan || o.khachHang?.TenKhach || 'Khách vãng lai',
+        customerPhone: o.DienThoaiNhan || o.khachHang?.DienThoai || '',
+        customerAddress: o.DiaChiNhan || o.khachHang?.DiaChi || '',
         KhachHang: {
-          TenKhach: o.khachHang?.TenKhach,
-          DienThoai: o.khachHang?.DienThoai
+          TenKhach: o.TenNguoiNhan || o.khachHang?.TenKhach,
+          DienThoai: o.DienThoaiNhan || o.khachHang?.DienThoai
         },
         productName: o.ctDonHangs?.map(item => `${item.sanPham?.TenSanPham || 'Sản phẩm'} × ${item.SoLuong}`).join(', ') || 'Nhiều sản phẩm',
         total: o.TongTien,
@@ -82,7 +84,13 @@ export const getAdminData = async (req: Request, res: Response) => {
         shippingProvider: o.DonViVanChuyen || '',
         trackingCode: o.MaVanDon || '',
         items: o.ctDonHangs?.map(item => ({
+          lineId: item.STT,
           productId: item.MaSanPham,
+          variantId: item.MaBienThe,
+          sku: item.SKU,
+          size: item.KichCo,
+          color: item.MauSac,
+          attributes: item.ThuocTinh,
           productName: item.sanPham?.TenSanPham || 'Sản phẩm',
           quantity: item.SoLuong,
           unitPrice: item.DonGiaBan,
@@ -475,11 +483,4 @@ export const createExport = async (req: Request, res: Response) => {
   } catch (error) { res.status(500).json({ error: 'Failed to create export receipt' }); }
 };
 
-export const deleteExport = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  try {
-    await prisma.cTDonHang.deleteMany({ where: { MaPhieuXuat: Number(id) } });
-    await prisma.phieuXuat.delete({ where: { MaPhieuXuat: Number(id) } });
-    res.json({ message: 'Deleted' });
-  } catch (error) { res.status(500).json({ error: 'Failed to delete export receipt' }); }
-};
+export const deleteExport = deleteOrder;

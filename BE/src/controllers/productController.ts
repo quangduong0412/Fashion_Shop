@@ -163,10 +163,19 @@ export const updateProduct = async (req: Request, res: Response) => {
         }
       });
       if (normalized) {
-        await transaction.bienTheSanPham.deleteMany({ where: { MaSanPham: productId } });
-        if (normalized.length) {
-          await transaction.bienTheSanPham.createMany({ data: normalized.map(variant => ({ ...variant, MaSanPham: productId })) });
+        const existingVariants = await transaction.bienTheSanPham.findMany({ where: { MaSanPham: productId } });
+        const retainedIds: number[] = [];
+        for (const [index, variant] of normalized.entries()) {
+          const inputId = Number(variants[index]?.id);
+          const previous = existingVariants.find(row => row.MaBienThe === inputId)
+            || existingVariants.find(row => row.SKU === variant.SKU);
+          if (previous && retainedIds.includes(previous.MaBienThe)) throw new VariantValidationError('Mã biến thể bị trùng trong sản phẩm.');
+          const saved = previous
+            ? await transaction.bienTheSanPham.update({ where: { MaBienThe: previous.MaBienThe }, data: variant })
+            : await transaction.bienTheSanPham.create({ data: { ...variant, MaSanPham: productId } });
+          retainedIds.push(saved.MaBienThe);
         }
+        await transaction.bienTheSanPham.deleteMany({ where: { MaSanPham: productId, MaBienThe: { notIn: retainedIds } } });
       }
       return transaction.sanPham.findUnique({ where: { MaSanPham: productId }, include: { loaiHang: true, bienThes: true } });
     });

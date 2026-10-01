@@ -134,7 +134,7 @@ CREATE TABLE CTPhieuNhap (
     FOREIGN KEY (MaSanPham) REFERENCES SanPham(MaSanPham)
 );
 
-CREATE TABLE phieuxuat (
+CREATE TABLE donhang (
     MaPhieuXuat INT AUTO_INCREMENT PRIMARY KEY,
     MaNhanVien INT NOT NULL,
     NgayXuat DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -146,20 +146,28 @@ CREATE TABLE phieuxuat (
     TrangThaiThanhToan VARCHAR(50) NULL,
     DonViVanChuyen VARCHAR(100) NULL,
     MaVanDon VARCHAR(100) NULL,
+    TenNguoiNhan VARCHAR(255) NULL,
+    DienThoaiNhan VARCHAR(50) NULL,
+    DiaChiNhan TEXT NULL,
     FOREIGN KEY (MaNhanVien) REFERENCES NhanVien(MaNhanVien),
     FOREIGN KEY (MaKhachHang) REFERENCES KhachHang(MaKhachHang),
     FOREIGN KEY (MaKho) REFERENCES Kho(MaKho)
 );
 
-CREATE TABLE ctphieuxuat (
+CREATE TABLE ctdonhang (
     STT INT AUTO_INCREMENT PRIMARY KEY,
     MaPhieuXuat INT NOT NULL,
     MaSanPham INT NOT NULL,
+    MaBienThe INT NULL,
+    SKU VARCHAR(100) NULL,
+    KichCo VARCHAR(10) NULL,
+    MauSac VARCHAR(50) NULL,
+    ThuocTinh JSON NULL,
     SoLuong INT NOT NULL,
     DonGiaBan FLOAT NOT NULL,
     GiamGia FLOAT DEFAULT 0 NOT NULL,
     ThanhTien FLOAT NOT NULL,
-    FOREIGN KEY (MaPhieuXuat) REFERENCES phieuxuat(MaPhieuXuat),
+    FOREIGN KEY (MaPhieuXuat) REFERENCES donhang(MaPhieuXuat),
     FOREIGN KEY (MaSanPham) REFERENCES SanPham(MaSanPham)
 );
 
@@ -358,12 +366,12 @@ SET v.SKU = CONCAT('FH-', v.MaSanPham, '-', v.MaBienThe),
     END;
 
 -- Phiếu xuất (Đơn hàng)
-INSERT INTO phieuxuat (MaNhanVien, MaKhachHang, TongTien, MaKho) VALUES
+INSERT INTO donhang (MaNhanVien, MaKhachHang, TongTien, MaKho) VALUES
 (1, 1, 3200000, 1),
 (1, 2, 850000, 1);
 
 -- Chi tiết đơn hàng
-INSERT INTO ctphieuxuat (MaPhieuXuat, MaSanPham, SoLuong, DonGiaBan, ThanhTien) VALUES
+INSERT INTO ctdonhang (MaPhieuXuat, MaSanPham, SoLuong, DonGiaBan, ThanhTien) VALUES
 (1, 1, 1, 3200000, 3200000),
 (2, 5, 1, 850000, 850000);
 

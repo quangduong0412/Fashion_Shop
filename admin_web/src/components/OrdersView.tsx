@@ -32,7 +32,7 @@ export default function OrdersView({ orders, onUpdateStatus, onDeleteOrder }: Or
     return matchSearch && matchStatus;
   });
 
-  const revenue = orders.reduce((s, o) => s + (o.total || o.TongTien || 0), 0);
+  const revenue = orders.reduce((s, o) => ['CANCELLED', 'Đã hủy'].includes(o.status || o.TrangThai) ? s : s + (o.total || o.TongTien || 0), 0);
   const pending  = orders.filter(o => ['PENDING','Chờ xác nhận'].includes(o.status || o.TrangThai)).length;
   const shipping = orders.filter(o => ['SHIPPING','Đang giao hàng'].includes(o.status || o.TrangThai)).length;
   const delivered = orders.filter(o => ['DELIVERED','Đã giao'].includes(o.status || o.TrangThai)).length;
@@ -224,7 +224,7 @@ export default function OrdersView({ orders, onUpdateStatus, onDeleteOrder }: Or
             </header>
             <div className="space-y-6 p-6">
               <div className="grid gap-4 sm:grid-cols-2">
-                <div><p className="text-xs text-gray-500">Khách hàng</p><p className="mt-1 font-semibold text-gray-900">{selectedOrder.customerName || 'Khách hàng'}</p><p className="text-sm text-gray-500">{selectedOrder.customerPhone || ''}</p></div>
+                <div><p className="text-xs text-gray-500">Khách hàng</p><p className="mt-1 font-semibold text-gray-900">{selectedOrder.customerName || 'Khách hàng'}</p><p className="text-sm text-gray-500">{selectedOrder.customerPhone || ''}</p><p className="text-sm text-gray-500">{selectedOrder.customerAddress || ''}</p></div>
                 <div><p className="text-xs text-gray-500">Ngày đặt</p><p className="mt-1 font-semibold text-gray-900">{selectedOrder.NgayDat ? new Date(selectedOrder.NgayDat).toLocaleString('vi-VN') : '—'}</p></div>
                 <div><p className="text-xs text-gray-500">Thanh toán</p><p className="mt-1 font-semibold text-gray-900">{selectedOrder.paymentMethod || 'Tiền mặt'} · {selectedOrder.paymentStatus || 'Chưa thanh toán'}</p></div>
                 <div><p className="text-xs text-gray-500">Vận chuyển</p><p className="mt-1 font-semibold text-gray-900">{selectedOrder.shippingProvider || 'Chưa điều phối'}{selectedOrder.trackingCode ? ` · ${selectedOrder.trackingCode}` : ''}</p></div>
@@ -232,9 +232,9 @@ export default function OrdersView({ orders, onUpdateStatus, onDeleteOrder }: Or
               <div>
                 <h3 className="mb-3 font-bold text-gray-900">Sản phẩm</h3>
                 <div className="divide-y divide-gray-100 rounded-lg border border-gray-100">
-                  {(selectedOrder.items || []).map((item: any) => (
-                    <div key={item.productId} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
-                      <div><p className="font-medium text-gray-900">{item.productName}</p><p className="text-gray-500">{item.quantity} × {Number(item.unitPrice || 0).toLocaleString('vi-VN')} đ</p></div>
+                  {(selectedOrder.items || []).map((item: any, index: number) => (
+                    <div key={item.lineId || `${item.productId}-${item.variantId || 0}-${index}`} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
+                      <div><p className="font-medium text-gray-900">{item.productName}</p><p className="text-gray-500">{[item.size, item.color, item.sku].filter(Boolean).join(' · ')}</p><p className="text-gray-500">{item.quantity} × {Number(item.unitPrice || 0).toLocaleString('vi-VN')} đ</p></div>
                       <p className="shrink-0 font-semibold text-gray-900">{Number(item.subtotal || 0).toLocaleString('vi-VN')} đ</p>
                     </div>
                   ))}

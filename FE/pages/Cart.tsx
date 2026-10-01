@@ -2,7 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View, ScrollView, Pressable, TextInput } from 'react-native';
 import { Image } from 'expo-image';
-import { ApiError, apiRequest, CartItem, clearSession, currentUser, formatPrice, readCart, saveCart } from '@/components/fashion-data';
+import { ApiError, apiRequest, CartItem, cartLineKey, clearSession, currentUser, formatPrice, readCart, saveCart, updateCart } from '@/components/fashion-data';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,23 +15,44 @@ export default function CartScreen() {
   const checkoutLock = useRef(false);
   const [checkoutError, setCheckoutError] = useState('');
   const [needsLogin, setNeedsLogin] = useState(false);
+  const [shippingAddress, setShippingAddress] = useState({ name: '', phone: '', address: '' });
+  const addressEdited = useRef(false);
 
-  useFocusEffect(useCallback(() => { readCart().then(setCart); }, []));
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    void readCart().then(next => { if (active) setCart(next); }).catch(() => {
+      if (active) setCheckoutError('Không thể đọc giỏ hàng. Vui lòng thử lại.');
+    });
+    void (async () => {
+      const user = await currentUser();
+      if (user?.role !== 'user') return;
+      const profile = await apiRequest('/users/profile');
+      if (active && !addressEdited.current) setShippingAddress({ name: profile.TenKhach || '', phone: profile.DienThoai || '', address: profile.DiaChi || '' });
+    })().catch(error => {
+      if (active && error instanceof ApiError && [401, 403].includes(error.status)) {
+        setCheckoutError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        setNeedsLogin(true);
+      }
+    });
+    return () => { active = false; };
+  }, []));
 
-  const changeQuantity = async (index: number, amount: number) => {
-    const next = [...cart];
-    next[index].quantity = Math.max(1, Math.min(next[index].quantity + amount, next[index].variantQuantity ?? Number.POSITIVE_INFINITY));
+  const changeQuantity = async (lineKey: string, amount: number) => {
+    if (checkoutLock.current) return;
+    const next = await updateCart(items => items.map(item => cartLineKey(item) === lineKey
+      ? { ...item, quantity: Math.max(1, Math.min(item.quantity + amount, item.variantQuantity ?? Number.POSITIVE_INFINITY)) }
+      : item));
     setCart(next);
-    await saveCart(next);
   };
 
-  const removeItem = async (index: number) => {
-    const next = cart.filter((_, itemIndex) => itemIndex !== index);
+  const removeItem = async (lineKey: string) => {
+    if (checkoutLock.current) return;
+    const next = await updateCart(items => items.filter(item => cartLineKey(item) !== lineKey));
     setCart(next);
-    await saveCart(next);
   };
 
   const clearCart = async () => {
+    if (checkoutLock.current) return;
     setCart([]);
     await saveCart([]);
   };
@@ -59,12 +80,17 @@ export default function CartScreen() {
         setNeedsLogin(true);
         return;
       }
+      if (!shippingAddress.name.trim() || !shippingAddress.phone.trim() || !shippingAddress.address.trim()) {
+        setCheckoutError('Vui lòng nhập họ tên, số điện thoại và địa chỉ nhận hàng.');
+        return;
+      }
 
       await apiRequest('/orders/checkout', {
         method: 'POST',
         body: JSON.stringify({
-          paymentMethod: 'Tiền mặt',
-          items: cart.map(item => ({ id: Number(item.id), quantity: item.quantity })),
+          paymentMethod: 'Thanh toán khi nhận hàng',
+          shipping: shippingAddress,
+          items: cart.map(item => ({ id: Number(item.id), quantity: item.quantity, variantId: item.variantId, size: item.size, color: item.color, attributes: item.attributes })),
         }),
       });
 
@@ -124,8 +150,8 @@ export default function CartScreen() {
 
             {/* Cart Items */}
             <View style={styles.itemsContainer}>
-              {cart.map((item, index) => (
-                  <View style={styles.cartItem} key={`${item.id}-${item.variantId || `${item.color || ''}-${item.size || ''}`}`}>
+              {cart.map(item => (
+                  <View style={styles.cartItem} key={cartLineKey(item)}>
                   <View style={styles.itemImageWrapper}>
                     <Image source={item.image} style={styles.itemImage} contentFit="cover" />
                   </View>
@@ -133,7 +159,7 @@ export default function CartScreen() {
                     <View>
                       <View style={styles.itemTitleRow}>
                         <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
-                        <Pressable style={styles.itemRemoveBtn} onPress={() => removeItem(index)}>
+                        <Pressable style={styles.itemRemoveBtn} onPress={() => removeItem(cartLineKey(item))}>
                           <MaterialIcons name="close" size={18} color={Colors.light.outline} />
                         </Pressable>
                       </View>
@@ -150,11 +176,11 @@ export default function CartScreen() {
                     <View style={styles.itemPriceRow}>
                       <Text style={styles.itemPrice}>{formatPrice(item.price)}</Text>
                       <View style={styles.qtyControl}>
-                        <Pressable style={styles.qtyBtn} onPress={() => changeQuantity(index, -1)}>
+                        <Pressable style={styles.qtyBtn} onPress={() => changeQuantity(cartLineKey(item), -1)}>
                           <MaterialIcons name="remove" size={16} color={Colors.light.onSurface} />
                         </Pressable>
                         <Text style={styles.qtyText}>{item.quantity}</Text>
-                        <Pressable style={styles.qtyBtn} onPress={() => changeQuantity(index, 1)}>
+                        <Pressable style={styles.qtyBtn} onPress={() => changeQuantity(cartLineKey(item), 1)}>
                           <MaterialIcons name="add" size={16} color={Colors.light.onSurface} />
                         </Pressable>
                       </View>
@@ -164,29 +190,6 @@ export default function CartScreen() {
               ))}
             </View>
 
-            {/* Voucher Section */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <View style={styles.cardHeaderLeft}>
-                  <MaterialIcons name="sell" size={20} color={Colors.light.primary} />
-                  <Text style={styles.cardTitle}>Ưu đãi & Voucher</Text>
-                </View>
-              </View>
-              <View style={styles.voucherInputRow}>
-                <View style={styles.voucherInputBox}>
-                  <MaterialIcons name="confirmation-number" size={18} color={Colors.light.outline} />
-                  <TextInput
-                    style={styles.voucherInput}
-                    placeholder="Nhập mã giảm giá..."
-                    placeholderTextColor={Colors.light.outline}
-                  />
-                </View>
-                <Pressable style={styles.voucherApplyBtn}>
-                  <Text style={styles.voucherApplyText}>Áp dụng</Text>
-                </Pressable>
-              </View>
-            </View>
-
             {/* Shipping Address */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
@@ -194,21 +197,14 @@ export default function CartScreen() {
                   <MaterialIcons name="location-on" size={20} color={Colors.light.primary} />
                   <Text style={styles.cardTitle}>Địa chỉ nhận hàng</Text>
                 </View>
-                <Text style={styles.changeAddressText}>Đổi địa chỉ</Text>
               </View>
-              <View style={styles.addressBox}>
-                <View style={styles.addressIconWrapper}>
-                  <MaterialIcons name="home-work" size={18} color={Colors.light.onSecondary} />
-                </View>
-                <View style={styles.addressInfo}>
-                  <View style={styles.addressNameRow}>
-                    <Text style={styles.addressName}>Khách hàng</Text>
-                    <Text style={styles.addressPhone}>• 0987.xxx.xxx</Text>
-                    <View style={styles.addressDefaultBadge}><Text style={styles.addressDefaultText}>Mặc định</Text></View>
-                  </View>
-                  <Text style={styles.addressText} numberOfLines={2}>Landmark 81, Phường 22, Quận Bình Thạnh, TP. Hồ Chí Minh</Text>
-                </View>
-              </View>
+              <TextInput accessibilityLabel="Họ tên người nhận" placeholder="Họ tên người nhận" value={shippingAddress.name} editable={!isCheckingOut} maxLength={255} style={styles.shippingInput}
+                onChangeText={name => { addressEdited.current = true; setShippingAddress(current => ({ ...current, name })); }} />
+              <TextInput accessibilityLabel="Số điện thoại nhận hàng" placeholder="Số điện thoại" value={shippingAddress.phone} editable={!isCheckingOut} keyboardType="phone-pad" maxLength={25} style={styles.shippingInput}
+                onChangeText={phone => { addressEdited.current = true; setShippingAddress(current => ({ ...current, phone })); }} />
+              <TextInput accessibilityLabel="Địa chỉ nhận hàng" placeholder="Số nhà, đường, phường/xã, tỉnh/thành phố" value={shippingAddress.address} editable={!isCheckingOut} multiline maxLength={8000} style={styles.shippingInput}
+                onChangeText={address => { addressEdited.current = true; setShippingAddress(current => ({ ...current, address })); }} />
+              <Text style={styles.summaryLabel}>Thanh toán khi nhận hàng</Text>
             </View>
 
             {/* Summary */}
@@ -274,6 +270,7 @@ const styles = StyleSheet.create({
 
   scrollContent: { paddingHorizontal: 16, paddingBottom: 100, paddingTop: 12 },
   checkoutBtnDisabled: { opacity: 0.7 },
+  shippingInput: { fontFamily: 'Inter', fontSize: 14, borderWidth: 1, borderColor: Colors.light.outline, borderRadius: 8, padding: 12, color: Colors.light.onSurface, marginBottom: 10 },
   checkoutError: { color: Colors.light.primary, fontFamily: 'Inter', fontSize: 13, marginBottom: 10 },
   loginButton: { paddingVertical: 10, marginBottom: 8 },
   loginButtonText: { color: Colors.light.primary, fontFamily: 'Inter', fontWeight: '600', textDecorationLine: 'underline' },

@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, T
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductCard from '../components/ProductCard';
 import { Colors } from '../constants/theme';
-import { fetchProducts, Product, readCart, saveCart } from '../components/fashion-data';
+import { addCartItem, fetchProducts, Product } from '../components/fashion-data';
 
 export default function ProductsScreen() {
   const router = useRouter();
@@ -29,11 +29,12 @@ export default function ProductsScreen() {
       router.push(`/product/${product.id}` as never);
       return;
     }
-    const cart = await readCart();
-    const item = cart.find(row => row.id === product.id);
-    if (item) item.quantity = Math.min(item.quantity + 1, product.quantity);
-    else cart.push({ ...product, variantQuantity: product.quantity, quantity: 1 });
-    await saveCart(cart);
+    try {
+      await addCartItem({ ...product, variantQuantity: product.quantity, quantity: 1 });
+      router.push('/cart' as never);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Không thể thêm vào giỏ hàng.');
+    }
   };
   return <View style={[styles.root, { paddingTop: insets.top }]}>
     <View style={styles.header}><Text style={styles.title}>Sản phẩm tồn kho</Text><Text style={styles.subtitle}>Cập nhật trực tiếp từ FashionHeaven</Text></View>

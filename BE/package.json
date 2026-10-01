@@ -4,8 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "prestart": "npm run db:prepare",
     "start": "ts-node src/server.ts",
+    "predev": "npm run db:prepare",
     "dev": "nodemon src/server.ts",
+    "db:migrate-orders": "ts-node migrate_order_tables.ts",
+    "db:prepare": "npm run db:migrate-orders && prisma generate",
     "seed:catalog": "ts-node seed_catalog.ts",
     "seed:samples": "ts-node add_sample_data.ts",
     "db:extend-product-variants": "ts-node update_variant_schema.ts",

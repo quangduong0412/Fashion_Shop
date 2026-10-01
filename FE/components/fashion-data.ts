@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { cartLineKey, normalizeCart } from './cart-state';
+export { cartLineKey } from './cart-state';
 
 const defaultHost = Platform.OS === 'web' && typeof window !== 'undefined'
   ? window.location.hostname
@@ -65,9 +67,47 @@ export const trends = [
 
 export const formatPrice = (value: number) => `${value.toLocaleString('vi-VN')}đ`;
 
-export async function readCart(): Promise<CartItem[]> {
+let cartOperations: Promise<unknown> = Promise.resolve();
+function queueCart<T>(operation: () => Promise<T>): Promise<T> {
+  const result = cartOperations.then(operation);
+  cartOperations = result.catch(() => undefined);
+  return result;
+}
+
+async function readStoredCart(): Promise<CartItem[]> {
   const value = await AsyncStorage.getItem('cart');
-  return value ? JSON.parse(value) : [];
+  if (!value) return [];
+  let parsed: unknown;
+  try { parsed = JSON.parse(value); } catch { parsed = []; }
+  const cart = normalizeCart(parsed);
+  if (JSON.stringify(cart) !== value) await AsyncStorage.setItem('cart', JSON.stringify(cart));
+  return cart;
+}
+
+export function readCart(): Promise<CartItem[]> {
+  return queueCart(readStoredCart);
+}
+
+export function updateCart(change: (cart: CartItem[]) => CartItem[]): Promise<CartItem[]> {
+  return queueCart(async () => {
+    const next = normalizeCart(change(await readStoredCart()));
+    await AsyncStorage.setItem('cart', JSON.stringify(next));
+    return next;
+  });
+}
+
+export function addCartItem(item: CartItem): Promise<CartItem[]> {
+  return updateCart(cart => {
+    const key = cartLineKey(item);
+    const previous = cart.find(row => cartLineKey(row) === key);
+    const quantity = (previous?.quantity || 0) + item.quantity;
+    if (quantity > (item.variantQuantity ?? Number.POSITIVE_INFINITY)) {
+      throw new Error('Số lượng trong giỏ đã đạt tồn kho của sản phẩm.');
+    }
+    return previous
+      ? cart.map(row => cartLineKey(row) === key ? { ...row, ...item, quantity } : row)
+      : [...cart, item];
+  });
 }
 
 export function productImageUrl(image?: string) {
@@ -85,8 +125,8 @@ export async function fetchProductById(id: string | number): Promise<Product> {
   return { ...product, image: productImageUrl(product.image) };
 }
 
-export async function saveCart(cart: CartItem[]) {
-  await AsyncStorage.setItem('cart', JSON.stringify(cart));
+export function saveCart(cart: CartItem[]) {
+  return queueCart(() => AsyncStorage.setItem('cart', JSON.stringify(normalizeCart(cart))));
 }
 
 export async function currentUser() {

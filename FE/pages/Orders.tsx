@@ -11,6 +11,9 @@ type OrderItem = {
   SoLuong: number;
   DonGiaBan?: number;
   ThanhTien?: number;
+  KichCo?: string | null;
+  MauSac?: string | null;
+  SKU?: string | null;
   sanPham?: { TenSanPham?: string };
 };
 
@@ -20,6 +23,9 @@ type Order = {
   TongTien: number;
   TrangThai: string;
   PhuongThucThanhToan?: string | null;
+  TenNguoiNhan?: string | null;
+  DienThoaiNhan?: string | null;
+  DiaChiNhan?: string | null;
   TrangThaiThanhToan?: string | null;
   ctDonHangs?: OrderItem[];
 };
@@ -45,11 +51,13 @@ export default function OrdersScreen() {
   const [error, setError] = useState('');
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
   const [cancellingOrderId, setCancellingOrderId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState('');
 
   useFocusEffect(useCallback(() => {
     let active = true;
 
     const loadOrders = async () => {
+      if (active) { setLoading(true); setError(''); }
       try {
         const user = await currentUser();
         if (!user) {
@@ -58,8 +66,8 @@ export default function OrdersScreen() {
         }
         const result = await apiRequest('/orders/me');
         if (active) setOrders(result);
-      } catch {
-        if (active) setError('Chưa thể tải đơn hàng. Vui lòng thử lại sau.');
+      } catch (error) {
+        if (active) setError(error instanceof Error ? error.message : 'Chưa thể tải đơn hàng. Vui lòng thử lại sau.');
       } finally {
         if (active) setLoading(false);
       }
@@ -74,12 +82,13 @@ export default function OrdersScreen() {
 
     try {
       setCancellingOrderId(order.MaPhieuXuat);
+      setActionError('');
       const result = await apiRequest(`/orders/${order.MaPhieuXuat}/cancel`, { method: 'POST' });
       setOrders(current => current.map(item => item.MaPhieuXuat === order.MaPhieuXuat
         ? { ...item, ...(result.order || {}), TrangThai: result.order?.TrangThai || 'Đã hủy' }
         : item));
     } catch (cancelError) {
-      Alert.alert('Không thể hủy đơn', cancelError instanceof Error ? cancelError.message : 'Vui lòng thử lại sau.');
+      setActionError(cancelError instanceof Error ? cancelError.message : 'Không thể hủy đơn. Vui lòng thử lại sau.');
     } finally {
       setCancellingOrderId(null);
     }
@@ -129,6 +138,7 @@ export default function OrdersScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 30 }]} showsVerticalScrollIndicator={false}>
+          {!!actionError && <Text accessibilityRole="alert" style={styles.emptyTitle}>{actionError}</Text>}
           {orders.map(order => {
             const statusStyle = statusColors[order.TrangThai] || statusColors.PENDING;
             const itemSummary = order.ctDonHangs?.map(item => `${item.sanPham?.TenSanPham || 'Sản phẩm'} × ${item.SoLuong}`).join(' · ');
@@ -178,12 +188,14 @@ export default function OrdersScreen() {
                       <View key={item.STT || `${item.MaSanPham || index}-${index}`} style={styles.detailItem}>
                         <View style={styles.detailItemCopy}>
                           <Text style={styles.detailProductName}>{item.sanPham?.TenSanPham || 'Sản phẩm'}</Text>
+                          {(item.KichCo || item.MauSac || item.SKU) && <Text style={styles.detailProductMeta}>{[item.KichCo, item.MauSac, item.SKU].filter(Boolean).join(' · ')}</Text>}
                           <Text style={styles.detailProductMeta}>{item.SoLuong} × {formatPrice(Number(item.DonGiaBan || 0))}</Text>
                         </View>
                         <Text style={styles.detailSubtotal}>{formatPrice(Number(item.ThanhTien ?? (Number(item.DonGiaBan || 0) * item.SoLuong)))}</Text>
                       </View>
                     ))}
                     <View style={styles.detailPayment}>
+                      {!!order.DiaChiNhan && <Text style={styles.detailPaymentValue}>{order.TenNguoiNhan} · {order.DienThoaiNhan}{'\n'}{order.DiaChiNhan}</Text>}
                       <Text style={styles.detailPaymentLabel}>Thanh toán</Text>
                       <Text style={styles.detailPaymentValue}>{order.PhuongThucThanhToan || 'Tiền mặt'} · {order.TrangThaiThanhToan || 'Chưa thanh toán'}</Text>
                     </View>

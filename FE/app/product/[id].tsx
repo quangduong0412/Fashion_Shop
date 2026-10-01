@@ -1,11 +1,11 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, Pressable, Dimensions, Alert, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, Pressable, Dimensions, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { formatPrice, fetchProductById, Product, ProductVariant, VariantAttributeDefinition, readCart, saveCart } from '../../components/fashion-data';
+import { addCartItem, formatPrice, fetchProductById, Product, ProductVariant, VariantAttributeDefinition } from '../../components/fashion-data';
 
 const { width } = Dimensions.get('window');
 
@@ -17,6 +17,7 @@ export default function ProductDetailScreen() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [cartMessage, setCartMessage] = useState('');
   
   const [activeImg, setActiveImg] = useState(0);
   const [selectedColor, setSelectedColor] = useState<string>('');
@@ -84,10 +85,9 @@ export default function ProductDetailScreen() {
 
   const addSelectedVariantToCart = async (goToCart = false) => {
     if (!canPurchase) {
-      Alert.alert('Thông báo', quantity <= 0 ? 'Sản phẩm đã hết hàng' : status);
+      setCartMessage(quantity <= 0 ? 'Sản phẩm đã hết hàng' : status);
       return;
     }
-    const cart = await readCart();
     const productToAdd = {
       id: product.id,
       name: product.name,
@@ -102,14 +102,13 @@ export default function ProductDetailScreen() {
       size: currentVariant?.size || (typeof selectedAttributes.size === 'string' ? selectedAttributes.size : undefined),
       color: selectedColor || undefined
     };
-    const existingItem = cart.find(item => item.id === productToAdd.id && (productToAdd.variantId
-      ? item.variantId === productToAdd.variantId
-      : item.size === productToAdd.size && item.color === productToAdd.color));
-    if (existingItem) existingItem.quantity = Math.min(existingItem.quantity + 1, quantity);
-    else cart.push({ ...productToAdd, quantity: 1 });
-    await saveCart(cart);
-    if (goToCart) router.push('/cart' as never);
-    else Alert.alert('Thành công', 'Đã thêm vào giỏ');
+    try {
+      await addCartItem({ ...productToAdd, quantity: 1 });
+      if (goToCart) router.push('/cart' as never);
+      else setCartMessage('Đã thêm sản phẩm vào giỏ hàng.');
+    } catch (error) {
+      setCartMessage(error instanceof Error ? error.message : 'Không thể thêm vào giỏ hàng.');
+    }
   };
 
   return (
@@ -146,6 +145,7 @@ export default function ProductDetailScreen() {
             <View style={styles.skuBadge}><Text style={styles.skuText}>SKU: {currentVariant?.sku || `FH-${product.id}`}</Text></View>
           </View>
           <Text style={styles.title}>{product.name}</Text>
+          {!!cartMessage && <Text accessibilityLiveRegion="polite" style={{ color: Colors.light.primary, marginTop: 8 }}>{cartMessage}</Text>}
           
           <View style={styles.priceBox}>
             <Text style={styles.currentPrice}>{formatPrice(price)}</Text>

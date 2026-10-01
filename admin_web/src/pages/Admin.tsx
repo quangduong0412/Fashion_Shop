@@ -115,7 +115,7 @@ const Admin: React.FC = () => {
         setCategories(data.categories || []);
         setWarehouses(data.warehouses || []);
 
-        const revenue = (data.orders || []).reduce((sum: number, o: any) => o.status !== 'Ðã h?y' ? sum + o.total : sum, 0);
+        const revenue = (data.orders || []).reduce((sum: number, o: any) => ['CANCELLED', 'Đã hủy'].includes(o.status) ? sum : sum + o.total, 0);
         setStats({ 
           products: (data.products || []).length, 
           users: (data.users || []).length, 

@@ -189,18 +189,26 @@ model PhieuXuat {
   TrangThaiThanhToan   String?       @db.VarChar(50)
   DonViVanChuyen       String?       @db.VarChar(100)
   MaVanDon             String?       @db.VarChar(100)
+  TenNguoiNhan         String?       @db.VarChar(255)
+  DienThoaiNhan        String?       @db.VarChar(50)
+  DiaChiNhan           String?       @db.Text
   ctDonHangs           CTDonHang[]
   khachHang            KhachHang     @relation(fields: [MaKhachHang], references: [MaKhachHang], onUpdate: NoAction, map: "FK__PhieuXuat__MaKha__6383C8BA")
   kho                  Kho           @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__PhieuXuat__MaKho__6477ECF3")
   nhanVien             NhanVien      @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__PhieuXuat__MaNha__619B8048")
 
-  @@map("phieuxuat")
+  @@map("donhang")
 }
 
 model CTDonHang {
   STT         Int       @id @default(autoincrement())
   MaPhieuXuat Int
   MaSanPham   Int
+  MaBienThe   Int?
+  SKU         String?   @db.VarChar(100)
+  KichCo      String?   @db.VarChar(10)
+  MauSac      String?   @db.VarChar(50)
+  ThuocTinh   Json?
   SoLuong     Int
   DonGiaBan   Float
   GiamGia     Float     @default(0)
@@ -208,7 +216,7 @@ model CTDonHang {
   donHang     PhieuXuat @relation(fields: [MaPhieuXuat], references: [MaPhieuXuat], onUpdate: NoAction, map: "FK__CTPhieuXu__MaPhi__68487DD7")
   sanPham     SanPham   @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__CTPhieuXu__MaSan__693CA210")
 
-  @@map("ctphieuxuat")
+  @@map("ctdonhang")
 }
 
 model BaiViet {
