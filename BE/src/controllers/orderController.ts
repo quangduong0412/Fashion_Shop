@@ -26,9 +26,9 @@ export const createOrder = async (req: Request, res: Response) => {
     }
     quantities.set(productId, (quantities.get(productId) || 0) + quantity);
   }
-  
+
   try {
-    const newOrder = await prisma.$transaction(async (tx) => {
+    const createdOrders = await prisma.$transaction(async tx => {
       const customer = await tx.khachHang.findUnique({ where: { MaKhachHang: userId } });
       if (!customer) throw new Error('Không tìm thấy tài khoản khách hàng. Vui lòng đăng nhập lại.');
 
@@ -37,58 +37,62 @@ export const createOrder = async (req: Request, res: Response) => {
         throw new Error('Một hoặc nhiều sản phẩm không còn tồn tại trong cửa hàng.');
       }
 
-      let totalAmount = 0;
       for (const product of products) {
         const quantity = quantities.get(product.MaSanPham)!;
-        if (product.SoLuong < quantity) {
-          throw new Error(`Sản phẩm "${product.TenSanPham}" không đủ số lượng (Chỉ còn ${product.SoLuong}).`);
+        const updated = await tx.sanPham.updateMany({
+          where: { MaSanPham: product.MaSanPham, SoLuong: { gte: quantity } },
+          data: { SoLuong: { decrement: quantity } }
+        });
+        if (updated.count === 0) {
+          throw new Error(`Sản phẩm “${product.TenSanPham}” không đủ số lượng trong kho.`);
         }
-        totalAmount += product.DonGiaBan * quantity;
       }
 
       const employee = await tx.nhanVien.findFirst({ orderBy: { MaNhanVien: 'asc' } });
       if (!employee) throw new Error('Cửa hàng chưa có nhân viên xử lý đơn hàng.');
 
-      const warehouse = await tx.kho.findUnique({ where: { MaKho: products[0]!.MaKho } });
-      if (!warehouse || products.some(product => product.MaKho !== warehouse.MaKho)) {
-        throw new Error('Các sản phẩm trong giỏ phải thuộc cùng một kho để đặt chung đơn hàng.');
-      }
-
+      const productsByWarehouse = new Map<number, typeof products>();
       for (const product of products) {
-        await tx.sanPham.update({
-          where: { MaSanPham: product.MaSanPham },
-          data: { SoLuong: { decrement: quantities.get(product.MaSanPham)! } }
-        });
+        const warehouseProducts = productsByWarehouse.get(product.MaKho) || [];
+        warehouseProducts.push(product);
+        productsByWarehouse.set(product.MaKho, warehouseProducts);
       }
 
-      return await tx.phieuXuat.create({
-        data: {
-          MaNhanVien: employee.MaNhanVien,
-          MaKhachHang: userId,
-          TongTien: totalAmount,
-          MaKho: warehouse.MaKho,
-          TrangThai: 'PENDING',
-          PhuongThucThanhToan: req.body.paymentMethod || 'Tiền mặt',
-          TrangThaiThanhToan: 'Chưa thanh toán',
-          ctDonHangs: {
-            create: products.map(product => {
-              const quantity = quantities.get(product.MaSanPham)!;
-              return {
-                MaSanPham: product.MaSanPham,
-                SoLuong: quantity,
-                DonGiaBan: product.DonGiaBan,
-                ThanhTien: product.DonGiaBan * quantity
-              };
-            })
+      const orders: any[] = [];
+      for (const [warehouseId, warehouseProducts] of productsByWarehouse) {
+        const total = warehouseProducts.reduce((sum, product) =>
+          sum + product.DonGiaBan * quantities.get(product.MaSanPham)!, 0);
+        const order = await tx.phieuXuat.create({
+          data: {
+            MaNhanVien: employee.MaNhanVien,
+            MaKhachHang: userId,
+            TongTien: total,
+            MaKho: warehouseId,
+            TrangThai: 'PENDING',
+            PhuongThucThanhToan: req.body.paymentMethod || 'Tiền mặt',
+            TrangThaiThanhToan: 'Chưa thanh toán',
+            ctDonHangs: {
+              create: warehouseProducts.map(product => {
+                const quantity = quantities.get(product.MaSanPham)!;
+                return {
+                  MaSanPham: product.MaSanPham,
+                  SoLuong: quantity,
+                  DonGiaBan: product.DonGiaBan,
+                  ThanhTien: product.DonGiaBan * quantity
+                };
+              })
+            }
           }
-        }
-      });
+        });
+        orders.push(order);
+      }
+      return orders;
     });
 
-    res.status(201).json({ message: 'Order placed successfully', order: newOrder });
+    res.status(201).json({ message: 'Đặt hàng thành công.', orders: createdOrders, order: createdOrders[0] });
   } catch (error: any) {
-    console.error("Order Error:", error);
-    res.status(400).json({ error: error.message || 'Failed to place order' });
+    console.error('Order placement failed:', error);
+    res.status(400).json({ error: error.message || 'Không thể đặt hàng.' });
   }
 };
 

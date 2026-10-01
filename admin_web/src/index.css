@@ -3,7 +3,9 @@
 @tailwind utilities;
 
 @layer base {
+  html, body, #root { font-family: Inter, Arial, sans-serif; }
   html, body { margin: 0; padding: 0; }
+  button, input, select, textarea { font: inherit; }
   body { overscroll-behavior: none; }
   main > :first-child { margin-top: 0 !important; }
   main > :last-child { margin-bottom: 0 !important; }

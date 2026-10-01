@@ -194,7 +194,7 @@ model PhieuXuat {
   kho                  Kho           @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__PhieuXuat__MaKho__6477ECF3")
   nhanVien             NhanVien      @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__PhieuXuat__MaNha__619B8048")
 
-  @@map("donhang")
+  @@map("phieuxuat")
 }
 
 model CTDonHang {
@@ -208,7 +208,7 @@ model CTDonHang {
   donHang     PhieuXuat @relation(fields: [MaPhieuXuat], references: [MaPhieuXuat], onUpdate: NoAction, map: "FK__CTPhieuXu__MaPhi__68487DD7")
   sanPham     SanPham   @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__CTPhieuXu__MaSan__693CA210")
 
-  @@map("ctdonhang")
+  @@map("ctphieuxuat")
 }
 
 model BaiViet {

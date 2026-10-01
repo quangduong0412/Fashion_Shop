@@ -11,12 +11,6 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
-import {
-  PlayfairDisplay_600SemiBold,
-  PlayfairDisplay_700Bold,
-  PlayfairDisplay_600SemiBold_Italic,
-  PlayfairDisplay_700Bold_Italic,
-} from '@expo-google-fonts/playfair-display';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -30,12 +24,8 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
-    PlayfairDisplay_600SemiBold,
-    PlayfairDisplay_700Bold,
-    PlayfairDisplay_600SemiBold_Italic,
-    PlayfairDisplay_700Bold_Italic,
     'Inter': Inter_400Regular,
-    'Playfair Display': PlayfairDisplay_600SemiBold,
+    'Playfair Display': Inter_600SemiBold,
   });
 
   useEffect(() => {

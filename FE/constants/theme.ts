@@ -48,19 +48,19 @@ export const Colors = {
 export const Fonts = Platform.select({
   ios: {
     sans: 'Inter',
-    serif: 'Playfair Display',
+    serif: 'Inter',
     rounded: 'ui-rounded',
     mono: 'ui-monospace',
   },
   default: {
     sans: 'Inter',
-    serif: 'Playfair Display',
+    serif: 'Inter',
     rounded: 'normal',
     mono: 'monospace',
   },
   web: {
     sans: "Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-    serif: "'Playfair Display', Georgia, serif",
+    serif: "Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
     rounded: "'SF Pro Rounded', sans-serif",
     mono: "monospace",
   },

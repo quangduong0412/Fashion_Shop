@@ -60,7 +60,6 @@ export const getAdminData = async (req: Request, res: Response) => {
         email: u.Email,
         phone: u.DienThoai,
         address: u.DiaChi,
-        password: u.MatKhau,
         HangThanhVien: u.HangThanhVien,
         totalSpent: 0 // TODO: calculate from orders
       })),

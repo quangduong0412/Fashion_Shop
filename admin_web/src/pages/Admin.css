@@ -1,6 +1,4 @@
 /* Admin.css - Fashion Heaven Premium Admin V4 */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
 :root {
   --bg: #f0f2f8;
   --sidebar-bg: #0f0e17;
@@ -44,7 +42,7 @@
 .admin-layout * { box-sizing: border-box; margin: 0; padding: 0; }
 
 .admin-layout {
-  font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  font-family: Inter, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;

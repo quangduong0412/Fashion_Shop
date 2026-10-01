@@ -85,7 +85,20 @@ const Admin: React.FC = () => {
     fetch('http://localhost:4000/api/admin', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
-      .then(res => res.json())
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const message = data.error || `Máy chủ trả về lỗi ${res.status}.`;
+          if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('currentUser');
+            localStorage.removeItem('isAdmin');
+            throw new Error('Phiên quản trị đã hết hạn hoặc không đủ quyền. Vui lòng đăng nhập lại.');
+          }
+          throw new Error(message);
+        }
+        return data;
+      })
       .then(data => {
         if(data.error) throw new Error(data.error);
         setProducts(data.products || []);
@@ -112,8 +125,9 @@ const Admin: React.FC = () => {
       })
       .catch(err => {
         console.error('Failed to load admin data:', err);
-        alert('Không th? k?t n?i d?n máy ch? CSDL ho?c b?n không có quy?n truy c?p!');
-        window.location.href = '/login';
+        const message = err instanceof Error ? err.message : 'Lỗi không xác định.';
+        alert(`Không thể tải dữ liệu quản trị: ${message}`);
+        if (message.includes('Phiên quản trị')) window.location.href = '/login';
       });
   };
 
