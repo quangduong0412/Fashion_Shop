@@ -1,11 +1,13 @@
 import { Request, Response } from 'express';
 import prisma from '../db';
+import { readVariantAttributeDefinitions, serializeVariant } from '../services/productVariants';
 
 export const getAdminData = async (req: Request, res: Response) => {
   try {
     const products = await prisma.sanPham.findMany({
         include: {
-            loaiHang: true
+            loaiHang: true,
+            bienThes: true
         }
     });
     
@@ -51,7 +53,8 @@ export const getAdminData = async (req: Request, res: Response) => {
         category: p.loaiHang?.TenLoaiHang?.toLowerCase(),
         categoryName: p.loaiHang?.TenLoaiHang,
         status: p.TrangThai || 'Đang mở bán',
-        variants: p.bienThes || []
+        categoryAttributes: readVariantAttributeDefinitions(p.loaiHang?.ThuocTinhBienThe),
+        variants: (p.bienThes || []).map((variant: any) => serializeVariant(variant, p.DonGiaBan))
     }));
 
     const formattedUsers = users.map((u: any) => ({
@@ -81,7 +84,8 @@ export const getAdminData = async (req: Request, res: Response) => {
 
     const formattedCategories = categories.map((c: any) => ({
         id: c.MaLoaiHang,
-        name: c.TenLoaiHang
+        name: c.TenLoaiHang,
+        variantAttributes: readVariantAttributeDefinitions(c.ThuocTinhBienThe)
     }));
 
     res.json({

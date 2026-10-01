@@ -17,7 +17,7 @@ export default function CartScreen() {
 
   const changeQuantity = async (index: number, amount: number) => {
     const next = [...cart];
-    next[index].quantity = Math.max(1, next[index].quantity + amount);
+    next[index].quantity = Math.max(1, Math.min(next[index].quantity + amount, next[index].variantQuantity ?? Number.POSITIVE_INFINITY));
     setCart(next);
     await saveCart(next);
   };
@@ -116,7 +116,7 @@ export default function CartScreen() {
             {/* Cart Items */}
             <View style={styles.itemsContainer}>
               {cart.map((item, index) => (
-                <View style={styles.cartItem} key={item.id}>
+                  <View style={styles.cartItem} key={`${item.id}-${item.variantId || `${item.color || ''}-${item.size || ''}`}`}>
                   <View style={styles.itemImageWrapper}>
                     <Image source={item.image} style={styles.itemImage} contentFit="cover" />
                   </View>
@@ -128,7 +128,15 @@ export default function CartScreen() {
                           <MaterialIcons name="close" size={18} color={Colors.light.outline} />
                         </Pressable>
                       </View>
-                      <Text style={styles.itemVariant}>Size {item.size || 'M'} • {item.color || 'Đỏ'}</Text>
+                      <Text style={styles.itemVariant}>
+                        {[
+                          item.color,
+                          ...Object.entries(item.attributes || {}).map(([key, value]) => {
+                            const definition = item.categoryAttributes?.find(attribute => attribute.key === key);
+                            return `${definition?.label || key}: ${value}${definition?.unit ? ` ${definition.unit}` : ''}`;
+                          })
+                        ].filter(Boolean).join(' · ') || item.size || 'Mặc định'}
+                      </Text>
                     </View>
                     <View style={styles.itemPriceRow}>
                       <Text style={styles.itemPrice}>{formatPrice(item.price)}</Text>

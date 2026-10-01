@@ -4,6 +4,8 @@ export default function EmployeesView({ employees, branches, roles, onSave, onDe
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<any>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordsList, setShowPasswordsList] = useState<Record<string, boolean>>({});
 
   const filtered = employees.filter(e =>
     (e.name||'').toLowerCase().includes(search.toLowerCase()) ||
@@ -29,7 +31,7 @@ export default function EmployeesView({ employees, branches, roles, onSave, onDe
           <button className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 shadow-sm">
             <span className="material-symbols-outlined text-base">file_download</span> Xuất danh sách
           </button>
-          <button onClick={()=>{setEditing({}); setShowModal(true);}} className="flex items-center gap-2 px-5 py-2.5 bg-blue-700 text-white rounded-xl text-sm font-bold shadow-md hover:bg-blue-800">
+          <button onClick={()=>{setEditing({}); setShowPassword(false); setShowModal(true);}} className="flex items-center gap-2 px-5 py-2.5 bg-blue-700 text-white rounded-xl text-sm font-bold shadow-md hover:bg-blue-800">
             <span className="material-symbols-outlined text-base">person_add</span> Thêm nhân viên
           </button>
         </div>
@@ -72,6 +74,7 @@ export default function EmployeesView({ employees, branches, roles, onSave, onDe
                 <th className="py-4 px-5">Chi nhánh</th>
                 <th className="py-4 px-5">Điện thoại</th>
                 <th className="py-4 px-5">Tài khoản</th>
+                <th className="py-4 px-5">Mật khẩu</th>
                 <th className="py-4 px-5 text-right">Thao tác</th>
               </tr>
             </thead>
@@ -89,6 +92,14 @@ export default function EmployeesView({ employees, branches, roles, onSave, onDe
                   <td className="py-4 px-5 text-gray-600">{emp.branchName||'—'}</td>
                   <td className="py-4 px-5 text-gray-500">{emp.phone||'—'}</td>
                   <td className="py-4 px-5 text-gray-500 font-mono text-xs">{emp.username||'—'}</td>
+                  <td className="py-4 px-5 text-gray-500 font-mono text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate max-w-[100px]">{showPasswordsList[emp.id] ? (emp.password || '—') : '••••••••'}</span>
+                      <button onClick={() => setShowPasswordsList(p => ({...p, [emp.id]: !p[emp.id]}))} className="text-gray-400 hover:text-gray-600 focus:outline-none">
+                        <span className="material-symbols-outlined text-sm">{showPasswordsList[emp.id] ? 'visibility_off' : 'visibility'}</span>
+                      </button>
+                    </div>
+                  </td>
                   <td className="py-4 px-5 text-right">
                     <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={()=>{setEditing(emp); setShowModal(true);}} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
@@ -101,7 +112,7 @@ export default function EmployeesView({ employees, branches, roles, onSave, onDe
                   </td>
                 </tr>
               ))}
-              {filtered.length===0&&<tr><td colSpan={7} className="py-12 text-center text-gray-400"><span className="material-symbols-outlined text-5xl block mb-2 opacity-30">badge</span>Không có nhân viên nào.</td></tr>}
+              {filtered.length===0&&<tr><td colSpan={8} className="py-12 text-center text-gray-400"><span className="material-symbols-outlined text-5xl block mb-2 opacity-30">badge</span>Không có nhân viên nào.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -121,7 +132,7 @@ export default function EmployeesView({ employees, branches, roles, onSave, onDe
               <div><label className="block text-sm font-bold text-gray-700 mb-1">Điện thoại:</label><input value={editing?.phone||''} onChange={e=>setEditing({...editing,phone:e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"/></div>
               <div className="col-span-2"><label className="block text-sm font-bold text-gray-700 mb-1">Địa chỉ:</label><input value={editing?.address||''} onChange={e=>setEditing({...editing,address:e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"/></div>
               <div><label className="block text-sm font-bold text-gray-700 mb-1">Tên đăng nhập:</label><input value={editing?.username||''} onChange={e=>setEditing({...editing,username:e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"/></div>
-              <div><label className="block text-sm font-bold text-gray-700 mb-1">Mật khẩu:</label><input type="password" value={editing?.password||''} onChange={e=>setEditing({...editing,password:e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder={editing?.id?'(Không đổi)':'Nhập mật khẩu'}/></div>
+              <div><label className="block text-sm font-bold text-gray-700 mb-1">Mật khẩu:</label><div className="relative"><input type={showPassword?'text':'password'} value={editing?.password||''} onChange={e=>setEditing({...editing,password:e.target.value})} className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm" placeholder={editing?.id?'Nhập mật khẩu mới nếu cần đổi':'Nhập mật khẩu'}/><button type="button" aria-label={showPassword?'Ẩn mật khẩu':'Hiện mật khẩu'} title={showPassword?'Ẩn mật khẩu':'Hiện mật khẩu'} onClick={()=>setShowPassword(v=>!v)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-800"><span className="material-symbols-outlined text-lg">{showPassword?'visibility_off':'visibility'}</span></button></div></div>
               <div className="col-span-2 flex justify-end gap-3 mt-4 pt-4 border-t border-gray-100">
                 <button type="button" onClick={()=>setShowModal(false)} className="px-5 py-2.5 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200">Hủy</button>
                 <button type="submit" className="px-5 py-2.5 bg-blue-700 text-white font-bold rounded-lg hover:bg-blue-800">Lưu</button>

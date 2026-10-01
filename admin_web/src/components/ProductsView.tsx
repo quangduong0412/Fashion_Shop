@@ -13,21 +13,6 @@ export default function ProductsView({ products, categories, searchProduct, setS
   const [categoryFilter, setCategoryFilter] = React.useState('all');
   const [statusFilter, setStatusFilter] = React.useState('all');
 
-  const renderVariants = (product: any) => {
-    if (product.variants && product.variants.length > 0) {
-      return (
-        <div className="flex flex-wrap gap-1 mt-1">
-          {product.variants.map((v: any, i: number) => (
-            <span key={i} className="text-xs font-semibold bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded border border-gray-200">
-              {v.KichCo || v.size}: <span className={v.SoLuong > 0 ? 'text-green-600' : 'text-red-600'}>{v.SoLuong}</span>
-            </span>
-          ))}
-        </div>
-      );
-    }
-    return <span className="text-xs text-gray-500">Ton: <span className="font-bold text-gray-800">{product.quantity || product.SoLuong || 0}</span></span>;
-  };
-
   const filtered = products.filter(p => {
     const matchSearch = (p.name || p.TenSanPham || '').toLowerCase().includes(searchProduct.toLowerCase()) || String(p.id || '').includes(searchProduct);
     const matchCat = categoryFilter === 'all' || String(p.categoryId || p.MaLoaiHang) === categoryFilter;
@@ -39,7 +24,7 @@ export default function ProductsView({ products, categories, searchProduct, setS
     <div className="flex flex-col w-full pb-10">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800 font-serif mb-1">Sản phẩm & Tồn kho</h1>
+          <h1 className="text-3xl font-bold text-gray-800 mb-1">Sản phẩm & Tồn kho</h1>
           <p className="text-sm text-gray-500">Quản lý danh mục, biến thể và trạng thái hiển thị của các bộ sưu tập.</p>
         </div>
         <div className="flex gap-2 self-start lg:self-auto">
@@ -73,6 +58,7 @@ export default function ProductsView({ products, categories, searchProduct, setS
             <option value="all">Tất cả Trạng thái</option>
             <option value="Đang mở bán">Đang mở bán</option>
             <option value="Hết hàng">Hết hàng</option>
+            <option value="Tạm ngừng">Tạm ngừng</option>
             <option value="Ngừng kinh doanh">Ngừng kinh doanh</option>
           </select>
         </div>
@@ -81,12 +67,12 @@ export default function ProductsView({ products, categories, searchProduct, setS
       <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-gray-50 text-gray-400 text-xs font-bold uppercase tracking-wider border-b border-gray-100">
+            <thead className="bg-gray-50 text-gray-500 text-xs font-bold uppercase tracking-wider border-b border-gray-100">
               <tr>
                 <th className="py-4 px-5">Sản phẩm</th>
-                <th className="py-4 px-5">Biến thể / Tồn kho</th>
                 <th className="py-4 px-5">Danh mục</th>
                 <th className="py-4 px-5">Giá bán</th>
+                <th className="py-4 px-5">Tồn kho</th>
                 <th className="py-4 px-5">Trạng thái</th>
                 <th className="py-4 px-5 text-right">Thao tác</th>
               </tr>
@@ -97,19 +83,20 @@ export default function ProductsView({ products, categories, searchProduct, setS
                   <td className="py-4 px-5">
                     <div className="flex items-center gap-3">
                       <div className="w-14 h-14 rounded-xl bg-gray-100 shrink-0 overflow-hidden border border-gray-200">
-                        <img src={"http://localhost:4000" + (p.image || p.AnhDaiDien || '')} onError={e => { e.currentTarget.src = 'https://placehold.co/100x100/f3f4f6/9ca3af?text=SP'; }} alt={p.name || p.TenSanPham} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
+                        <img src={/^https?:/.test(p.image || p.AnhDaiDien || '') ? (p.image || p.AnhDaiDien) : "http://localhost:4000" + (p.image || p.AnhDaiDien || '')} onError={e => { e.currentTarget.src = 'https://placehold.co/100x100/f3f4f6/9ca3af?text=SP'; }} alt={p.name || p.TenSanPham} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
                       </div>
                       <div>
                         <div className="font-bold text-gray-800 max-w-xs truncate">{p.name || p.TenSanPham}</div>
-                        <div className="text-xs text-gray-400 uppercase tracking-widest mt-0.5">Mã SP: {p.id}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="py-4 px-5">{renderVariants(p)}</td>
                   <td className="py-4 px-5"><span className="text-xs font-semibold text-gray-600 bg-gray-100 px-2.5 py-1 rounded-full border border-gray-200">{p.categoryName || p.category || 'N/A'}</span></td>
                   <td className="py-4 px-5">
-                    <div className="font-bold text-gray-800">{(p.price || p.GiaBan || 0).toLocaleString('vi-VN')} d</div>
-                    {p.GiaGoc > 0 && p.GiaGoc > (p.price || p.GiaBan || 0) && <div className="text-xs text-gray-400 line-through">{p.GiaGoc.toLocaleString('vi-VN')} d</div>}
+                    <div className="font-bold text-gray-800">{(p.price || p.GiaBan || 0).toLocaleString('vi-VN')} đ</div>
+                    {p.GiaGoc > 0 && p.GiaGoc > (p.price || p.GiaBan || 0) && <div className="text-xs text-gray-400 line-through">{p.GiaGoc.toLocaleString('vi-VN')} đ</div>}
+                  </td>
+                  <td className="py-4 px-5">
+                    <span className="font-bold text-gray-800">{p.quantity ?? p.SoLuong ?? 0}</span>
                   </td>
                   <td className="py-4 px-5">
                     <span className={"inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold " + ((p.status === 'Đang mở bán' || !p.status) ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700')}>

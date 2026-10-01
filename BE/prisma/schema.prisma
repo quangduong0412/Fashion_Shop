@@ -68,9 +68,10 @@ model KhachHang {
 }
 
 model LoaiHang {
-  MaLoaiHang  Int       @id @default(autoincrement())
-  TenLoaiHang String    @db.VarChar(255)
-  sanPhams    SanPham[]
+  MaLoaiHang       Int       @id @default(autoincrement())
+  TenLoaiHang      String    @db.VarChar(255)
+  ThuocTinhBienThe Json?
+  sanPhams         SanPham[]
 
   @@map("loaihang")
 }
@@ -121,12 +122,16 @@ model SanPham {
 }
 
 model BienTheSanPham {
-  MaBienThe Int     @id @default(autoincrement())
-  MaSanPham Int
-  KichCo    String  @db.VarChar(10)
-  MauSac    String? @db.VarChar(50)
-  SoLuong   Int     @default(0)
-  sanPham   SanPham @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, onDelete: Cascade, map: "FK__BienThe__MaSan__XX")
+  MaBienThe  Int     @id @default(autoincrement())
+  MaSanPham  Int
+  SKU        String? @unique @db.VarChar(100)
+  KichCo     String  @db.VarChar(10)
+  MauSac     String? @db.VarChar(50)
+  ThuocTinh  Json?
+  DonGia     Float?
+  SoLuong    Int     @default(0)
+  TrangThai  String  @default("Đang mở bán") @db.VarChar(50)
+  sanPham    SanPham @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, onDelete: Cascade, map: "FK__BienThe__MaSan__XX")
 
   @@map("bienthesanpham")
 }

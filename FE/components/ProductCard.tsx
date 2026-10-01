@@ -10,41 +10,36 @@ export default function ProductCard({ product, onAdd, onPress, style }: { produc
 
   // Default image if not provided
   const imageUrl = product.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCugn3XY3FkOSHN2WeES-Ap7FYbm7EusG8QbtwRn2xGLjC9Ctwyln7G3btams8-jre1JlAXhdR2l-8s6xLn0sq4BLeMhdaylfMqWkiTnr-N14sMGjUcZ9N0Y6xLy8esl8KDunlSJXmQ7B-FNbdx41zfDTtqGTrqt2wcCiK0PsRakLdbGZjO8py-kG5Gw8N1n-VOHc9LOulCboo7d23SHHVwzRvKMSIULc0wrHSJF3gEKjlAGap5IJajlg';
-  const category = 'FASHION HEAVEN';
-
+  const category = product.category || 'FASHION HEAVEN';
   return (
     <Pressable style={[styles.card, style]} onPress={onPress}>
       <View style={styles.imageContainer}>
         <Image source={imageUrl} style={styles.image} contentFit="cover" />
-        {/* Badge */}
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>Mới</Text>
-        </View>
         {/* Wishlist Button */}
-        <Pressable 
-          style={styles.wishlistBtn} 
+        <Pressable
+          style={styles.wishlistBtn}
           onPress={() => setIsFavorite(!isFavorite)}
         >
-          <MaterialIcons 
-            name={isFavorite ? "favorite" : "favorite-border"} 
-            size={18} 
-            color={isFavorite ? Colors.light.primary : Colors.light.outline} 
+          <MaterialIcons
+            name={isFavorite ? "favorite" : "favorite-border"}
+            size={18}
+            color={isFavorite ? Colors.light.primary : Colors.light.outline}
           />
         </Pressable>
       </View>
       <View style={styles.body}>
         <View>
           <Text style={styles.categoryText}>{category}</Text>
-          <Text style={styles.name} numberOfLines={1}>{product.name}</Text>
+          <Text style={styles.name} numberOfLines={2}>{product.name}</Text>
+          <Text style={styles.sku}>Mã SP{String(product.id).padStart(4, '0')} · Tồn {product.quantity} · {product.status || 'Đang mở bán'}</Text>
         </View>
         <View style={styles.priceRow}>
           <View>
             <Text style={styles.price}>{formatPrice(product.price)}</Text>
-            <View style={styles.ratingRow}>
-              <MaterialIcons name="star" size={13} color={Colors.light.tertiary} />
-              <Text style={styles.ratingText}>4.9</Text>
-            </View>
           </View>
+          <Pressable style={styles.addBtn} onPress={onAdd} accessibilityLabel={product.variants?.length ? 'Chọn biến thể' : 'Thêm vào giỏ'}>
+            <MaterialIcons name={product.variants?.length ? 'tune' : 'add'} size={18} color={Colors.light.onPrimary} />
+          </Pressable>
         </View>
       </View>
     </Pressable>
@@ -75,22 +70,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  badge: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    backgroundColor: Colors.light.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 9999,
-  },
-  badgeText: {
-    color: Colors.light.onPrimary,
-    fontFamily: 'Inter',
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
   wishlistBtn: {
     position: 'absolute',
     top: 10,
@@ -120,6 +99,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.light.onSurface,
   },
+  sku: { fontFamily: 'Inter', fontSize: 10, color: Colors.light.onSurfaceVariant, marginTop: 4 },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -131,17 +111,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: Colors.light.primary,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  ratingText: {
-    fontFamily: 'Inter',
-    fontSize: 11,
-    color: Colors.light.onSurfaceVariant,
-    marginLeft: 2,
   },
   addBtn: {
     width: 36,
@@ -156,4 +125,4 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-});
+});

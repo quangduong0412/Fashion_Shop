@@ -1,11 +1,11 @@
 import { Request, Response } from 'express';
 import prisma from '../db';
-import bcrypt from 'bcryptjs';
+import { readVariantAttributeDefinitions, serializeVariant } from '../services/productVariants';
 
 export const getAdminData = async (req: Request, res: Response) => {
   try {
     const products = await prisma.sanPham.findMany({
-      include: { loaiHang: true, kho: true, nhaCungCap: true }
+      include: { loaiHang: true, kho: true, nhaCungCap: true, bienThes: true }
     });
     const users = await prisma.khachHang.findMany();
     const orders = await prisma.phieuXuat.findMany({
@@ -34,7 +34,7 @@ export const getAdminData = async (req: Request, res: Response) => {
     });
 
     res.json({
-      categories: categories.map(c => ({ id: c.MaLoaiHang, name: c.TenLoaiHang })),
+      categories: categories.map(c => ({ id: c.MaLoaiHang, name: c.TenLoaiHang, variantAttributes: readVariantAttributeDefinitions(c.ThuocTinhBienThe) })),
       warehouses: warehouses.map(w => ({ id: w.MaKho, name: w.TenKho })),
       products: products.map(p => ({
         id: p.MaSanPham,
@@ -50,7 +50,9 @@ export const getAdminData = async (req: Request, res: Response) => {
         nccName: p.nhaCungCap?.TenNCC,
         status: p.TrangThai,
         originalPrice: p.DonGiaNhap,
-        quantity: p.SoLuong
+        quantity: p.SoLuong,
+        categoryAttributes: readVariantAttributeDefinitions(p.loaiHang?.ThuocTinhBienThe),
+        variants: p.bienThes.map(v => serializeVariant(v, p.DonGiaBan))
       })),
       users: users.map(u => ({
         id: u.MaKhachHang,
@@ -58,6 +60,7 @@ export const getAdminData = async (req: Request, res: Response) => {
         email: u.Email,
         phone: u.DienThoai,
         address: u.DiaChi,
+        password: u.MatKhau,
         HangThanhVien: u.HangThanhVien,
         totalSpent: 0 // TODO: calculate from orders
       })),
@@ -131,7 +134,8 @@ export const getAdminData = async (req: Request, res: Response) => {
         branchName: e.chiNhanh?.TenChiNhanh,
         phone: e.DienThoai,
         address: e.DiaChi,
-        username: e.account?.UserName
+        username: e.account?.UserName,
+        password: e.account?.PassWord
       })),
       importReceipts: importReceipts.map(r => ({
         id: r.MaPhieuNhap,
@@ -351,12 +355,11 @@ export const createEmployee = async (req: Request, res: Response) => {
     });
 
     if (username && password) {
-      const hashedPassword = await bcrypt.hash(password, 10);
       await prisma.account.create({
         data: {
           MaNhanVien: employee.MaNhanVien,
           UserName: username,
-          PassWord: hashedPassword,
+          PassWord: password,
           Role: 'ADMIN' // Always grant ADMIN role for staff login to dashboard
         }
       });
@@ -385,19 +388,18 @@ export const updateEmployee = async (req: Request, res: Response) => {
       if (account) {
         let updateData: any = { UserName: username };
         if (password) {
-          updateData.PassWord = await bcrypt.hash(password, 10);
+          updateData.PassWord = password;
         }
         await prisma.account.update({
           where: { MaNhanVien: Number(id) },
           data: updateData
         });
       } else if (password) {
-        const hashedPassword = await bcrypt.hash(password, 10);
         await prisma.account.create({
           data: {
             MaNhanVien: Number(id),
             UserName: username,
-            PassWord: hashedPassword,
+            PassWord: password,
             Role: 'ADMIN'
           }
         });

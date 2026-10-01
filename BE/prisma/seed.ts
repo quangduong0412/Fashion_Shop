@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { syncProductCategoryAttributes } from '../src/productCategoryAttributes';
 
 const prisma = new PrismaClient();
 
@@ -11,6 +12,7 @@ async function main() {
   });
 
   if (existingAdmin) {
+    await syncProductCategoryAttributes();
     console.log('Dữ liệu đã được seed trước đó. Bỏ qua quá trình seed để tránh lỗi trùng lặp.');
     return;
   }
@@ -85,6 +87,9 @@ async function main() {
   const loaiDongHo = await prisma.loaiHang.create({ data: { TenLoaiHang: 'Đồng Hồ' } });
   const loaiKinh = await prisma.loaiHang.create({ data: { TenLoaiHang: 'Kính Mát' } });
   const loaiQuanAo = await prisma.loaiHang.create({ data: { TenLoaiHang: 'Quần Áo Nam Nữ' } });
+  await syncProductCategoryAttributes();
+  const loaiAoKhoac = await prisma.loaiHang.findFirstOrThrow({ where: { TenLoaiHang: 'Áo khoác / Blazer' } });
+  const loaiGiayDep = await prisma.loaiHang.findFirstOrThrow({ where: { TenLoaiHang: 'Giày dép' } });
 
   // 5. Nhà Cung Cấp
   const ncc = await prisma.nhaCungCap.create({
@@ -105,8 +110,8 @@ async function main() {
       { TenSanPham: 'Áo Dài Trắng Truyền Thống', DonGiaNhap: 300000, DonGiaBan: 550000, SoLuong: 50, Anh: '/images/ao-dai.jpg', MaLoaiHang: loaiQuanAo.MaLoaiHang, MaKho: kho.MaKho, MaNCC: ncc.MaNCC },
       { TenSanPham: 'Áo Sơ Mi Nam', DonGiaNhap: 500000, DonGiaBan: 850000, SoLuong: 30, Anh: '/images/ao-somi-nam.jpg', MaLoaiHang: loaiQuanAo.MaLoaiHang, MaKho: kho.MaKho, MaNCC: ncc.MaNCC },
       { TenSanPham: 'Áo Thun Nữ', DonGiaNhap: 150000, DonGiaBan: 250000, SoLuong: 40, Anh: '/images/ao-thun-nu.png', MaLoaiHang: loaiQuanAo.MaLoaiHang, MaKho: kho.MaKho, MaNCC: ncc.MaNCC },
-      { TenSanPham: 'Áo Vest Nam Hiện Đại', DonGiaNhap: 1500000, DonGiaBan: 2150000, SoLuong: 10, Anh: '/images/ao-vest-nam.jpg', MaLoaiHang: loaiQuanAo.MaLoaiHang, MaKho: kho.MaKho, MaNCC: ncc.MaNCC },
-      { TenSanPham: 'Giày Boots Nam', DonGiaNhap: 1200000, DonGiaBan: 1850000, SoLuong: 12, Anh: '/images/giay-boots-nam.jpg', MaLoaiHang: loaiQuanAo.MaLoaiHang, MaKho: kho.MaKho, MaNCC: ncc.MaNCC },
+      { TenSanPham: 'Áo Vest Nam Hiện Đại', DonGiaNhap: 1500000, DonGiaBan: 2150000, SoLuong: 10, Anh: '/images/ao-vest-nam.jpg', MaLoaiHang: loaiAoKhoac.MaLoaiHang, MaKho: kho.MaKho, MaNCC: ncc.MaNCC },
+      { TenSanPham: 'Giày Boots Nam', DonGiaNhap: 1200000, DonGiaBan: 1850000, SoLuong: 12, Anh: '/images/giay-boots-nam.jpg', MaLoaiHang: loaiGiayDep.MaLoaiHang, MaKho: kho.MaKho, MaNCC: ncc.MaNCC },
     ]
   });
 

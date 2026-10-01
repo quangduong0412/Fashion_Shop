@@ -4,6 +4,10 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fashionheaven_super_secret_key';
+const isBcryptHash = (value: string) => /^\$2[aby]\$/.test(value);
+const verifyPassword = (storedPassword: string, candidate: string) =>
+  isBcryptHash(storedPassword) ? bcrypt.compare(candidate, storedPassword) : Promise.resolve(storedPassword === candidate);
+const hashPassword = (password: string) => bcrypt.hash(password, 10);
 
 export const registerUser = async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
@@ -26,10 +30,8 @@ export const registerUser = async (req: Request, res: Response) => {
       return;
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-
     const newUser = await prisma.khachHang.create({
-      data: { TenKhach: name, Email: email, MatKhau: hashedPassword }
+      data: { TenKhach: name, Email: email, MatKhau: await hashPassword(password) }
     });
 
     // Generate token
@@ -48,16 +50,7 @@ export const loginUser = async (req: Request, res: Response) => {
     // 1. Kiểm tra Admin từ bảng Account (username = email truyền vào)
     const admin = await prisma.account.findUnique({ where: { UserName: email } });
     if (admin) {
-      let isMatch = false;
-      // Hỗ trợ cả mật khẩu bcrypt và plaintext (từ seed)
-      if (admin.PassWord.startsWith('$2a$') || admin.PassWord.startsWith('$2b$')) {
-        isMatch = await bcrypt.compare(password, admin.PassWord);
-      } else {
-        isMatch = (admin.PassWord === password);
-        if (isMatch) {
-          // Có thể update hash lại vào DB ở đây nếu muốn chuẩn hóa
-        }
-      }
+      const isMatch = await verifyPassword(admin.PassWord, password);
 
       if (isMatch) {
         if (admin.Role.toUpperCase() !== 'ADMIN') {
@@ -79,12 +72,7 @@ export const loginUser = async (req: Request, res: Response) => {
     // 2. Kiểm tra Khách hàng thông thường
     const user = await prisma.khachHang.findUnique({ where: { Email: email } });
     if (user) {
-      let isMatch = false;
-      if (user.MatKhau.startsWith('$2a$') || user.MatKhau.startsWith('$2b$')) {
-        isMatch = await bcrypt.compare(password, user.MatKhau);
-      } else {
-        isMatch = (user.MatKhau === password);
-      }
+      const isMatch = await verifyPassword(user.MatKhau, password);
 
       if (isMatch) {
         const token = jwt.sign({ id: user.MaKhachHang, email: user.Email, role: 'user' }, JWT_SECRET, { expiresIn: '7d' });
@@ -176,10 +164,8 @@ export const createUser = async (req: Request, res: Response) => {
       return;
     }
 
-    const hashedPassword = await bcrypt.hash(password || '123456', 10); // default password if not provided
-
     const newUser = await prisma.khachHang.create({
-      data: { TenKhach: name, Email: email, DienThoai: phone, MatKhau: hashedPassword, HangThanhVien: 'Thành viên mới' }
+      data: { TenKhach: name, Email: email, DienThoai: phone, MatKhau: await hashPassword(password || '123456'), HangThanhVien: 'Thành viên mới' }
     });
 
     res.status(201).json(newUser);
@@ -205,7 +191,7 @@ export const updateUser = async (req: Request, res: Response) => {
     }
 
     if (password && password.trim() !== '') {
-      dataToUpdate.MatKhau = await bcrypt.hash(password, 10);
+      dataToUpdate.MatKhau = await hashPassword(password);
     }
 
     const user = await prisma.khachHang.update({
@@ -251,20 +237,14 @@ export const changePassword = async (req: Request, res: Response) => {
         return;
       }
 
-      let isMatch = false;
-      if (admin.PassWord.startsWith('$2a$') || admin.PassWord.startsWith('$2b$')) {
-        isMatch = await bcrypt.compare(oldPassword, admin.PassWord);
-      } else {
-        isMatch = (admin.PassWord === oldPassword);
-      }
+      const isMatch = await verifyPassword(admin.PassWord, oldPassword);
 
       if (!isMatch) {
         res.status(400).json({ error: 'Mật khẩu cũ không đúng' });
         return;
       }
 
-      const hashed = await bcrypt.hash(newPassword, 10);
-      await prisma.account.update({ where: { MaNhanVien: userId }, data: { PassWord: hashed } });
+      await prisma.account.update({ where: { MaNhanVien: userId }, data: { PassWord: await hashPassword(newPassword) } });
       res.json({ message: 'Đổi mật khẩu thành công' });
       return;
     }
@@ -275,20 +255,14 @@ export const changePassword = async (req: Request, res: Response) => {
       return;
     }
 
-    let isMatch = false;
-    if (user.MatKhau.startsWith('$2a$') || user.MatKhau.startsWith('$2b$')) {
-      isMatch = await bcrypt.compare(oldPassword, user.MatKhau);
-    } else {
-      isMatch = (user.MatKhau === oldPassword);
-    }
+    const isMatch = await verifyPassword(user.MatKhau, oldPassword);
 
     if (!isMatch) {
       res.status(400).json({ error: 'Mật khẩu cũ không đúng' });
       return;
     }
 
-    const hashed = await bcrypt.hash(newPassword, 10);
-    await prisma.khachHang.update({ where: { MaKhachHang: userId }, data: { MatKhau: hashed } });
+    await prisma.khachHang.update({ where: { MaKhachHang: userId }, data: { MatKhau: await hashPassword(newPassword) } });
     res.json({ message: 'Đổi mật khẩu thành công' });
   } catch (error) {
     res.status(500).json({ error: 'Lỗi server' });

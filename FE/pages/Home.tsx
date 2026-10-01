@@ -1,9 +1,11 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, ScrollView } from 'react-native';
 import { Colors } from '../constants/theme';
 import { MaterialIcons } from '@expo/vector-icons';
 import ProductCard from '../components/ProductCard';
+import { fetchProducts, Product } from '../components/fashion-data';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const categories = [
@@ -18,14 +20,18 @@ const collections = [
   { id: '2', title: 'Thời trang công sở', subtitle: 'Thanh lịch và chuyên nghiệp cho không gian làm việc đẳng cấp', tag: 'Bestseller', tagColor: Colors.light.secondary, image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAVbBmPpZxJIAUJWeynHPttJbDlwdH-xo3PL49-b76rjlXOEqbQjOz78VqRhvnAQPdz_BJnI8I7CZDQr_2PyAhtTI_5YN7jpJdE30-d3pEvSK183zkBYIMB_I0j9zkpwWXdGAPkbT4TKs-tHZbFQycbohAtFdCxOhvmKqHWLeRB9WMdAh8fXex7QoqgWNgKYhbpZhDh8ZN3WCO85sQ434Fmm618FWu7Yei72sThdlzsqyzX_6Wr1ufYfA' },
 ];
 
-const dummyProducts = [
-  { id: 1, name: 'Đầm lụa dự tiệc Midnight Navy', price: 1250000, image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDbxNegznXklaFHYSCGnKoMeyo40oaw4sg76naAzLFGn2d6dJnpLrkg7SzZceXeD2-KvEJGnxH8f-6-E9Nqwlln2ouYTMGOwNUjyYeg8YC4OSJfTPdvaXV8a7CY51SFAKSJarubHjoABzVrl09yLHKxMV9oLCclUSdxSMICdowgilOtMSTJVEl7pNrYAB29nOL0iCtwoYdlN90fecI7q2E1Zt17ffx7TS8-4EH4DXIouDw1QfG1aCMXdw' },
-  { id: 2, name: 'Áo vest Blazer dáng suông Chic', price: 890000, image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCGlxheEhBiKJp_km8vvVb4bj2eFB3NP1T5fA97J9tqduMqCsuzxxPJBN-CLbmkYkKDJK6B96qdxnjQhmu1u6Owp-Bz2r2L9sAt_2DijCcy5sK83kfNhCifKaRz7eILyUi2xvUEI-cP4iaaIYEWYV0_WiLIs20mLHPEEYjQlr1vBaoqX0gKi0w2-dBMNpD-8_rISI6H6HQXcI69WWaftUk7tILGP-ST3_ZjOL4AQhHqgAQeTqzy-htD8Q' },
-];
-
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [trendingProducts, setTrendingProducts] = useState<Product[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    fetchProducts().then(items => {
+      if (active) setTrendingProducts(items.slice(0, 4));
+    }).catch(error => console.error('Unable to load home products:', error));
+    return () => { active = false; };
+  }, []);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -130,11 +136,11 @@ export default function HomeScreen() {
           <Text style={styles.sectionLink}>Xem tất cả <MaterialIcons name="chevron-right" size={14} /></Text>
         </View>
         <View style={styles.productGrid}>
-          {dummyProducts.map(p => (
+          {trendingProducts.map(p => (
             <View style={styles.productCol} key={p.id}>
               <ProductCard 
-                product={p as any} 
-                onAdd={() => {}} 
+                product={p}
+                onAdd={() => router.push(`/product/${p.id}` as never)}
                 onPress={() => router.push(`/product/${p.id}` as never)} 
               />
             </View>

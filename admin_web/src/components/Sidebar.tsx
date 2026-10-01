@@ -13,20 +13,20 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
   };
 
   return (
-    <aside className="fixed left-0 top-0 h-full w-64 bg-[#1e202f] text-white z-50 flex flex-col justify-between shadow-[0_1px_8px_rgba(0,0,0,0.2)]">
-      <div className="flex flex-col">
-        <div className="h-20 px-6 flex items-center border-b border-white/10">
+    <aside className="fixed left-0 top-0 h-screen w-64 bg-[#1e202f] text-white z-50 flex flex-col overflow-hidden shadow-[0_1px_8px_rgba(0,0,0,0.2)]">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="h-20 px-6 flex items-center border-b border-white/10 shrink-0">
           <div className="flex flex-col">
             <span className="font-serif text-xl tracking-wide text-white font-bold">FashionHeaven</span>
             <span className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">Luxury Admin</span>
           </div>
         </div>
         
-        <div className="px-6 py-4 mt-2">
+        <div className="px-6 py-4 mt-2 shrink-0">
           <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Hệ Thống Quản Trị</span>
         </div>
         
-        <nav className="flex flex-col px-3 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+        <nav className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3 overscroll-contain">
           <a className={getClasses('dashboard')} onClick={() => setActiveTab('dashboard')}>
             <span className="material-symbols-outlined text-[20px]">dashboard</span>
             <span className="text-sm">Tổng quan</span>
@@ -96,13 +96,13 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
         </nav>
       </div>
       
-      <div className="p-4 border-t border-white/10">
-        <div className="bg-white/5 p-3 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-white/10 transition border border-white/10" onClick={() => {
+      <div className="shrink-0 p-4 border-t border-white/10 bg-[#1e202f] pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <button type="button" className="w-full bg-white/5 p-3 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-white/10 transition border border-white/10" onClick={() => {
           localStorage.removeItem('currentUser'); localStorage.removeItem('isAdmin'); localStorage.removeItem('token'); window.location.href = '/login';
         }}>
           <span className="material-symbols-outlined text-[20px] text-gray-400">logout</span>
           <span className="text-sm text-gray-300 font-medium">Đăng xuất</span>
-        </div>
+        </button>
       </div>
     </aside>
   );

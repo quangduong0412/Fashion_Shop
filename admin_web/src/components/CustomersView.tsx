@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 interface Props { users: any[]; }
 export default function CustomersView({ users }: Props) {
   const [search, setSearch] = useState('');
+  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const filtered = users.filter(u => (u.name||'').toLowerCase().includes(search.toLowerCase()) || (u.email||'').toLowerCase().includes(search.toLowerCase()) || (u.phone||'').includes(search));
   const vipCount = users.filter(u => ['Diamond','Platinum','Gold'].includes(u.HangThanhVien)).length;
   const VIP_BADGE: Record<string,(props:{children:React.ReactNode})=>React.ReactElement> = {
@@ -41,7 +42,7 @@ export default function CustomersView({ users }: Props) {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 text-gray-400 text-xs font-bold uppercase tracking-wider border-b border-gray-100">
-              <tr><th className="py-4 px-5">Mã KH</th><th className="py-4 px-5">Khách hàng</th><th className="py-4 px-5">Hạng VIP</th><th className="py-4 px-5 text-right">Tổng chi tiêu</th><th className="py-4 px-5">Email</th><th className="py-4 px-5">Điện thoại</th><th className="py-4 px-5 text-right">Thao tác</th></tr>
+              <tr><th className="py-4 px-5">Mã KH</th><th className="py-4 px-5">Khách hàng</th><th className="py-4 px-5">Hạng VIP</th><th className="py-4 px-5 text-right">Tổng chi tiêu</th><th className="py-4 px-5">Email</th><th className="py-4 px-5">Điện thoại</th><th className="py-4 px-5">Mật khẩu</th><th className="py-4 px-5 text-right">Thao tác</th></tr>
             </thead>
             <tbody className="text-gray-800 divide-y divide-gray-50">
               {filtered.map((u,idx)=>{
@@ -53,10 +54,18 @@ export default function CustomersView({ users }: Props) {
                   <td className="py-4 px-5 text-right font-bold">{((u.totalSpent||0)||0).toLocaleString('vi-VN')} đ</td>
                   <td className="py-4 px-5 text-gray-500">{u.email||'—'}</td>
                   <td className="py-4 px-5 text-gray-500">{u.phone||'—'}</td>
+                  <td className="py-4 px-5 text-gray-500 font-mono text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate max-w-[100px]">{showPasswords[u.id] ? (u.password || '—') : '••••••••'}</span>
+                      <button onClick={() => setShowPasswords(p => ({...p, [u.id]: !p[u.id]}))} className="text-gray-400 hover:text-gray-600 focus:outline-none">
+                        <span className="material-symbols-outlined text-sm">{showPasswords[u.id] ? 'visibility_off' : 'visibility'}</span>
+                      </button>
+                    </div>
+                  </td>
                   <td className="py-4 px-5 text-right"><div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700"><span className="material-symbols-outlined text-lg">visibility</span></button><button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-red-600"><span className="material-symbols-outlined text-lg">delete</span></button></div></td>
                 </tr>);
               })}
-              {filtered.length===0&&<tr><td colSpan={7} className="py-12 text-center text-gray-400"><span className="material-symbols-outlined text-5xl block mb-2 opacity-30">group</span>Không có khách hàng nào.</td></tr>}
+              {filtered.length===0&&<tr><td colSpan={8} className="py-12 text-center text-gray-400"><span className="material-symbols-outlined text-5xl block mb-2 opacity-30">group</span>Không có khách hàng nào.</td></tr>}
             </tbody>
           </table>
         </div>

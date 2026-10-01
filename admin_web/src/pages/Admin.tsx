@@ -5,6 +5,7 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import DashboardView from '../components/DashboardView';
 import ProductsView from '../components/ProductsView';
+import ProductVariantEditor from '../components/ProductVariantEditor';
 import OrdersView from '../components/OrdersView';
 import CustomersView from '../components/CustomersView';
 import EmployeesView from '../components/EmployeesView';
@@ -21,7 +22,7 @@ import RolesView from '../components/RolesView';
 const Admin: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [adminName, setAdminName] = useState('Admin');
-  const [jobTitle, setJobTitle] = useState('Qu?n Tr? Viên');
+  const [jobTitle, setJobTitle] = useState('Quản Trị Viên');
 
   // Stats Data
   const [stats, setStats] = useState({ products: 0, users: 0, orders: 0, revenue: 0 });
@@ -72,7 +73,7 @@ const Admin: React.FC = () => {
     } else {
       const user = JSON.parse(userStr);
       setAdminName(user.name || 'Admin');
-      setJobTitle(user.jobTitle || 'Qu?n Tr? Viên');
+      setJobTitle(user.jobTitle || 'Quản Trị Viên');
     }
 
     // Load initial data
@@ -132,7 +133,8 @@ const Admin: React.FC = () => {
       categoryId: Number(editingProduct.categoryId || 1),
       khoId: Number(editingProduct.khoId || 1),
       nccId: Number(editingProduct.nccId || 1),
-      status: editingProduct.status || 'Ðang m? bán'
+      status: editingProduct.status || 'Đang mở bán',
+      variants: editingProduct.variants || []
     };
 
     const url = editingProduct.id ? `http://localhost:4000/api/products/${editingProduct.id}` : 'http://localhost:4000/api/products';
@@ -334,9 +336,9 @@ const Admin: React.FC = () => {
 
   const formatPrice = (p: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(p);
 
-  const isSuperAdmin = jobTitle === 'Qu?n Tr? Viên';
+  const isSuperAdmin = jobTitle === 'Quản Trị Viên';
   const isSales = jobTitle === 'Nhân Viên Bán Hàng';
-  const isWarehouse = jobTitle === 'Th? Kho';
+  const isWarehouse = jobTitle === 'Thủ Kho';
 
   // --- B? L?C ---
   const filteredProducts = products.filter(p => {
@@ -452,7 +454,16 @@ const Admin: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">Danh Mục:</label>
-                <select value={editingProduct?.categoryId || ''} onChange={e => setEditingProduct({ ...editingProduct, categoryId: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
+                <select value={editingProduct?.categoryId || ''} onChange={e => {
+                  const nextCategoryId = Number(e.target.value);
+                  const categoryChanged = Number(editingProduct?.categoryId) !== nextCategoryId;
+                  if (categoryChanged && editingProduct?.variants?.length && !window.confirm('Đổi danh mục sẽ xóa các biến thể cũ để nhập lại theo thuộc tính mới. Tổng tồn hiện tại được giữ lại. Tiếp tục?')) return;
+                  setEditingProduct({
+                    ...editingProduct,
+                    categoryId: e.target.value,
+                    variants: categoryChanged ? [] : (editingProduct?.variants || [])
+                  });
+                }} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
                   <option value="">Chọn danh mục</option>
                   {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
@@ -466,21 +477,22 @@ const Admin: React.FC = () => {
                 <input type="number" value={editingProduct?.originalPrice || ''} onChange={e => setEditingProduct({ ...editingProduct, originalPrice: Number(e.target.value) })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">S? Lu?ng T?n Kho:</label>
-                <input type="number" value={editingProduct?.quantity || ''} onChange={e => setEditingProduct({ ...editingProduct, quantity: Number(e.target.value) })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+                <label className="block text-sm font-bold text-gray-700 mb-1">Số Lượng Tồn Kho:</label>
+                <input type="number" disabled={editingProduct?.variants?.length > 0} value={editingProduct?.variants?.length > 0 ? editingProduct.variants.reduce((sum: number, v: any) => sum + Number(v.quantity ?? v.SoLuong ?? 0), 0) : (editingProduct?.quantity || 0)} onChange={e => setEditingProduct({ ...editingProduct, quantity: Number(e.target.value) })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm disabled:bg-gray-100 disabled:text-gray-500" />
+                {editingProduct?.variants?.length > 0 && <p className="text-[10px] text-gray-400 mt-1">Tự động tính từ biến thể</p>}
               </div>
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">Tr?ng Thái:</label>
-                <select value={editingProduct?.status || 'Ðang m? bán'} onChange={e => setEditingProduct({ ...editingProduct, status: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
-                  <option value="Ðang m? bán">Ðang m? bán</option>
-                  <option value="H?t hàng">H?t hàng</option>
-                  <option value="Ng?ng kinh doanh">Ng?ng kinh doanh</option>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Trạng Thái:</label>
+                <select value={editingProduct?.status || 'Đang mở bán'} onChange={e => setEditingProduct({ ...editingProduct, status: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
+                  <option value="Đang mở bán">Đang mở bán</option>
+                  <option value="Hết hàng">Hết hàng</option>
+                  <option value="Tạm ngừng">Tạm ngừng</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">Nhà Cung C?p:</label>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Nhà Cung Cấp:</label>
                 <select value={editingProduct?.nccId || ''} onChange={e => setEditingProduct({ ...editingProduct, nccId: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
-                  <option value="">Ch?n nhà cung c?p</option>
+                  <option value="">Chọn nhà cung cấp</option>
                   {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
@@ -492,13 +504,60 @@ const Admin: React.FC = () => {
                 </select>
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-bold text-gray-700 mb-1">Ðu?ng d?n ?nh:</label>
-                <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({ ...editingProduct, image: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="/images/sp1.jpg" />
+                <label className="block text-sm font-bold text-gray-700 mb-2">Ảnh sản phẩm:</label>
+                <div className="flex gap-4 items-start">
+                  <div className="w-32 h-32 rounded-lg bg-gray-100 border border-gray-200 shrink-0 overflow-hidden flex items-center justify-center relative group">
+                    {editingProduct?.image || editingProduct?.AnhDaiDien ? (
+                      <>
+                        <img src={/^https?:/.test(editingProduct.image || editingProduct.AnhDaiDien) ? (editingProduct.image || editingProduct.AnhDaiDien) : "http://localhost:4000" + (editingProduct.image || editingProduct.AnhDaiDien)} className="w-full h-full object-cover" onError={e => { e.currentTarget.src = 'https://placehold.co/100x100/f3f4f6/9ca3af?text=SP'; }} alt="Preview" />
+                        <button type="button" onClick={() => setEditingProduct({ ...editingProduct, image: '' })} className="absolute top-1 right-1 bg-white/80 p-1.5 rounded-md text-red-600 opacity-0 group-hover:opacity-100 shadow hover:bg-white"><span className="material-symbols-outlined text-sm">delete</span></button>
+                      </>
+                    ) : (
+                      <span className="material-symbols-outlined text-gray-400 text-3xl">image</span>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-3">
+                    <div>
+                      <input type="file" accept="image/*" id="product_upload" className="hidden" onChange={async (e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          const formData = new FormData();
+                          formData.append('image', e.target.files[0]);
+                          try {
+                            const token = localStorage.getItem('token');
+                            const res = await fetch('http://localhost:4000/api/upload', {
+                              method: 'POST',
+                              headers: { 'Authorization': `Bearer ${token}` },
+                              body: formData
+                            });
+                            const data = await res.json();
+                            if (data.imageUrl) setEditingProduct({ ...editingProduct, image: data.imageUrl });
+                          } catch (err) {
+                            alert('Lỗi upload ảnh');
+                          }
+                        }
+                      }} />
+                      <label htmlFor="product_upload" className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 cursor-pointer text-gray-700 font-semibold rounded-lg text-sm transition-colors border border-gray-200">
+                        <span className="material-symbols-outlined text-sm">upload</span> Chọn ảnh từ thiết bị
+                      </label>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 mb-1">Hoặc nhập URL ảnh (từ internet):</p>
+                      <input type="text" value={editingProduct?.image || ''} onChange={e => setEditingProduct({ ...editingProduct, image: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" placeholder="https://..." />
+                    </div>
+                  </div>
+                </div>
               </div>
+              <ProductVariantEditor
+                categoryId={Number(editingProduct?.categoryId || 0)}
+                definitions={categories.find((category: any) => Number(category.id) === Number(editingProduct?.categoryId))?.variantAttributes || []}
+                productPrice={Number(editingProduct?.price || 0)}
+                variants={editingProduct?.variants || []}
+                onChange={variants => setEditingProduct({ ...editingProduct, variants })}
+              />
             </div>
             <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
-              <button onClick={() => setShowProductModal(false)} className="px-5 py-2.5 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-colors">H?y</button>
-              <button onClick={handleSaveProduct} className="px-5 py-2.5 bg-red-700 text-white font-bold rounded-lg shadow-md hover:bg-red-800 transition-colors">Luu S?n Ph?m</button>
+              <button onClick={() => setShowProductModal(false)} className="px-5 py-2.5 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-colors">Hủy</button>
+              <button onClick={handleSaveProduct} className="px-5 py-2.5 bg-red-700 text-white font-bold rounded-lg shadow-md hover:bg-red-800 transition-colors">Lưu Sản Phẩm</button>
             </div>
           </div>
         </div>

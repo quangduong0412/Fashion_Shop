@@ -1,16 +1,37 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import userRoutes from './routes/userRoutes';
 import orderRoutes from './routes/orderRoutes';
 import productRoutes from './routes/productRoutes'; 
+import categoryRoutes from './routes/categoryRoutes';
 import { authenticateToken, requireAdmin } from './middlewares/authMiddleware';
-
 
 const app = express();
 const port = process.env.PORT || 4000;
 
 app.use(express.json());
 app.use(cors());
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/images', express.static(path.join(__dirname, '../../fashionheaven/public/images')));
+
+// Configure Multer
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = path.join(__dirname, '../uploads');
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath);
+    }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const upload = multer({ storage: storage });
 
 // Simple basic route
 app.get('/', (req: Request, res: Response) => {
@@ -19,6 +40,7 @@ app.get('/', (req: Request, res: Response) => {
 
 // Use routes
 app.use('/api/products', productRoutes);
+app.use('/api/categories', categoryRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/orders', orderRoutes);
 
@@ -63,6 +85,15 @@ app.delete('/api/imports/:id', authenticateToken, requireAdmin, deleteImport);
 
 app.post('/api/exports', authenticateToken, requireAdmin, createExport);
 app.delete('/api/exports/:id', authenticateToken, requireAdmin, deleteExport);
+
+// Upload API
+app.post('/api/upload', authenticateToken, requireAdmin, upload.single('image'), (req: Request, res: Response) => {
+  if (!req.file) {
+    res.status(400).json({ error: 'Vui lòng chọn ảnh' });
+    return;
+  }
+  res.json({ imageUrl: `/uploads/${req.file.filename}` });
+});
 
 
 app.listen(port, () => {
