@@ -23,6 +23,7 @@ const makeDraft = (product: any) => ({
   name: product?.name ?? '', image: product?.image ?? '',
   price: String(product?.price ?? ''), originalPrice: String(product?.originalPrice ?? product?.GiaGoc ?? '0'),
   quantity: String(product?.quantity ?? 0), expectedStock: Number(product?.quantity ?? 0),
+  hasPendingOrders: Boolean(product?.hasPendingOrders),
   categoryId: String(product?.categoryId ?? ''), khoId: String(product?.khoId ?? ''), nccId: String(product?.nccId ?? ''),
   status: product?.status === 'Hết hàng' ? 'Đang mở bán' : product?.status ?? 'Đang mở bán',
   variants: (product?.variants ?? []).map((variant: any) => ({
@@ -173,11 +174,11 @@ export default function ProductEditorModal({ product, categories, warehouses, su
               </label>
               <label className="text-sm font-semibold text-gray-700 space-y-1">
                 <span>Kho quản lý *</span>
-                <select className={fieldClass} value={draft.khoId} required disabled={isEditing && draft.expectedStock > 0} onChange={event => setDraft(current => ({ ...current, khoId: event.target.value }))}>
+                <select className={fieldClass} value={draft.khoId} required disabled={isEditing && (draft.expectedStock > 0 || draft.hasPendingOrders)} onChange={event => setDraft(current => ({ ...current, khoId: event.target.value }))}>
                   <option value="">Chọn kho</option>
                   {warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
                 </select>
-                {isEditing && draft.expectedStock > 0 && <span className="block text-xs font-normal text-gray-500">Cần xử lý tồn kho hiện tại trước khi đổi kho.</span>}
+                {isEditing && (draft.expectedStock > 0 || draft.hasPendingOrders) && <span className="block text-xs font-normal text-gray-500">Cần xử lý tồn kho và các đơn đang giữ hàng trước khi đổi kho.</span>}
               </label>
               <label className="text-sm font-semibold text-gray-700 space-y-1">
                 <span>Nhà cung cấp *</span>

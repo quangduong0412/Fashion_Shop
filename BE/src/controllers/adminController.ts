@@ -38,6 +38,8 @@ export const getAdminData = async (req: Request, res: Response) => {
 
     const categories = await prisma.loaiHang.findMany();
     const warehouses = await prisma.kho.findMany();
+    const pendingProductIds = new Set(orders.filter(order => !['DELIVERED', 'Đã giao', 'CANCELLED', 'Đã hủy'].includes(order.TrangThai))
+      .flatMap(order => order.ctDonHangs.map(line => line.MaSanPham)));
 
     const formattedProducts = products.map((p: any) => ({
         id: p.MaSanPham,
@@ -51,6 +53,7 @@ export const getAdminData = async (req: Request, res: Response) => {
         categoryId: p.MaLoaiHang,
         khoId: p.MaKho,
         nccId: p.MaNCC,
+        hasPendingOrders: pendingProductIds.has(p.MaSanPham),
         quantity: p.SoLuong,
         SoLuong: p.SoLuong,
         image: p.Anh || '/images/ao-thun-nu.png',

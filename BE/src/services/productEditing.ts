@@ -35,6 +35,9 @@ export async function saveProductChanges(productId: number, body: any, actor: st
       if (expectedIds.size !== current.bienThes.length || current.bienThes.some(variant => !expectedIds.has(variant.MaBienThe))) stockConflict('Danh sách biến thể');
     }
     if (warehouseId !== current.MaKho && current.SoLuong > 0) throw new VariantValidationError('Sản phẩm đang có tồn kho. Cần xuất/chuyển kho trước khi đổi kho quản lý.');
+    if (warehouseId !== current.MaKho && await tx.cTDonHang.count({ where: {
+      MaSanPham: productId, donHang: { TrangThai: { notIn: ['DELIVERED', 'Đã giao', 'CANCELLED', 'Đã hủy'] } }
+    } })) throw new VariantValidationError('Sản phẩm còn hàng giữ cho đơn đang xử lý. Cần xử lý xong các đơn trước khi đổi kho quản lý.');
     const retainedIds = new Set<number>();
     const plans = (normalized || []).map((variant, index) => {
       const input = body.variants[index];
