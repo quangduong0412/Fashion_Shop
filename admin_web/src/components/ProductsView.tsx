@@ -9,6 +9,11 @@ interface ProductsViewProps {
   openProductModal: (p?: any) => void;
 }
 
+const displayedStatus = (product: any) => {
+  if (product.status && !['Đang mở bán', 'Hết hàng'].includes(product.status)) return product.status;
+  return Number(product.quantity ?? product.SoLuong ?? 0) === 0 ? 'Hết hàng' : 'Đang mở bán';
+};
+
 export default function ProductsView({ products, categories, searchProduct, setSearchProduct, handleDeleteProduct, openProductModal }: ProductsViewProps) {
   const [categoryFilter, setCategoryFilter] = React.useState('all');
   const [statusFilter, setStatusFilter] = React.useState('all');
@@ -16,7 +21,7 @@ export default function ProductsView({ products, categories, searchProduct, setS
   const filtered = products.filter(p => {
     const matchSearch = (p.name || p.TenSanPham || '').toLowerCase().includes(searchProduct.toLowerCase()) || String(p.id || '').includes(searchProduct);
     const matchCat = categoryFilter === 'all' || String(p.categoryId || p.MaLoaiHang) === categoryFilter;
-    const matchStatus = statusFilter === 'all' || (p.status || 'Đang mở bán') === statusFilter;
+    const matchStatus = statusFilter === 'all' || displayedStatus(p) === statusFilter;
     return matchSearch && matchCat && matchStatus;
   });
 
@@ -78,8 +83,8 @@ export default function ProductsView({ products, categories, searchProduct, setS
               </tr>
             </thead>
             <tbody className="text-gray-800 divide-y divide-gray-50">
-              {filtered.map((p, idx) => (
-                <tr key={idx} className="hover:bg-red-50/20 transition-colors group">
+              {filtered.map(p => (
+                <tr key={p.id} className="hover:bg-red-50/20 transition-colors group">
                   <td className="py-4 px-5">
                     <div className="flex items-center gap-3">
                       <div className="w-14 h-14 rounded-xl bg-gray-100 shrink-0 overflow-hidden border border-gray-200">
@@ -97,19 +102,20 @@ export default function ProductsView({ products, categories, searchProduct, setS
                   </td>
                   <td className="py-4 px-5">
                     <span className="font-bold text-gray-800">{p.quantity ?? p.SoLuong ?? 0}</span>
+                    {!!p.variants?.length && <div className="text-xs text-gray-500 mt-1">{p.variants.length} biến thể</div>}
                   </td>
                   <td className="py-4 px-5">
-                    <span className={"inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold " + ((p.status === 'Đang mở bán' || !p.status) ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700')}>
-                      <span className={"w-1.5 h-1.5 rounded-full " + ((p.status === 'Đang mở bán' || !p.status) ? 'bg-green-500' : 'bg-orange-500')}></span>
-                      {p.status || 'Đang mở bán'}
+                    <span className={"inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold " + (displayedStatus(p) === 'Đang mở bán' ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700')}>
+                      <span className={"w-1.5 h-1.5 rounded-full " + (displayedStatus(p) === 'Đang mở bán' ? 'bg-green-500' : 'bg-orange-500')}></span>
+                      {displayedStatus(p)}
                     </span>
                   </td>
                   <td className="py-4 px-5 text-right">
-                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => openProductModal(p)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
+                    <div className="flex items-center justify-end gap-1">
+                      <button aria-label={`Sửa sản phẩm ${p.name}`} title="Sửa sản phẩm và tồn kho" onClick={() => openProductModal(p)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700">
                         <span className="material-symbols-outlined text-xl">edit_square</span>
                       </button>
-                      <button onClick={() => handleDeleteProduct(p.id)} className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600">
+                      <button aria-label={`Xóa sản phẩm ${p.name}`} title="Xóa sản phẩm" onClick={() => handleDeleteProduct(p.id)} className="p-2 rounded-lg hover:bg-red-50 text-gray-500 hover:text-red-600">
                         <span className="material-symbols-outlined text-xl">delete</span>
                       </button>
                     </div>

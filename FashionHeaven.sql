@@ -101,6 +101,17 @@ CREATE TABLE BienTheSanPham (
     FOREIGN KEY (MaSanPham) REFERENCES SanPham(MaSanPham) ON DELETE CASCADE
 );
 
+CREATE TABLE dieuchinhtonkho (
+    MaDieuChinh INT AUTO_INCREMENT PRIMARY KEY,
+    MaSanPham INT NOT NULL, MaBienThe INT NULL,
+    SKU VARCHAR(100) NULL, TenBienThe VARCHAR(255) NULL,
+    SoLuongTruoc INT NOT NULL, SoLuongSau INT NOT NULL, ChenhLech INT NOT NULL,
+    LyDo VARCHAR(500) NOT NULL, Loai VARCHAR(50) NOT NULL, NguoiThucHien VARCHAR(255) NOT NULL,
+    ThoiGian DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX dieuchinhtonkho_product_time_idx (MaSanPham, ThoiGian),
+    CONSTRAINT dieuchinhtonkho_MaSanPham_fkey FOREIGN KEY (MaSanPham) REFERENCES SanPham(MaSanPham) ON DELETE CASCADE
+);
+
 CREATE TABLE YeuCauNhapHang (
     MaNhanVien INT NOT NULL,
     MaSanPham INT NOT NULL,

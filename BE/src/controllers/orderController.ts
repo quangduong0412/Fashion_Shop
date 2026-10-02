@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import prisma from '../db';
 import { adjustOrderInventory, isCancelledOrder } from '../services/orderInventory';
+import { normalizeSaleStatus } from '../services/productVariants';
 
 const orderStatuses = new Set(['PENDING', 'Chờ xác nhận', 'PROCESSING', 'Đang đóng gói', 'SHIPPING', 'Đang giao hàng', 'DELIVERED', 'Đã giao', 'CANCELLED', 'Đã hủy']);
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
@@ -33,15 +34,20 @@ export const createOrder = async (req: Request, res: Response) => {
       if (!/^[+\d\s().-]{7,25}$/.test(recipient.phone)) throw new Error('Số điện thoại nhận hàng không hợp lệ.');
       const paymentMethod = text(req.body.paymentMethod) || 'Thanh toán khi nhận hàng';
       if (paymentMethod.length > 50) throw new Error('Phương thức thanh toán không hợp lệ.');
+      const productIds = [...new Set<number>(items.map(item => Number(item.id)))].sort((a, b) => a - b);
+      // Read sale settings and variants only after any inventory edit has committed.
+      for (const productId of productIds) {
+        await tx.$queryRaw`SELECT MaSanPham FROM sanpham WHERE MaSanPham = ${productId} FOR UPDATE`;
+      }
       const products = await tx.sanPham.findMany({
-        where: { MaSanPham: { in: [...new Set<number>(items.map(item => Number(item.id)))] } }, include: { bienThes: true }
+        where: { MaSanPham: { in: productIds } }, include: { bienThes: true }
       });
       type OrderLine = { product: typeof products[number]; variant?: typeof products[number]['bienThes'][number]; quantity: number; price: number };
       const lines = new Map<string, OrderLine>();
       for (const item of items) {
         const product = products.find(product => product.MaSanPham === Number(item.id));
         if (!product) throw new Error('Một sản phẩm trong giỏ không còn tồn tại. Vui lòng cập nhật giỏ hàng.');
-        if (product.TrangThai !== 'Đang mở bán') throw new Error(`Sản phẩm “${product.TenSanPham}” đang ngừng bán.`);
+        if (normalizeSaleStatus(product.TrangThai) !== 'Đang mở bán') throw new Error(`Sản phẩm “${product.TenSanPham}” đang ngừng bán.`);
         let variant: OrderLine['variant'];
         if (item.variantId != null) {
           variant = product.bienThes.find(variant => variant.MaBienThe === Number(item.variantId));
@@ -56,7 +62,7 @@ export const createOrder = async (req: Request, res: Response) => {
           if (candidates.length !== 1) throw new Error(`Vui lòng chọn lại kích thước và màu của “${product.TenSanPham}”.`);
           variant = candidates[0];
         }
-        if (variant && variant.TrangThai !== 'Đang mở bán') throw new Error(`Biến thể của “${product.TenSanPham}” đang ngừng bán.`);
+        if (variant && normalizeSaleStatus(variant.TrangThai) !== 'Đang mở bán') throw new Error(`Biến thể của “${product.TenSanPham}” đang ngừng bán.`);
         const key = `${product.MaSanPham}:${variant?.MaBienThe || 0}`;
         const quantity = (lines.get(key)?.quantity || 0) + Number(item.quantity);
         if (!Number.isSafeInteger(quantity)) throw new Error('Số lượng đặt hàng quá lớn.');
@@ -85,7 +91,7 @@ export const createOrder = async (req: Request, res: Response) => {
         }));
       }
       return createdOrders;
-    }, { timeout: 15000 });
+    }, { timeout: 15000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
     res.status(201).json({ message: 'Đặt hàng thành công.', orders, order: orders[0] });
   } catch (error) {
     console.error('Order placement failed:', error);

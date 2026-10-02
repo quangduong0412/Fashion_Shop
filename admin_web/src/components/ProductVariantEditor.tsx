@@ -1,6 +1,4 @@
-import React, { useEffect, useState } from 'react';
-
-type AttributeDefinition = {
+export type AttributeDefinition = {
   key: string;
   label: string;
   type: 'select' | 'suggest' | 'text' | 'number';
@@ -12,227 +10,120 @@ type AttributeDefinition = {
   requiredGroup?: string;
 };
 
-type Variant = {
+export type EditableVariant = {
   id?: number;
+  clientKey?: string;
   sku?: string;
   color?: string;
   size?: string;
   attributes?: Record<string, string | number>;
-  price?: number;
-  quantity?: number;
+  price: string | number;
+  quantity: string | number;
+  expectedQuantity?: number;
   status?: string;
 };
 
 type Props = {
-  categoryId: number;
   definitions: AttributeDefinition[];
-  productPrice: number;
-  variants: Variant[];
-  onChange: (variants: Variant[]) => void;
+  productPrice: string | number;
+  variants: EditableVariant[];
+  isEditing: boolean;
+  onChange: (variants: EditableVariant[]) => void;
 };
 
-type DraftVariant = {
-  color: string;
-  sku: string;
-  price: string;
-  quantity: string;
-  status: string;
-  attributes: Record<string, string>;
-};
+const fieldClass = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-normal bg-white focus:outline-none focus:border-red-500';
+let nextRowKey = 0;
 
-const emptyDraft = (definitions: AttributeDefinition[] = []): DraftVariant => ({
-  color: '',
-  sku: '',
-  price: '',
-  quantity: '0',
-  status: 'Đang mở bán',
-  attributes: Object.fromEntries(definitions
-    .filter(definition => definition.defaultValue !== undefined)
-    .map(definition => [definition.key, String(definition.defaultValue)]))
-});
-
-export default function ProductVariantEditor({ categoryId, definitions, productPrice, variants, onChange }: Props) {
-  const [draft, setDraft] = useState<DraftVariant>(emptyDraft);
-  useEffect(() => setDraft(emptyDraft(definitions)), [categoryId, definitions]);
-
-  const updateVariant = (index: number, update: (variant: Variant) => Variant) => {
-    onChange(variants.map((variant, variantIndex) => variantIndex === index ? update(variant) : variant));
+export default function ProductVariantEditor({ definitions, productPrice, variants, isEditing, onChange }: Props) {
+  const update = (index: number, patch: Partial<EditableVariant>) => {
+    onChange(variants.map((variant, i) => i === index ? { ...variant, ...patch } : variant));
   };
 
-  const setAttribute = (attributes: Record<string, string | number> | undefined, key: string, value: string) => ({
-    ...(attributes || {}),
-    [key]: value
-  });
-
-  const addVariant = () => {
-    for (const definition of definitions) {
-      if (definition.required && !draft.attributes[definition.key]?.trim()) {
-        window.alert(`Vui lòng nhập ${definition.label}.`);
-        return;
-      }
-    }
-    const groups = Array.from(new Set(definitions.map(definition => definition.requiredGroup).filter(Boolean)));
-    for (const group of groups) {
-      const groupFields = definitions.filter(definition => definition.requiredGroup === group);
-      if (!groupFields.some(definition => draft.attributes[definition.key]?.trim())) {
-        window.alert(`Vui lòng nhập ít nhất một thông số trong nhóm ${group}.`);
-        return;
-      }
-    }
-
-    const attributes = Object.fromEntries(Object.entries(draft.attributes).filter(([, value]) => value.trim()));
-    const normalizedColor = draft.color.trim().toLocaleLowerCase('vi');
-    const combination = JSON.stringify([normalizedColor, Object.entries(attributes).sort(([left], [right]) => left.localeCompare(right))]);
-    const duplicate = variants.some(variant => JSON.stringify([
-      (variant.color || '').trim().toLocaleLowerCase('vi'),
-      Object.entries(variant.attributes || {}).sort(([left], [right]) => left.localeCompare(right))
-    ]) === combination);
-    if (duplicate) {
-      window.alert('Tổ hợp màu và kích thước này đã có.');
-      return;
-    }
-
-    onChange([...variants, {
-      color: draft.color.trim(),
-      sku: draft.sku.trim(),
-      attributes,
-      size: typeof attributes.size === 'string' ? attributes.size : '',
-      price: Number(draft.price || productPrice),
-      quantity: Number(draft.quantity || 0),
-      status: draft.status
-    }]);
-    setDraft(emptyDraft(definitions));
-  };
-
-  const renderAttributeInput = (
-    definition: AttributeDefinition,
-    value: string | number | undefined,
-    onValueChange: (nextValue: string) => void,
-    inputId: string
-  ) => {
-    if (definition.type === 'select' && definition.options?.length) {
-      return (
-        <select value={value ?? ''} onChange={event => onValueChange(event.target.value)} className="w-full min-w-28 px-2 py-1.5 border border-gray-200 rounded-md text-xs bg-white">
-          <option value="">Chọn</option>
-          {definition.options.map(option => <option key={option} value={option}>{option}</option>)}
-        </select>
-      );
-    }
-
-    const datalistId = `${inputId}-options`;
-    return (
-      <div className="flex items-center gap-1">
-        <input
-          id={inputId}
-          type={definition.type === 'number' ? 'number' : 'text'}
-          list={definition.options?.length ? datalistId : undefined}
-          value={value ?? ''}
-          onChange={event => onValueChange(event.target.value)}
-          placeholder={definition.placeholder || definition.label}
-          className="w-full min-w-28 px-2 py-1.5 border border-gray-200 rounded-md text-xs"
-        />
-        {definition.options?.length ? <datalist id={datalistId}>{definition.options.map(option => <option key={option} value={option} />)}</datalist> : null}
-        {definition.unit ? <span className="text-[11px] text-gray-500">{definition.unit}</span> : null}
-      </div>
-    );
-  };
+  const addVariant = () => onChange([...variants, {
+    clientKey: `variant-${++nextRowKey}`, color: '', sku: '', price: productPrice, quantity: '0', status: 'Đang mở bán',
+    attributes: Object.fromEntries(definitions.filter(definition => definition.defaultValue !== undefined)
+      .map(definition => [definition.key, definition.defaultValue!]))
+  }]);
 
   return (
-    <div className="md:col-span-2 border-t border-gray-100 pt-4 space-y-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <h3 className="font-bold text-gray-800">Biến thể sản phẩm</h3>
-        <span className="text-xs text-gray-500">{variants.length} biến thể · tổng tồn {variants.reduce((sum, variant) => sum + Number(variant.quantity || 0), 0)}</span>
+    <section className="border-t border-gray-200 pt-5 space-y-4">
+      <div className="flex flex-wrap justify-between items-center gap-3">
+        <div>
+          <h3 className="font-bold text-gray-800">Biến thể · {variants.length} loại</h3>
+          <p className="text-xs text-gray-500 mt-1">Mỗi tổ hợp màu và thuộc tính có một SKU và số lượng riêng. Biến thể đã có đơn hàng cần giữ nguyên SKU và thuộc tính.</p>
+        </div>
+        <button type="button" onClick={addVariant} className="rounded-lg bg-gray-800 text-white px-4 py-2 text-sm font-semibold">+ Thêm biến thể</button>
       </div>
-
-      <div className="space-y-3">
-        {variants.map((variant, index) => (
-          <div key={variant.id || `new-${index}`} className="rounded-lg border border-gray-200 bg-white p-3">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-500">Biến thể {index + 1}</span>
-              <button type="button" title="Xóa biến thể" onClick={() => onChange(variants.filter((_, variantIndex) => variantIndex !== index))} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50">
-                <span className="material-symbols-outlined text-base">delete</span>Xóa
-              </button>
+      {!variants.length && <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">Chưa có biến thể. Nhập số lượng tại ô tồn kho sản phẩm, hoặc thêm biến thể để quản lý theo size/màu.</p>}
+      {variants.map((variant, index) => {
+        const cannotRemove = !!variant.id && Number(variant.expectedQuantity) > 0;
+        const difference = Number(variant.quantity) - (variant.expectedQuantity ?? 0);
+        return (
+          <div key={variant.id ?? variant.clientKey} className="rounded-xl border border-gray-200 p-4 space-y-3 bg-gray-50/50">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="text-sm font-bold">Biến thể {index + 1}{variant.id ? '' : ' · mới'}</h4>
+              <button type="button" disabled={cannotRemove} title={cannotRemove ? 'Điều chỉnh tồn về 0 và lưu trước khi xóa. Có thể tạm ngừng bán.' : 'Xóa biến thể'}
+                onClick={() => onChange(variants.filter((_, i) => i !== index))}
+                className="px-2 py-1 text-sm text-red-700 rounded hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed">Xóa</button>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <label className="space-y-1 text-xs font-semibold text-gray-600">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <label className="text-xs font-semibold text-gray-600 space-y-1">
                 <span>Màu sắc</span>
-                <input value={variant.color || ''} onChange={event => updateVariant(index, current => ({ ...current, color: event.target.value }))} className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm font-normal" placeholder="Ví dụ: Đen" />
+                <input className={fieldClass} maxLength={50} value={variant.color ?? ''} onChange={event => update(index, { color: event.target.value })} placeholder="Ví dụ: Đen" />
               </label>
-              {definitions.map(definition => (
-                <label key={definition.key} className="space-y-1 text-xs font-semibold text-gray-600">
-                  <span>{definition.label}{definition.unit ? ` (${definition.unit})` : ''}</span>
-                  {renderAttributeInput(definition, variant.attributes?.[definition.key] ?? (definition.key === 'size' ? variant.size : ''), value => updateVariant(index, current => ({
-                    ...current,
-                    attributes: setAttribute(current.attributes, definition.key, value),
-                    ...(definition.key === 'size' ? { size: value } : {})
-                  })), `variant-${index}-${definition.key}`)}
-                </label>
-              ))}
-              <label className="space-y-1 text-xs font-semibold text-gray-600">
+              {definitions.map(definition => {
+                const value = variant.attributes?.[definition.key] ?? (definition.key === 'size' ? variant.size : '') ?? '';
+                const setAttribute = (next: string) => update(index, {
+                  attributes: { ...variant.attributes, [definition.key]: next },
+                  ...(definition.key === 'size' ? { size: next } : {})
+                });
+                const listId = `variant-${variant.id ?? variant.clientKey}-${definition.key}`;
+                return (
+                  <label key={definition.key} className="text-xs font-semibold text-gray-600 space-y-1">
+                    <span>{definition.label}{definition.unit ? ` (${definition.unit})` : ''}{definition.required ? ' *' : ''}</span>
+                    {definition.type === 'select' && definition.options?.length ? (
+                      <select className={fieldClass} value={value} required={definition.required} onChange={event => setAttribute(event.target.value)}>
+                        <option value="">Chọn {definition.label.toLocaleLowerCase('vi')}</option>
+                        {definition.options.map(option => <option key={option} value={option}>{option}</option>)}
+                      </select>
+                    ) : (
+                      <>
+                        <input className={fieldClass} type={definition.type === 'number' ? 'number' : 'text'} step="any"
+                          value={value} required={definition.required} list={definition.options?.length ? listId : undefined}
+                          placeholder={definition.placeholder} onChange={event => setAttribute(event.target.value)} />
+                        {definition.options?.length ? <datalist id={listId}>{definition.options.map(option => <option key={option} value={option} />)}</datalist> : null}
+                      </>
+                    )}
+                  </label>
+                );
+              })}
+              <label className="text-xs font-semibold text-gray-600 space-y-1">
                 <span>SKU</span>
-                <input value={variant.sku || ''} onChange={event => updateVariant(index, current => ({ ...current, sku: event.target.value }))} className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm font-mono font-normal" placeholder="Tự tạo nếu trống" />
+                <input className={fieldClass} maxLength={100} value={variant.sku ?? ''} onChange={event => update(index, { sku: event.target.value })} placeholder="Tự tạo nếu để trống" />
               </label>
-              <label className="space-y-1 text-xs font-semibold text-gray-600">
-                <span>Giá bán</span>
-                <input type="number" min="0" value={variant.price ?? productPrice} onChange={event => updateVariant(index, current => ({ ...current, price: Number(event.target.value) }))} className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm font-normal" />
+              <label className="text-xs font-semibold text-gray-600 space-y-1">
+                <span>Giá bán (đ) *</span>
+                <input className={fieldClass} type="number" min="0" step="any" required value={variant.price} onChange={event => update(index, { price: event.target.value })} />
               </label>
-              <label className="space-y-1 text-xs font-semibold text-gray-600">
-                <span>Tồn kho của biến thể</span>
-                <input type="number" min="0" step="1" value={variant.quantity ?? 0} onChange={event => updateVariant(index, current => ({ ...current, quantity: Number(event.target.value) }))} className="w-full px-2.5 py-2 border border-gray-200 rounded-md text-sm font-normal" />
+              <label className="text-xs font-semibold text-gray-600 space-y-1">
+                <span>{isEditing && variant.id ? 'Tồn sau điều chỉnh' : 'Tồn ban đầu'} *</span>
+                <input className={fieldClass} type="number" min="0" max="2147483647" step="1" required value={variant.quantity}
+                  onChange={event => update(index, { quantity: event.target.value })} />
+                {isEditing && <span className="block text-xs font-normal text-gray-500">Hiện tại: {variant.expectedQuantity ?? 0}{variant.quantity !== '' && Number.isFinite(difference) ? ` · Chênh lệch: ${difference > 0 ? '+' : ''}${difference}` : ''}</span>}
               </label>
-              <label className="space-y-1 text-xs font-semibold text-gray-600">
-                <span>Trạng thái biến thể</span>
-                <select value={variant.status || 'Đang mở bán'} onChange={event => updateVariant(index, current => ({ ...current, status: event.target.value }))} className="w-full px-2.5 py-2 border border-gray-200 rounded-md bg-white text-sm font-normal">
+              <label className="text-xs font-semibold text-gray-600 space-y-1">
+                <span>Trạng thái bán</span>
+                <select className={fieldClass} value={variant.status ?? 'Đang mở bán'} onChange={event => update(index, { status: event.target.value })}>
                   <option value="Đang mở bán">Đang mở bán</option>
                   <option value="Tạm ngừng">Tạm ngừng</option>
-                  <option value="Hết hàng">Hết hàng</option>
+                  {variant.status && !['Đang mở bán', 'Tạm ngừng'].includes(variant.status) && <option value={variant.status}>{variant.status}</option>}
                 </select>
               </label>
             </div>
+            {cannotRemove && <p className="text-xs text-gray-500">Biến thể đang có hàng. Chọn Tạm ngừng để dừng bán và giữ số lượng tồn.</p>}
           </div>
-        ))}
-
-        <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <span className="text-xs font-bold text-gray-600">Biến thể mới</span>
-            <button type="button" onClick={addVariant} className="inline-flex items-center gap-1 rounded-md bg-gray-800 px-3 py-2 text-xs font-semibold text-white hover:bg-gray-700">
-              <span className="material-symbols-outlined text-sm">add</span>Thêm biến thể
-            </button>
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            <label className="space-y-1 text-xs font-semibold text-gray-600">
-              <span>Màu sắc</span>
-              <input value={draft.color} onChange={event => setDraft(current => ({ ...current, color: event.target.value }))} className="w-full px-2.5 py-2 border border-gray-200 rounded-md bg-white text-sm font-normal" placeholder="Màu sắc" />
-            </label>
-            {definitions.map(definition => (
-              <label key={definition.key} className="space-y-1 text-xs font-semibold text-gray-600">
-                <span>{definition.label}{definition.unit ? ` (${definition.unit})` : ''}</span>
-                {renderAttributeInput(definition, draft.attributes[definition.key], value => setDraft(current => ({ ...current, attributes: { ...current.attributes, [definition.key]: value } })), `draft-${definition.key}`)}
-              </label>
-            ))}
-            <label className="space-y-1 text-xs font-semibold text-gray-600">
-              <span>SKU</span>
-              <input value={draft.sku} onChange={event => setDraft(current => ({ ...current, sku: event.target.value }))} className="w-full px-2.5 py-2 border border-gray-200 rounded-md bg-white text-sm font-mono font-normal" placeholder="SKU tự tạo" />
-            </label>
-            <label className="space-y-1 text-xs font-semibold text-gray-600">
-              <span>Giá bán</span>
-              <input type="number" min="0" value={draft.price} onChange={event => setDraft(current => ({ ...current, price: event.target.value }))} className="w-full px-2.5 py-2 border border-gray-200 rounded-md bg-white text-sm font-normal" placeholder={String(productPrice)} />
-            </label>
-            <label className="space-y-1 text-xs font-semibold text-gray-600">
-              <span>Tồn kho của biến thể</span>
-              <input type="number" min="0" step="1" value={draft.quantity} onChange={event => setDraft(current => ({ ...current, quantity: event.target.value }))} className="w-full px-2.5 py-2 border border-gray-200 rounded-md bg-white text-sm font-normal" />
-            </label>
-            <label className="space-y-1 text-xs font-semibold text-gray-600">
-              <span>Trạng thái biến thể</span>
-              <select value={draft.status} onChange={event => setDraft(current => ({ ...current, status: event.target.value }))} className="w-full px-2.5 py-2 border border-gray-200 rounded-md bg-white text-sm font-normal">
-                <option value="Đang mở bán">Đang mở bán</option>
-                <option value="Tạm ngừng">Tạm ngừng</option>
-                <option value="Hết hàng">Hết hàng</option>
-              </select>
-            </label>
-          </div>
-        </div>
-      </div>
-    </div>
+        );
+      })}
+    </section>
   );
 }

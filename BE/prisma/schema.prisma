@@ -118,6 +118,8 @@ model SanPham {
   nhaCungCap      NhaCungCap       @relation(fields: [MaNCC], references: [MaNCC], onUpdate: NoAction, map: "FK__SanPham__MaNCC__4F7CD00D")
   yeuCauNhapHangs YeuCauNhapHang[]
 
+  dieuChinhTonKhos DieuChinhTonKho[]
+
   @@map("sanpham")
 }
 
@@ -134,6 +136,25 @@ model BienTheSanPham {
   sanPham    SanPham @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, onDelete: Cascade, map: "FK__BienThe__MaSan__XX")
 
   @@map("bienthesanpham")
+}
+
+model DieuChinhTonKho {
+  MaDieuChinh    Int      @id @default(autoincrement())
+  MaSanPham     Int
+  MaBienThe     Int?
+  SKU           String?  @db.VarChar(100)
+  TenBienThe    String?  @db.VarChar(255)
+  SoLuongTruoc  Int
+  SoLuongSau    Int
+  ChenhLech     Int
+  LyDo          String   @db.VarChar(500)
+  Loai          String   @db.VarChar(50)
+  NguoiThucHien String   @db.VarChar(255)
+  ThoiGian      DateTime @default(now()) @db.DateTime(0)
+  sanPham       SanPham  @relation(fields: [MaSanPham], references: [MaSanPham], onDelete: Cascade, onUpdate: NoAction, map: "dieuchinhtonkho_MaSanPham_fkey")
+
+  @@index([MaSanPham, ThoiGian], map: "dieuchinhtonkho_product_time_idx")
+  @@map("dieuchinhtonkho")
 }
 
 model YeuCauNhapHang {

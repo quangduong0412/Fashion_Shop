@@ -26,6 +26,13 @@ export class VariantValidationError extends Error {
   statusCode = 400;
 }
 
+export function normalizeSaleStatus(value: unknown) {
+  const status = String(value ?? 'Đang mở bán').trim();
+  if (!status || status.length > 50) throw new VariantValidationError('Trạng thái bán không hợp lệ.');
+  // Sold out is derived from quantity; it must not prevent replenished items from selling.
+  return status.toLocaleLowerCase('vi') === 'hết hàng' ? 'Đang mở bán' : status;
+}
+
 export function readVariantAttributeDefinitions(value: unknown): VariantAttributeDefinition[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is VariantAttributeDefinition =>
@@ -43,6 +50,7 @@ export function normalizeVariants(
   const seenSkus = new Set<string>();
 
   return inputs.map((input, index) => {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new VariantValidationError(`Biến thể ${index + 1} không hợp lệ.`);
     const rawAttributes = input.attributes ?? input.ThuocTinh ?? {};
     const legacySize = input.size ?? input.KichCo;
     if (!rawAttributes || typeof rawAttributes !== 'object' || Array.isArray(rawAttributes)) {
@@ -123,15 +131,19 @@ export function normalizeVariants(
     seenCombinations.add(combination);
 
     const sku = String(input.sku ?? input.SKU ?? '').trim() || `FH-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
+    if (sku.length > 100 || color.length > 50) throw new VariantValidationError(`SKU hoặc màu của biến thể ${index + 1} quá dài.`);
     if (seenSkus.has(sku.toLocaleLowerCase())) throw new VariantValidationError(`SKU "${sku}" bị trùng.`);
     seenSkus.add(sku.toLocaleLowerCase());
 
-    const quantity = Number(input.quantity ?? input.SoLuong ?? 0);
-    if (!Number.isInteger(quantity) || quantity < 0) throw new VariantValidationError(`Tồn kho của biến thể ${index + 1} phải là số nguyên không âm.`);
-    const price = Number(input.price ?? input.DonGia ?? productPrice);
-    if (!Number.isFinite(price) || price < 0) throw new VariantValidationError(`Giá của biến thể ${index + 1} không hợp lệ.`);
+    const quantityInput = input.quantity ?? input.SoLuong ?? 0;
+    const quantity = Number(quantityInput);
+    if (quantityInput === '' || !Number.isSafeInteger(quantity) || quantity < 0 || quantity > 2147483647) throw new VariantValidationError(`Tồn kho của biến thể ${index + 1} phải là số nguyên không âm và không được để trống.`);
+    const priceInput = input.price ?? input.DonGia ?? productPrice;
+    const price = Number(priceInput);
+    if (priceInput === '' || !Number.isFinite(price) || price < 0) throw new VariantValidationError(`Giá của biến thể ${index + 1} không hợp lệ.`);
 
     const size = typeof attributes.size === 'string' ? attributes.size : legacySize ? String(legacySize) : null;
+    if (size && size.length > 10) throw new VariantValidationError(`Kích cỡ của biến thể ${index + 1} tối đa 10 ký tự. Nhập các thông số khác vào thuộc tính tương ứng.`);
     return {
       SKU: sku,
       KichCo: size || '',
@@ -139,7 +151,7 @@ export function normalizeVariants(
       ThuocTinh: attributes,
       DonGia: price,
       SoLuong: quantity,
-      TrangThai: String(input.status ?? input.TrangThai ?? 'Đang mở bán')
+      TrangThai: normalizeSaleStatus(input.status ?? input.TrangThai)
     };
   });
 }
@@ -170,6 +182,6 @@ export function serializeVariant(variant: any, fallbackPrice: number) {
     attributes,
     price: variant.DonGia ?? fallbackPrice,
     quantity: variant.SoLuong,
-    status: variant.TrangThai || 'Đang mở bán'
+    status: normalizeSaleStatus(variant.TrangThai)
   };
 }

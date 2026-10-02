@@ -37,6 +37,7 @@ export const getAdminData = async (req: Request, res: Response) => {
     });
 
     const categories = await prisma.loaiHang.findMany();
+    const warehouses = await prisma.kho.findMany();
 
     const formattedProducts = products.map((p: any) => ({
         id: p.MaSanPham,
@@ -46,6 +47,10 @@ export const getAdminData = async (req: Request, res: Response) => {
         price: p.DonGiaBan,
         GiaBan: p.DonGiaBan,
         GiaGoc: p.DonGiaNhap,
+        originalPrice: p.DonGiaNhap,
+        categoryId: p.MaLoaiHang,
+        khoId: p.MaKho,
+        nccId: p.MaNCC,
         quantity: p.SoLuong,
         SoLuong: p.SoLuong,
         image: p.Anh || '/images/ao-thun-nu.png',
@@ -100,7 +105,8 @@ export const getAdminData = async (req: Request, res: Response) => {
         employees: employeesData.map(e => ({ id: e.MaNhanVien, name: e.TenNhanVien, phone: e.DienThoai, branchName: e.chiNhanh?.TenChiNhanh, roleName: e.chucVu?.TenChucVu })),
         importReceipts: importReceiptsData.map(r => ({ id: r.MaPhieuNhap, date: r.NgayNhap, supplier: r.nhaCungCap?.TenNCC, total: r.TongTien })),
         exportReceipts: exportReceiptsData.map(r => ({ id: r.MaPhieuXuat, date: r.NgayXuat, customer: r.khachHang?.TenKhach, total: r.TongTien, status: r.TrangThai })),
-        categories: formattedCategories
+        categories: formattedCategories,
+        warehouses: warehouses.map(warehouse => ({ id: warehouse.MaKho, name: warehouse.TenKho }))
     });
   } catch (error) {
     console.error('Error fetching admin data:', error);
