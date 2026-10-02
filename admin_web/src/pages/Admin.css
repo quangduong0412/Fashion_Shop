@@ -42,7 +42,7 @@
 .admin-layout * { box-sizing: border-box; margin: 0; padding: 0; }
 
 .admin-layout {
-  font-family: Inter, Arial, sans-serif;
+  font-family: var(--font-sans);
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;

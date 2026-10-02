@@ -1,87 +1,109 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { syncProductCategoryAttributes } from '../src/productCategoryAttributes';
+import { ApiError } from '../src/services/apiErrors';
+import { hashPassword, newPassword } from '../src/services/credentials';
+import { lockLoginNamespace } from '../src/services/loginNamespace';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Seeding data to SQL Server...');
+  if (process.env.NODE_ENV?.toLowerCase() === 'production' || process.env.ALLOW_SAMPLE_PROVISIONING !== 'true') {
+    throw new ApiError(403, 'PROVISIONING_DISABLED', 'Seed chỉ dành cho môi trường phát triển và cần ALLOW_SAMPLE_PROVISIONING=true.');
+  }
+  const password = (key: string) => {
+    if (!process.env[key]) throw new ApiError(400, 'SEED_CONFIGURATION_REQUIRED', `Cần cấu hình ${key} trước khi tạo tài khoản mẫu.`);
+    return newPassword(process.env[key]);
+  };
+  // Validate and hash before any database write or namespace lock. Existing
+  // accounts are preserved; these values are used only for new synthetic users.
+  const [adminHash, staffHash, customerHash] = await Promise.all([
+    hashPassword(password('SEED_ADMIN_PASSWORD')),
+    hashPassword(password('SEED_STAFF_PASSWORD')),
+    hashPassword(password('SEED_CUSTOMER_PASSWORD'))
+  ]);
+  const provisioned = await prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT MaNhanVien FROM account WHERE Role = 'ADMIN' ORDER BY MaNhanVien FOR UPDATE`;
+    await lockLoginNamespace(tx);
+    if (await tx.account.findUnique({ where: { UserName: 'admin' } })) return false;
+    if (await tx.khachHang.findUnique({ where: { Email: 'admin' } }) || await tx.khachHang.findUnique({ where: { Email: 'nhanvien1' } })
+      || await tx.account.findUnique({ where: { UserName: 'nhanvien1' } }) || await tx.account.findUnique({ where: { UserName: 'khachhang@gmail.com' } })
+      || await tx.khachHang.findUnique({ where: { Email: 'khachhang@gmail.com' } })) {
+      throw new ApiError(409, 'USERNAME_EXISTS', 'Tên đăng nhập mẫu đã có chủ sở hữu. Seed không ghi đè hoặc đổi mật khẩu tài khoản hiện có.');
+    }
+    // 1. Tạo Chức Vụ
+    const adminRole = await tx.chucVu.create({
+      data: { TenChucVu: 'Quản Trị Viên' }
+    });
 
-  // Kiểm tra xem dữ liệu đã được seed trước đó chưa (bằng cách kiểm tra tài khoản admin)
-  const existingAdmin = await prisma.account.findUnique({
-    where: { UserName: 'admin' }
+    // 2. Tạo Chi Nhánh
+    const mainBranch = await tx.chiNhanh.create({
+      data: {
+        TenChiNhanh: 'Trụ sở Fashion Heaven',
+        DiaChi: '123 Đường Thời Trang, TP.HCM',
+        DienThoai: '19001234'
+      }
+    });
+
+    // 3. Tạo Quản trị viên
+    await tx.nhanVien.create({
+      data: {
+        TenNhanVien: 'Super Admin',
+        MaChucVu: adminRole.MaChucVu,
+        MaChiNhanh: mainBranch.MaChiNhanh,
+        DiaChi: 'TP.HCM',
+        DienThoai: '0987654321',
+        account: {
+          create: {
+            UserName: 'admin',
+            PassWord: adminHash,
+            Role: 'ADMIN'
+          }
+        }
+      }
+    });
+
+    const empRole = await tx.chucVu.create({
+      data: { TenChucVu: 'Nhân Viên Bán Hàng' }
+    });
+
+    // Tạo một nhân viên bình thường
+    await tx.nhanVien.create({
+      data: {
+        TenNhanVien: 'Trần Thị Bán Hàng',
+        MaChucVu: empRole.MaChucVu,
+        MaChiNhanh: mainBranch.MaChiNhanh,
+        DiaChi: 'Hà Nội',
+        DienThoai: '0988888888',
+        account: {
+          create: {
+            UserName: 'nhanvien1',
+            PassWord: staffHash,
+            Role: 'STAFF'
+          }
+        }
+      }
+    });
+
+    // Thêm một khách hàng mẫu
+    await tx.khachHang.create({
+      data: {
+        TenKhach: 'Nguyễn Văn Khách',
+        Email: 'khachhang@gmail.com',
+        MatKhau: customerHash,
+        DiaChi: 'Hà Nội',
+        DienThoai: '0912345678',
+        HangThanhVien: 'Bạc'
+      }
+    });
+
+    return true;
   });
-
-  if (existingAdmin) {
+  if (!provisioned) {
     await syncProductCategoryAttributes();
-    console.log('Dữ liệu đã được seed trước đó. Bỏ qua quá trình seed để tránh lỗi trùng lặp.');
+    console.log('Tài khoản quản trị đã có; giữ nguyên tài khoản và bỏ qua tạo fixtures.');
     return;
   }
-
-  // 1. Tạo Chức Vụ
-  const adminRole = await prisma.chucVu.create({
-    data: { TenChucVu: 'Quản Trị Viên' }
-  });
-
-  // 2. Tạo Chi Nhánh
-  const mainBranch = await prisma.chiNhanh.create({
-    data: {
-      TenChiNhanh: 'Trụ sở Fashion Heaven',
-      DiaChi: '123 Đường Thời Trang, TP.HCM',
-      DienThoai: '19001234'
-    }
-  });
-
-  // 3. Tạo Quản trị viên
-  const admin = await prisma.nhanVien.create({
-    data: {
-      TenNhanVien: 'Super Admin',
-      MaChucVu: adminRole.MaChucVu,
-      MaChiNhanh: mainBranch.MaChiNhanh,
-      DiaChi: 'TP.HCM',
-      DienThoai: '0987654321',
-      account: {
-        create: {
-          UserName: 'admin',
-          PassWord: '123',
-          Role: 'ADMIN'
-        }
-      }
-    }
-  });
-
-  const empRole = await prisma.chucVu.create({
-    data: { TenChucVu: 'Nhân Viên Bán Hàng' }
-  });
-
-  // Tạo một nhân viên bình thường
-  await prisma.nhanVien.create({
-    data: {
-      TenNhanVien: 'Trần Thị Bán Hàng',
-      MaChucVu: empRole.MaChucVu,
-      MaChiNhanh: mainBranch.MaChiNhanh,
-      DiaChi: 'Hà Nội',
-      DienThoai: '0988888888',
-      account: {
-        create: {
-          UserName: 'nhanvien1',
-          PassWord: '123',
-          Role: 'USER'
-        }
-      }
-    }
-  });
-
-  // Thêm một khách hàng mẫu
-  await prisma.khachHang.create({
-    data: {
-      TenKhach: 'Nguyễn Văn Khách',
-      Email: 'khachhang@gmail.com',
-      MatKhau: '123456',
-      DiaChi: 'Hà Nội',
-      DienThoai: '0912345678',
-      HangThanhVien: 'Bạc'
-    }
-  });
 
   // 4. Các Loại Hàng
   const loaiDongHo = await prisma.loaiHang.create({ data: { TenLoaiHang: 'Đồng Hồ' } });
@@ -125,13 +147,13 @@ async function main() {
     ]
   });
 
-  console.log('Seeding to SQL Server completed!');
+  console.log('Development catalog and account fixtures provisioned on MySQL. No passwords were printed.');
 }
 
 main()
   .catch((e) => {
-    console.error(e);
-    process.exit(1);
+    console.error('Development provisioning failed.', { code: e?.code || 'INTERNAL_ERROR', ...(e instanceof ApiError ? { message: e.message } : {}) });
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();

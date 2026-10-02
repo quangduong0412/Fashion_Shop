@@ -129,15 +129,6 @@ export default function RegisterScreen() {
               <View style={styles.line} />
             </View>
 
-            <View style={styles.socialRow}>
-              <Pressable style={styles.socialBtn}>
-                <Ionicons name="logo-google" size={22} color="#db4437" />
-              </Pressable>
-              <Pressable style={styles.socialBtn}>
-                <Ionicons name="logo-facebook" size={22} color="#1877f2" />
-              </Pressable>
-            </View>
-
             <Text style={styles.switchText}>
               Đã có tài khoản? <Link href={{ pathname: '/login', params: { returnTo: destination } } as never} style={styles.link}>Đăng nhập</Link>
             </Text>

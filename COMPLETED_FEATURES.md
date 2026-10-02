@@ -1,315 +1,91 @@
-# Fashion Shop - Hoàn thành các Chức năng Admin
+# Fashion Haven — tiến độ có bằng chứng
 
-## Tổng quan
-Đã hoàn thành toàn bộ hệ thống quản trị admin với giao diện Crimson Sartorial UI design, kết nối đầy đủ với cơ sở dữ liệu SQL Server thông qua Prisma ORM.
+Cập nhật **02/10/2026**. Trạng thái dưới đây phân biệt luồng đã kiểm chứng và việc còn thiếu. Tài liệu thay các khẳng định cũ “toàn bộ admin hoàn thành”, SQL Server và đồng bộ realtime tức thì. Hệ thống chưa được kết luận hoàn chỉnh hoặc sẵn sàng production.
 
-## Các chức năng đã hoàn thành
+## Nguồn chính và dữ liệu
 
-### 1. Dashboard (Tổng quan)
-- **DashboardView.tsx**: Hiển thị thống kê tổng quan
-  - Thẻ thống kê: Doanh thu, Sản phẩm, Đơn hàng, Khách hàng
-  - Biểu đồ doanh thu 7 ngày gần nhất
-  - Danh sách đơn hàng gần đây
-  - Sản phẩm bán chạy
+| Khu vực | Nguồn thực tế |
+| --- | --- |
+| Khách hàng | `FE`: React Native + Expo SDK 57, route trong `app`, màn hình trong `pages`. |
+| Quản trị | `admin_web`: React + TypeScript + Vite. |
+| API/database | `BE`: Express + Prisma, provider MySQL; `src/app.ts` lắp routes; nguồn ảnh chính tại `BE/public/images`. |
+| Tham khảo | `fashion_ui1`/`fashion_ui2`: thiết kế; `fashionheaven`: ứng dụng cũ, ảnh legacy dùng fallback. Giữ các thư mục này. |
 
-### 2. Products (Sản phẩm & Tồn kho)
-- **ProductsView.tsx**: Quản lý sản phẩm
-  - Tìm kiếm theo tên, mã sản phẩm
-  - Lọc theo danh mục, trạng thái
-  - CRUD đầy đủ: Thêm, Sửa, Xóa sản phẩm
-  - Hiển thị biến thể (size, màu sắc)
-  - Quản lý tồn kho theo từng biến thể
-  - Tích hợp với API backend
+Schema chạy là `BE/prisma/schema.prisma`; cấu hình ở `.env` local. `FashionHeaven.sql` và danh sách procedure là thiết kế tham khảo, không chứng minh toàn bộ chức năng đã triển khai. **Không chạy SQL khởi tạo trên database thật vì có `DROP DATABASE`.**
 
-### 3. Orders (Quản lý Đơn hàng)
-- **OrdersView.tsx**: Quản lý đơn đặt hàng
-  - Stats: Doanh thu hôm nay, Cần đóng gói, Đang giao, Tỷ lệ hủy
-  - Lọc theo trạng thái: Chờ xác nhận, Đang đóng gói, Đang giao hàng, Đã giao, Đã hủy
-  - Tìm kiếm theo #ID, tên khách, SĐT
-  - Hiển thị thông tin khách hàng, sản phẩm, thanh toán
-  - Tracking code vận chuyển
+Dữ liệu cửa hàng đối chiếu và giữ nguyên: **16 sản phẩm, 134 biến thể, 6 đơn, 6 dòng đơn**. DDL bổ sung cho request chống trùng, lịch sử đơn, snapshot tên/ảnh dòng đơn, tên/biến thể dòng nhập và metadata xử lý phiếu đã sẵn sàng; `appmutex` cùng `Account.SessionEpoch` hỗ trợ namespace đăng nhập/thu hồi session. Không reset database, đặt lại tồn hoặc chạy seed. Model `PhieuXuat` vẫn map vào bảng `donhang` để tương thích tên nội bộ cũ.
 
-### 4. Customers (Khách hàng & VIP)
-- **CustomersView.tsx**: Quản lý khách hàng
-  - Stats: Tổng khách hàng, VIP, Mới tháng này, Tỷ lệ quay lại
-  - Tìm kiếm theo tên, email, SĐT
-  - Lọc theo hạng thành viên
-  - Hiển thị hạng thành viên, tổng chi tiêu
-  - Xem lịch sử mua hàng
+## Checkpoint đã chạy
 
-### 5. Employees (Nhân viên)
-- **EmployeesView.tsx**: Quản lý nhân viên
-  - Stats: Tổng nhân viên, Bán hàng, Kho, Quản lý
-  - CRUD đầy đủ: Thêm, Sửa, Xóa nhân viên
-  - Phân quyền theo chức vụ
-  - Gán chi nhánh làm việc
-  - Tạo tài khoản username/password
-  - Modal form với validation
+Lượt gần nhất đã ghi nhận **43/43 mục Node test đạt**: **32 ca HTTP + 4 ca giỏ hàng + 5 ca limiter + 1 ca trình duyệt** (42 ca lá), cộng nhóm test cha. HTTP dùng Express thật và MySQL trong schema `fashionhaven_test_*` mới; fixtures không nằm trong database cửa hàng.
 
-### 6. Suppliers (Nhà cung cấp)
-- **SuppliersView.tsx**: Quản lý nhà cung cấp
-  - Stats: Tổng NCC, Hoạt động, Hợp tác mới
-  - CRUD đầy đủ: Thêm, Sửa, Xóa nhà cung cấp
-  - Quản lý thông tin: Tên, SĐT, Địa chỉ
-  - Grid layout hiện đại
+Test trình duyệt phục vụ **bản build thật** trong `FE/dist` và `admin_web/dist`; request API đi tới Express/schema kiểm tra, không trả dữ liệu giả. Đã chạy được luồng **khách đăng nhập → chọn biến thể → giỏ → quote → COD → theo dõi đơn → admin đóng gói → vận đơn → giao thành công → đối soát COD**. Khách tải lại thấy đơn đã giao, mở chi tiết thấy mã vận đơn `BROWSER-TEST-001` của fixtures. Đây là nghiệm thu luồng web này, không thay cho mọi CRUD hoặc thiết bị Android/iOS.
 
-### 7. Imports (Phiếu nhập hàng)
-- **ImportsView.tsx**: Quản lý phiếu nhập
-  - Stats: Tổng phiếu nhập, Chờ duyệt, Hoàn thành, Tổng giá trị
-  - Lọc theo trạng thái
-  - Hiển thị: Mã phiếu, Nhân viên, NCC, Ngày, Tổng tiền
-  - Trạng thái: Chờ kiểm duyệt, Đã duyệt, Đã nhập kho
+| Luồng đã kiểm tra | Thay đổi và bằng chứng chính |
+| --- | --- |
+| Cấp tài khoản → đăng nhập → phân quyền | `employees.ts`, `credentials.ts`, `sessions.ts`, `authMiddleware.ts`: bcrypt, transaction hồ sơ/tài khoản, mặc định STAFF, quyền database trên mỗi request. Test cấp trùng rollback, namespace chung giữa khách/nhân viên, đổi quyền/thu hồi và bật lại không hồi sinh token cũ. Browser STAFF tại viewport điện thoại chỉ có hai menu products/orders, không có nút tạo/sửa sản phẩm. |
+| Bảo vệ hồ sơ/lịch sử | API không trả mật khẩu/hash; ngưng nhân viên giữ hồ sơ; chặn tự ngưng/admin cuối; khách có đơn không bị xóa cứng. Test supplier có tham chiếu không bị gán lại sản phẩm hoặc phá chứng từ. |
+| Catalog → quote → checkout | Server tính giá/tổng/tồn, kiểm tra biến thể/ngừng bán; quote hash và request key lưu database. Test giá client sửa, giá đổi, retry đồng thời và payment không hỗ trợ. |
+| Giữ tồn và tranh mua | Transaction khóa sản phẩm, cập nhật tổng/biến thể và nhật ký. Test tranh món cuối không vượt tồn; nhiều kho nguyên tử, tổng đơn bằng quote. |
+| Xử lý đơn/giao/tiền | `PENDING → PROCESSING → SHIPPING → DELIVERED`; vận đơn bắt buộc khi giao. Staff không đổi payment; admin đối soát COD sau giao có căn cứ. Test bỏ bước/chuyển sai và quyền tiền; luồng admin trên browser cũng đạt. |
+| Hủy và hoàn tồn | Khách chỉ hủy đơn của mình khi PENDING; nội bộ hủy theo trạng thái/điều kiện. Retry đồng thời hoàn tồn một lần; giữ lịch sử, không revive/hard delete; exports cũ bị chặn. Ca overflow/số lượng cũ không hợp lệ từ chối toàn transaction, không cập nhật dở dang. |
+| Catalog/tồn đồng thời | HTTP xác minh lý do/snapshot, từ chối snapshot cũ và nhật ký chênh lệch; các patch catalog độc lập không ghi đè nhau, thêm biến thể đồng thời giữ dòng/giá. Browser sửa tồn biến thể +2, giữ size M/ảnh sản phẩm và kiểm chứng tồn cha/biến thể cùng tăng đúng. Không tự gán ảnh mẫu khi không thay ảnh. |
+| Tạo sản phẩm có biến thể | Browser tạo sản phẩm mới với hai biến thể tồn 5 và 3; backend lưu tổng tồn đúng 8. Ca này nằm trong cùng browser test, tổng suite vẫn 43 mục Node. |
+| Nhập hàng | HTTP tạo DRAFT tính lại tổng/chưa cộng tồn; nhận đồng thời cộng một lần và nhật ký; sai kho/NCC/biến thể bị từ chối, không hủy/xóa phiếu đã nhận. Browser lập DRAFT không cộng tồn, RECEIVED cộng +3 cả cha/biến thể, tổng phiếu đúng 153.000 VND. |
+| Phân trang/thống kê | HTTP kiểm tra pageSize, ownership, danh sách catalog/đơn và giá nhập chỉ admin. Dashboard aggregate toàn database; bootstrap tối đa 100 dòng/danh sách, 50 đơn gần nhất, không suy tổng từ trang hiện tại. |
+| Giỏ hàng cũ | 4 ca chuẩn hóa/khóa dòng và thao tác giỏ đạt; tránh key trùng khi cùng sản phẩm có biến thể hoặc dữ liệu lưu từ phiên bản cũ. |
+| Parser/upload | HTTP kiểm tra JSON sai/quá lớn, API không tồn tại và upload HTML/ảnh quá lớn trả JSON có giới hạn. Upload chỉ admin, kiểm chữ ký PNG/JPEG/WebP tối đa 5 MB, tên file server chọn. |
+| Giới hạn request | 5 ca limiter đạt: policy login/đăng ký/liên hệ, 429/Retry-After và cửa sổ/bucket có giới hạn. Bộ nhớ từng process vẫn cần kho chung khi triển khai nhiều replica. |
 
-### 8. Exports (Xuất hàng)
-- **ExportsView.tsx**: Quản lý phiếu xuất
-  - Stats: Tổng phiếu xuất, Chờ xử lý, Hoàn thành
-  - Tương tự ImportsView
-  - Hiển thị khách hàng, trạng thái xuất hàng
+## Phạm vi kiểm chứng và phần chưa xác minh
 
-### 9. Posts (Bài viết & Nội dung)
-- **PostsView.tsx**: Quản lý bài viết
-  - Stats: Tổng bài viết, Tin tức, Khuyến mãi, Sự kiện
-  - CRUD đầy đủ với modal form
-  - Lọc theo thể loại
-  - Upload ảnh đại diện
-  - Editor cho nội dung bài viết
+- Browser đã mở rộng và đạt tạo hai biến thể, sửa tồn/giữ ảnh, ghi lý do, nhật ký, lập/nhận phiếu nhập và giao diện STAFF trên viewport điện thoại. Chưa dùng kết quả đó để kết luận sản phẩm đơn giản, mọi CRUD cũ hoặc thiết bị native đạt.
+- 5 ca limiter và 1 ca bảo vệ overflow tồn khi hủy đã được tính trong lượt 43/43 mới nhất.
+- Limiter đăng nhập 60 request/IP/15 phút, đăng ký và liên hệ mỗi endpoint 30 request/IP/15 phút; bộ nhớ mỗi process có giới hạn 5.000 bucket, quá hạn trả 429/Retry-After. Triển khai nhiều replica cần kho giới hạn dùng chung.
+- Lượt kiểm tra mới nhất BE typecheck, admin typecheck/lint/build, FE typecheck/lint/export đạt; lint FE/admin không cảnh báo. Suite 43/43 trên mã mới nhất gồm giữ ảnh khi sửa tồn và phục vụ assets đã đạt. Chưa nghiệm thu native SDK/thiết bị Android/iOS, mọi CRUD hoặc cấu hình production.
 
-### 10. Contacts (Liên hệ Khách hàng)
-- **ContactsView.tsx**: Quản lý tin nhắn liên hệ
-  - Stats: Tổng tin nhắn, Hôm nay, Tuần này, Chưa xử lý
-  - Xem chi tiết tin nhắn trong modal
-  - Sắp xếp theo ngày mới nhất
-  - Nút phản hồi email
-  - Chức năng xóa tin nhắn
+## Giao diện đã nối và giới hạn được hiển thị
 
-### 11. Branches (Chi nhánh)
-- **BranchesView.tsx**: Quản lý chi nhánh
-  - Stats: Tổng chi nhánh, Hoạt động, Nhân viên, Doanh thu TB
-  - CRUD đầy đủ: Thêm, Sửa, Xóa chi nhánh
-  - Grid layout với card design
-  - Quản lý: Tên, Địa chỉ, SĐT
-  - Hiển thị số nhân viên tại mỗi chi nhánh
+Giao diện khách/admin có session/loading/empty/error/success; request checkout đang chờ được lưu để retry không tạo đơn mới. Product editor nhập tồn tổng cho sản phẩm đơn giản, tồn mỗi biến thể cho sản phẩm có biến thể; tổng server tính và form giữ lỗi khi lưu thất bại.
 
-### 12. Roles (Chức vụ)
-- **RolesView.tsx**: Quản lý chức vụ/vai trò
-  - Stats: Tổng chức vụ, Quản lý, Nhân viên, Khác
-  - CRUD đầy đủ: Thêm, Sửa, Xóa chức vụ
-  - Grid layout với icon phân biệt
-  - Hiển thị số nhân viên theo từng chức vụ
+News của FE đã lấy bài viết thật từ `/api/posts`, bỏ dữ liệu `news`/`trends` tĩnh; còn cần nghiệm thu CMS/liên hệ đầy đủ. Mục **Giao hàng** là preview chỉ đọc các đơn SHIPPING/DELIVERED trong tối đa 100 đơn gần nhất, dùng mã đơn/ngày tạo thực tế; xử lý tại Quản lý đơn hàng. Không tạo một phiếu xuất giả hoặc trừ tồn lần nữa.
 
-### 13. Reports (Báo cáo & Phân tích)
-- **ReportsView.tsx**: Placeholder cho báo cáo
-  - Hiển thị thông báo "Đang phát triển"
-  - Dự kiến: Biểu đồ doanh thu, báo cáo tồn kho, phân tích bán hàng
+**Reports/Settings ghi rõ chưa hỗ trợ**, không có số liệu/nút cấu hình giả hoặc lời hứa phiên bản chưa xác định. Các màn hình CRUD cũ còn phải audit từng luồng; việc có 14 menu không nghĩa là 14 nghiệp vụ đã hoàn thành. Hiện REST/refetch, không có push realtime.
 
-### 14. Settings (Cài đặt hệ thống)
-- **SettingsView.tsx**: Placeholder cho cài đặt
-  - Hiển thị thông báo "Đang phát triển"
-  - Dự kiến: Cấu hình hệ thống, phân quyền, cài đặt email
+Icons admin dùng SVG tại ứng dụng, không phụ thuộc font icon ngoài mạng; kiểm tra browser dùng bản build mới có thay đổi này.
 
-## Backend API Endpoints
+12 ảnh catalog/bài viết được tham chiếu đã sao chép sang `BE/public/images` (khoảng 7,75 MB) để đủ assets trong bản clone; `/images` ưu tiên thư mục này, giữ fallback legacy. `BE/uploads` được ignore vì chứa ảnh người dùng phát sinh, cần backup ngoài Git. Smoke test ảnh tĩnh 200/`nosniff` đã đạt trong ca HTTP hiện có, không tăng số ca.
 
-Tất cả endpoints đã được tích hợp:
+## An toàn và giả định đang áp dụng
 
-```typescript
-// Products
-GET    /api/admin/data          // Lấy tất cả dữ liệu admin
-POST   /api/products             // Thêm sản phẩm
-PUT    /api/products/:id         // Cập nhật sản phẩm
-DELETE /api/products/:id         // Xóa sản phẩm
+- `.env` đã loại khỏi theo dõi Git; JWT secret local đủ dài và không còn khóa cố định. **Credential từng commit vẫn có thể nằm trong lịch sử Git và cần chủ database thay mới** trước khi dùng ngoài local; chưa rewrite lịch sử/đổi mật khẩu database dùng chung.
+- Đã nâng cấp **19 mật khẩu lưu rõ cũ** sang bcrypt bằng compare-and-set; không thay mật khẩu đăng nhập/in giá trị. `update_passwords.ts` dùng lại implementation an toàn này.
+- Seed `prisma/seed.ts`/`add_sample_data.ts` yêu cầu opt-in và mật khẩu admin/staff/customer do người vận hành cấp, hash trước khi ghi; bị chặn trong production, không có mật khẩu cố định. **Không chạy seed** trong đợt sửa; thay đổi guard được đối chiếu mã nguồn, không coi là nghiệm thu seed đầy đủ.
+- STAFF đọc catalog/tồn và xử lý đơn; ADMIN sửa giá/tồn/nhập/nhân sự, đối soát. Chức danh nhân sự không tự cấp quyền admin. Chưa phân phạm vi kho/chi nhánh vì schema thiếu quan hệ.
+- Chỉ COD, giảm giá/phí giao hiện 0 theo API; không tự thêm VAT, miễn phí theo ngưỡng giả, thanh toán online hoặc hoàn tiền tự động.
+- Tiền tính bằng số nguyên VND an toàn; cột còn Float, chuyển Decimal cần đợt đối soát/migration riêng. Snapshot chứng từ giữ dữ liệu lịch sử khi catalog thay đổi.
+- Tồn hiển thị là **khả dụng**: giữ khi đặt, hoàn một lần khi hủy hợp lệ. Chưa có timeout tự hủy chờ, quy trình đổi/trả hoặc chuyển kho đầy đủ.
 
-// Orders
-GET    /api/orders               // Lấy danh sách đơn hàng
-PUT    /api/orders/:id/status    // Cập nhật trạng thái
+## Phát hiện còn mở theo ưu tiên
 
-// Employees
-POST   /api/employees            // Thêm nhân viên
-PUT    /api/employees/:id        // Cập nhật nhân viên
-DELETE /api/employees/:id        // Xóa nhân viên
+| Mức | Vấn đề, bằng chứng và phụ thuộc |
+| --- | --- |
+| P0 trước triển khai ngoài local | Credential cũ trong lịch sử Git; cần chủ database thay thông tin xác thực. HTTPS, CORS/proxy/storage, sao lưu/phục hồi và vận hành production chưa nghiệm thu. Chống upload cơ bản đã kiểm tra; không đồng nghĩa storage production đã sẵn sàng. |
+| P1 | Hoàn/đổi, hoàn tiền, POS/xuất kho riêng, chuyển kho, phiếu/đơn cũ không rõ trạng thái chưa có luồng. Cần quyết định nghiệp vụ; không suy đoán để sửa tồn/thu tiền dữ liệu cũ. |
+| P1 | Khách/NCC/nhân sự/CMS còn dùng bootstrap giới hạn 100; một số form/actions cũ chưa nghiệm thu đầu cuối, validation/lỗi/phân trang chưa đồng nhất. Hạng VIP/CMS/liên hệ cần audit riêng. |
+| P1 | Chưa có cổng thanh toán, webhook xác minh, hãng giao hoặc email; cần dịch vụ/cấu hình và căn cứ đối soát từ người vận hành. |
+| P1 | Limiter bộ nhớ chỉ từng process; cấu hình proxy và kho giới hạn chung là phụ thuộc khi triển khai nhiều replica. |
+| P2 | Reports/Settings chưa hỗ trợ; báo cáo theo kỳ, export chuẩn, quan sát hệ thống và tối ưu truy vấn còn mở. |
+| P2 | Chưa nghiệm thu Android/iOS thật, mọi màn hình/kích thước và push realtime. |
 
-// Suppliers
-POST   /api/suppliers            // Thêm NCC
-PUT    /api/suppliers/:id        // Cập nhật NCC
-DELETE /api/suppliers/:id        // Xóa NCC
+## Sổ kiểm tra
 
-// Posts
-POST   /api/posts                // Thêm bài viết
-PUT    /api/posts/:id            // Cập nhật bài viết
-DELETE /api/posts/:id            // Xóa bài viết
+| Lệnh/khu vực | Kết quả checkpoint đã ghi nhận |
+| --- | --- |
+| `BE`: `npm.cmd test` có cấu hình browser | **43/43** mục Node đạt trên mã mới nhất: 32 HTTP + 4 cart + 5 limiter + 1 browser + nhóm cha. Browser có tạo hai biến thể/tồn/nhập/giữ ảnh/STAFF/khách xem vận đơn; HTTP có overflow và ảnh chính. |
+| `BE`: `npm.cmd run typecheck` | Đạt lượt mới nhất. |
+| `admin_web`: `npm.cmd run typecheck`, `npm.cmd run lint`, `npm.cmd run build` | Đạt; typecheck/lint đã chạy lại sau patch giữ ảnh, lint không cảnh báo. |
+| `FE`: `npx.cmd tsc --noEmit`, `npm.cmd run lint`, `npx.cmd expo export --platform web` | Đạt; lint không cảnh báo, export tạo bản web cho kiểm tra trình duyệt. |
+| Dữ liệu cửa hàng | 16 sản phẩm/134 biến thể/6 đơn/6 dòng đơn giữ nguyên; fixtures chỉ trong schema kiểm tra riêng. |
 
-// Contacts
-DELETE /api/contacts/:id         // Xóa liên hệ
-
-// Branches
-POST   /api/branches             // Thêm chi nhánh
-PUT    /api/branches/:id         // Cập nhật chi nhánh
-DELETE /api/branches/:id         // Xóa chi nhánh
-
-// Roles
-POST   /api/roles                // Thêm chức vụ
-PUT    /api/roles/:id            // Cập nhật chức vụ
-DELETE /api/roles/:id            // Xóa chức vụ
-```
-
-## Database Schema (Prisma)
-
-Đã cập nhật schema với tất cả bảng cần thiết:
-
-- **ChucVu**: Chức vụ/vai trò
-- **ChiNhanh**: Chi nhánh cửa hàng
-- **NhanVien**: Nhân viên
-- **Account**: Tài khoản đăng nhập
-- **KhachHang**: Khách hàng
-- **LoaiHang**: Danh mục sản phẩm
-- **Kho**: Kho hàng
-- **NhaCungCap**: Nhà cung cấp
-- **SanPham**: Sản phẩm
-- **BienTheSanPham**: Biến thể sản phẩm (size, màu)
-- **PhieuNhap**: Phiếu nhập hàng
-- **CTPhieuNhap**: Chi tiết phiếu nhập
-- **DonHang**: Đơn hàng
-- **CTDonHang**: Chi tiết đơn hàng
-- **BaiViet**: Bài viết/Nội dung
-- **LienHe**: Liên hệ khách hàng
-
-## Design System - Crimson Sartorial UI
-
-### Màu sắc chính:
-- Primary: `#b6152b` (Đỏ sang trọng)
-- Background: `#f9fafb` (Xám nhạt)
-- Surface: `#ffffff` (Trắng)
-- Text: `#1f2937` (Xám đậm)
-
-### Components:
-- Material Symbols icons (Google)
-- Tailwind CSS utility classes
-- Rounded corners: `rounded-xl`, `rounded-2xl`
-- Shadows: `shadow-sm`, `shadow-md`
-- Transitions: `transition-all`
-- Hover effects: `hover:bg-red-800`, `hover:shadow-md`
-
-### Layout Pattern:
-```tsx
-// Header with title + action button
-<div className="flex justify-between mb-6">
-  <div>
-    <h1 className="text-3xl font-bold font-serif">Title</h1>
-    <p className="text-sm text-gray-500">Description</p>
-  </div>
-  <button className="bg-red-700 text-white px-5 py-2.5 rounded-xl">
-    Action
-  </button>
-</div>
-
-// Stats cards grid
-<div className="grid grid-cols-4 gap-4 mb-6">
-  {stats.map(stat => (
-    <div className="bg-white p-5 rounded-2xl border shadow-sm">
-      ...
-    </div>
-  ))}
-</div>
-
-// Table container
-<div className="bg-white border rounded-2xl shadow-sm overflow-hidden">
-  <table>...</table>
-</div>
-```
-
-## Sidebar Navigation
-
-Đã tổ chức lại sidebar thành các nhóm:
-
-### HỆ THỐNG QUẢN TRỊ
-- Dashboard (Tổng quan)
-- Products (Sản phẩm & Tồn kho)
-- Orders (Quản lý Đơn hàng)
-- Customers (Khách hàng & VIP)
-- Employees (Nhân viên & Chức vụ)
-- Imports (Phiếu nhập hàng)
-- Exports (Xuất hàng)
-- Suppliers (Nhà cung cấp)
-
-### NỘI DUNG & QUẢN LÝ
-- Posts (Bài viết & Nội dung)
-- Contacts (Liên hệ Khách hàng)
-- Branches (Chi nhánh)
-- Roles (Chức vụ)
-
-### TIỆN ÍCH
-- Reports (Báo cáo & Phân tích)
-- Settings (Cài đặt hệ thống)
-
-## Tech Stack
-
-### Frontend (admin_web):
-- React 19.2.8
-- TypeScript 6.0.2
-- Vite 8.3.0
-- Tailwind CSS 3.4.17
-- React Router DOM 7.18.4
-
-### Backend (BE):
-- Node.js + Express
-- TypeScript
-- Prisma ORM
-- MySQL/SQL Server
-- JWT Authentication
-- bcrypt for password hashing
-
-### Mobile (FE):
-- React Native + Expo
-- TypeScript
-- Axios for API calls
-
-## Deployment & Running
-
-### Backend:
-```bash
-cd BE
-npm install
-npm run dev
-# Server runs on http://localhost:4000
-```
-
-### Admin Web:
-```bash
-cd admin_web
-npm install
-npm run dev
-# Vite dev server on http://localhost:5173
-npm run build
-# Production build to dist/
-```
-
-### Mobile:
-```bash
-cd FE
-npm install
-npx expo start
-```
-
-## Git Status
-
-✅ **Branch PhamHa**: Pushed successfully  
-✅ **Merged to main**: Completed with conflict resolution  
-✅ **Remote**: All changes pushed to origin  
-
-Latest commit: `0aaeeda` - Merge PhamHa into main
-
-## Những gì cần làm tiếp (Optional)
-
-1. **Backend API Implementation**: Hoàn thiện các endpoint CRUD còn thiếu
-2. **Reports View**: Thêm biểu đồ thống kê với Chart.js hoặc Recharts
-3. **Settings View**: Cài đặt cấu hình hệ thống, email templates
-4. **File Upload**: Tích hợp upload ảnh thực tế (Cloudinary, S3)
-5. **Realtime Updates**: Socket.io cho thông báo đơn hàng mới
-6. **Export Excel**: Xuất danh sách sản phẩm, đơn hàng ra Excel
-7. **Advanced Filters**: Lọc theo nhiều tiêu chí, date range picker
-8. **Pagination**: Phân trang thực tế từ backend (hiện tại chỉ UI)
-9. **Testing**: Unit tests, E2E tests với Vitest/Playwright
-10. **Mobile Integration**: Đồng bộ UI/UX giữa admin web và mobile app
-
----
-
-**Tóm lại**: Đã hoàn thành toàn bộ admin dashboard với 14 views, tích hợp đầy đủ với database, áp dụng Crimson Sartorial UI design, build thành công, push và merge vào main branch. Hệ thống sẵn sàng để phát triển thêm các tính năng nâng cao.
+Khi mở rộng suite/diff tiếp theo, cập nhật số ca/lệnh thực chạy và phần chưa xác minh; không kết luận hệ thống hoàn chỉnh chỉ vì đã thêm mã hoặc build thành công.

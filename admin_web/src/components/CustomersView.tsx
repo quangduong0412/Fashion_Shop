@@ -1,3 +1,4 @@
+import Icon from './Icon';
 import React, { useState } from 'react';
 interface Props { users: any[]; }
 export default function CustomersView({ users }: Props) {
@@ -19,14 +20,14 @@ export default function CustomersView({ users }: Props) {
           <p className="text-sm text-gray-500">Theo dõi tập khách hàng thời trang cao cấp, phân tầng đặc quyền VIP và quản trị chiến lược chăm sóc cá nhân hóa.</p>
         </div>
         <div className="flex gap-2 self-start lg:self-auto">
-          <button className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 shadow-sm"><span className="material-symbols-outlined text-base">file_download</span>Xuất Excel</button>
-          <button className="flex items-center gap-2 px-5 py-2.5 bg-purple-700 text-white rounded-xl text-sm font-bold shadow-md hover:bg-purple-800 transition-all"><span className="material-symbols-outlined text-base">person_add</span>Thêm khách hàng</button>
+          <button className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 shadow-sm"><Icon name="file_download" className="text-base" />Xuất Excel</button>
+          <button className="flex items-center gap-2 px-5 py-2.5 bg-purple-700 text-white rounded-xl text-sm font-bold shadow-md hover:bg-purple-800 transition-all"><Icon name="person_add" className="text-base" />Thêm khách hàng</button>
         </div>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[{label:'Tổng khách hàng',value:users.length,sub:'+12% so với tháng trước',icon:'group',color:'text-blue-600',bg:'bg-blue-50'},{label:'Thành viên VIP cao cấp',value:vipCount,sub:'5.7% tệp khách - chiếm 64% DT',icon:'workspace_premium',color:'text-purple-600',bg:'bg-purple-50'},{label:'CLV Trung bình',value:'18.5tr đ',sub:'+8.4% giỏ hàng boutique',icon:'monetization_on',color:'text-yellow-600',bg:'bg-yellow-50'},{label:'Tỷ lệ quay lại (Retention)',value:'68.4%',sub:'Chu kỳ 45 ngày',icon:'autorenew',color:'text-green-600',bg:'bg-green-50'}].map((c,i)=>(
           <div key={i} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-            <div className="flex items-start justify-between mb-3"><span className="text-xs font-bold text-gray-500 uppercase tracking-wider leading-tight">{c.label}</span><div className={`w-9 h-9 rounded-xl ${c.bg} flex items-center justify-center ${c.color} shrink-0`}><span className="material-symbols-outlined text-xl">{c.icon}</span></div></div>
+            <div className="flex items-start justify-between mb-3"><span className="text-xs font-bold text-gray-500 uppercase tracking-wider leading-tight">{c.label}</span><div className={`w-9 h-9 rounded-xl ${c.bg} flex items-center justify-center ${c.color} shrink-0`}><Icon name={c.icon} className="text-xl" /></div></div>
             <div className="text-2xl font-bold text-gray-800 mb-1">{c.value}</div>
             <div className="text-xs text-gray-500">{c.sub}</div>
           </div>
@@ -34,7 +35,7 @@ export default function CustomersView({ users }: Props) {
       </div>
       <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
         <div className="flex gap-3 p-4 border-b border-gray-100">
-          <div className="relative flex-1 max-w-sm"><span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 text-xl">search</span><input value={search} onChange={e=>setSearch(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-purple-400" placeholder="Tìm tên KH, SĐT, email..."/></div>
+          <div className="relative flex-1 max-w-sm"><Icon name="search" className="absolute left-3 top-2.5 text-gray-400 text-xl" /><input value={search} onChange={e=>setSearch(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-purple-400" placeholder="Tìm tên KH, SĐT, email..."/></div>
           <div className="flex gap-2">
             {['Tất cả','Diamond VIP','Platinum VIP','Gold VIP'].map(f=><button key={f} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-purple-100 hover:text-purple-700 transition-all whitespace-nowrap">{f}</button>)}
           </div>
@@ -58,14 +59,14 @@ export default function CustomersView({ users }: Props) {
                     <div className="flex items-center gap-2">
                       <span className="truncate max-w-[100px]">{showPasswords[u.id] ? (u.password || '—') : '••••••••'}</span>
                       <button onClick={() => setShowPasswords(p => ({...p, [u.id]: !p[u.id]}))} className="text-gray-400 hover:text-gray-600 focus:outline-none">
-                        <span className="material-symbols-outlined text-sm">{showPasswords[u.id] ? 'visibility_off' : 'visibility'}</span>
+                        <Icon name={showPasswords[u.id] ? 'visibility_off' : 'visibility'} className="text-sm" />
                       </button>
                     </div>
                   </td>
-                  <td className="py-4 px-5 text-right"><div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700"><span className="material-symbols-outlined text-lg">visibility</span></button><button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-red-600"><span className="material-symbols-outlined text-lg">delete</span></button></div></td>
+                  <td className="py-4 px-5 text-right"><div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700"><Icon name="visibility" className="text-lg" /></button><button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-red-600"><Icon name="delete" className="text-lg" /></button></div></td>
                 </tr>);
               })}
-              {filtered.length===0&&<tr><td colSpan={8} className="py-12 text-center text-gray-400"><span className="material-symbols-outlined text-5xl block mb-2 opacity-30">group</span>Không có khách hàng nào.</td></tr>}
+              {filtered.length===0&&<tr><td colSpan={8} className="py-12 text-center text-gray-400"><Icon name="group" className="text-5xl block mb-2 opacity-30" />Không có khách hàng nào.</td></tr>}
             </tbody>
           </table>
         </div>

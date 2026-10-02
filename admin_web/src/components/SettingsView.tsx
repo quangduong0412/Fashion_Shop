@@ -1,9 +1,20 @@
-import React from 'react';
+import Icon from './Icon';
 export default function SettingsView() {
-  return (
-    <div className="flex flex-col w-full pb-10">
-      <div className="mb-6"><h1 className="text-3xl font-bold text-gray-800 font-serif mb-1">Cài đặt Hệ thống</h1><p className="text-sm text-gray-500">Quản lý cấu hình nâng cao, tùy chỉnh nghiệp vụ và tích hợp bên thứ ba.</p></div>
-      <div className="p-12 bg-white rounded-xl shadow-sm text-center border border-gray-100"><span className="material-symbols-outlined text-7xl mb-4 text-gray-200 block">settings</span><h2 className="font-headline-md text-gray-800 mb-2">Đang nâng cấp module cài đặt</h2><p className="text-gray-500">Cấu hình chi tiết hệ thống đang được tối ưu.</p></div>
+  return <section className="space-y-6 pb-10">
+    <div>
+      <h1 className="text-3xl font-bold text-gray-800 font-serif">Cài đặt Hệ thống</h1>
+      <p className="mt-2 text-sm text-gray-500">Chưa hỗ trợ thay đổi cấu hình cửa hàng trên màn hình này.</p>
     </div>
-  );
+    <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-6 sm:p-8">
+      <div className="flex items-start gap-4">
+        <Icon name="settings" aria-hidden="true" className="text-3xl text-[#b6152b] bg-red-50 rounded-xl p-3" />
+        <div className="space-y-3">
+          <span className="inline-block rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">Chưa hỗ trợ</span>
+          <h2 className="text-xl font-semibold text-gray-800">Chưa có thiết lập để lưu tại đây</h2>
+          <p className="text-sm text-gray-600 leading-relaxed">Chính sách bán hàng, phí giao hàng, email và kết nối dịch vụ thanh toán chưa có form cấu hình trên trang quản trị. Màn hình này không thay đổi các thiết lập đang áp dụng.</p>
+          <p className="text-sm text-gray-600 leading-relaxed">Quyền đăng nhập của từng nhân viên được quản lý tại Nhân viên & Quyền truy cập. Thông tin và trạng thái bán của sản phẩm được quản lý tại Sản phẩm & Tồn kho.</p>
+        </div>
+      </div>
+    </div>
+  </section>;
 }

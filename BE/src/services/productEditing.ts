@@ -1,34 +1,44 @@
 import prisma from '../db';
+import type { Prisma } from '@prisma/client';
 import { normalizeSaleStatus, normalizeVariants, readVariantAttributeDefinitions, VariantValidationError } from './productVariants';
 import { adjustmentReason, recordStockAdjustment, resolveStock, stockConflict, stockNumber } from './inventoryAdjustments';
 
-export async function saveProductChanges(productId: number, body: any, actor: string) {
-  if (!Number.isSafeInteger(productId) || productId < 1) throw new VariantValidationError('Mã sản phẩm không hợp lệ.');
-  const existing = await prisma.sanPham.findUnique({ where: { MaSanPham: productId } });
-  if (!existing) throw new VariantValidationError('Không tìm thấy sản phẩm.');
-  const categoryId = Number(body.categoryId ?? existing.MaLoaiHang);
-  if (!Number.isSafeInteger(categoryId) || categoryId < 1) throw new VariantValidationError('Danh mục không hợp lệ.');
-  const category = await prisma.loaiHang.findUnique({ where: { MaLoaiHang: categoryId } });
-  if (!category) throw new VariantValidationError('Danh mục không hợp lệ.');
-  const name = String(body.name ?? existing.TenSanPham).trim();
-  const price = Number(body.price ?? existing.DonGiaBan);
-  const purchasePrice = Number(body.originalPrice ?? existing.DonGiaNhap);
-  if (!name || name.length > 255 || body.price === '' || body.originalPrice === '' || !Number.isFinite(price) || price < 0 || !Number.isFinite(purchasePrice) || purchasePrice < 0) {
-    throw new VariantValidationError('Tên, giá bán và giá nhập sản phẩm không hợp lệ.');
-  }
-  const warehouseId = Number(body.khoId ?? existing.MaKho), supplierId = Number(body.nccId ?? existing.MaNCC);
-  const warehouse = Number.isSafeInteger(warehouseId) && warehouseId > 0 ? await prisma.kho.findUnique({ where: { MaKho: warehouseId } }) : null;
-  const supplier = Number.isSafeInteger(supplierId) && supplierId > 0 ? await prisma.nhaCungCap.findUnique({ where: { MaNCC: supplierId } }) : null;
-  if (!warehouse || !supplier) throw new VariantValidationError('Kho hoặc nhà cung cấp không hợp lệ.');
-  if (body.variants !== undefined && !Array.isArray(body.variants)) throw new VariantValidationError('Danh sách biến thể không hợp lệ.');
-  const definitions = readVariantAttributeDefinitions(category.ThuocTinhBienThe);
-  const normalized = body.variants === undefined ? null : normalizeVariants(body.variants, definitions, price);
+type LockedProduct = Prisma.SanPhamGetPayload<{ include: { bienThes: true } }>;
+type ProductChanges = Record<string, any>;
+type ChangeSource = ProductChanges | ((current: LockedProduct) => ProductChanges);
 
+export async function saveProductChanges(productId: number, source: ChangeSource, actor: string) {
+  if (!Number.isSafeInteger(productId) || productId < 1 || productId > 2147483647) throw new VariantValidationError('Mã sản phẩm không hợp lệ.');
   return prisma.$transaction(async tx => {
     // Serialize inventory edits with checkout, which also locks the product before its variants.
     await tx.$queryRaw`SELECT MaSanPham FROM sanpham WHERE MaSanPham = ${productId} FOR UPDATE`;
     const current = await tx.sanPham.findUnique({ where: { MaSanPham: productId }, include: { bienThes: true } });
-    if (!current) stockConflict();
+    if (!current) {
+      const error = new VariantValidationError('Không tìm thấy sản phẩm.');
+      error.statusCode = 404;
+      throw error;
+    }
+    // Partial edits and variant endpoint merges must use the snapshot protected by
+    // this lock; preloading defaults can otherwise overwrite another saved edit.
+    const body = typeof source === 'function' ? source(current) : source;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new VariantValidationError('Dữ liệu sản phẩm không hợp lệ.');
+    const categoryId = Number(body.categoryId ?? current.MaLoaiHang);
+    if (!Number.isSafeInteger(categoryId) || categoryId < 1) throw new VariantValidationError('Danh mục không hợp lệ.');
+    const category = await tx.loaiHang.findUnique({ where: { MaLoaiHang: categoryId } });
+    if (!category) throw new VariantValidationError('Danh mục không hợp lệ.');
+    const name = String(body.name ?? current.TenSanPham).trim();
+    const price = Number(body.price ?? current.DonGiaBan);
+    const purchasePrice = Number(body.originalPrice ?? current.DonGiaNhap);
+    if (!name || name.length > 255 || body.price === '' || body.originalPrice === '' || !Number.isSafeInteger(price) || price < 0 || !Number.isSafeInteger(purchasePrice) || purchasePrice < 0) {
+      throw new VariantValidationError('Tên, giá bán và giá nhập sản phẩm không hợp lệ.');
+    }
+    const warehouseId = Number(body.khoId ?? current.MaKho), supplierId = Number(body.nccId ?? current.MaNCC);
+    const warehouse = Number.isSafeInteger(warehouseId) && warehouseId > 0 ? await tx.kho.findUnique({ where: { MaKho: warehouseId } }) : null;
+    const supplier = Number.isSafeInteger(supplierId) && supplierId > 0 ? await tx.nhaCungCap.findUnique({ where: { MaNCC: supplierId } }) : null;
+    if (!warehouse || !supplier) throw new VariantValidationError('Kho hoặc nhà cung cấp không hợp lệ.');
+    if (body.variants !== undefined && !Array.isArray(body.variants)) throw new VariantValidationError('Danh sách biến thể không hợp lệ.');
+    const definitions = readVariantAttributeDefinitions(category.ThuocTinhBienThe);
+    const normalized = body.variants === undefined ? null : normalizeVariants(body.variants, definitions, price);
     if (body.expectedVariantIds !== undefined) {
       if (!Array.isArray(body.expectedVariantIds)) throw new VariantValidationError('Danh sách mã biến thể không hợp lệ.');
       const expectedIds = new Set(body.expectedVariantIds.map(Number));
@@ -59,13 +69,13 @@ export async function saveProductChanges(productId: number, body: any, actor: st
       if (!plan.previous) continue;
       const original = normalizeVariants([{ ...plan.previous, SKU: plan.previous.SKU || plan.variant.SKU }], definitions, price)[0]!;
       const identityChanged = identity(original) !== identity(plan.variant) || original.SKU.toLocaleLowerCase() !== plan.variant.SKU.toLocaleLowerCase();
-      if (identityChanged && await tx.cTDonHang.count({ where: { MaBienThe: plan.previous.MaBienThe } })) {
+      if (identityChanged && (await tx.cTDonHang.count({ where: { MaBienThe: plan.previous.MaBienThe } }) || await tx.cTPhieuNhap.count({ where: { MaBienThe: plan.previous.MaBienThe } }))) {
         throw new VariantValidationError('Biến thể đã có đơn hàng: không thể đổi SKU, màu hoặc thuộc tính. Hãy thêm biến thể mới và tạm ngừng biến thể cũ.');
       }
     }
     for (const variant of removed) {
       if (variant.SoLuong > 0) throw new VariantValidationError('Không thể xóa biến thể còn hàng. Điều chỉnh tồn về 0 rồi lưu, hoặc chuyển sang Tạm ngừng.');
-      if (await tx.cTDonHang.count({ where: { MaBienThe: variant.MaBienThe } })) throw new VariantValidationError('Biến thể đã có đơn hàng. Hãy chuyển sang Tạm ngừng để giữ lịch sử.');
+      if (await tx.cTDonHang.count({ where: { MaBienThe: variant.MaBienThe } }) || await tx.cTPhieuNhap.count({ where: { MaBienThe: variant.MaBienThe } })) throw new VariantValidationError('Biến thể đã có đơn hàng. Hãy chuyển sang Tạm ngừng để giữ lịch sử.');
     }
     const targetStock = normalized?.length
       ? plans.reduce((sum, plan) => sum + plan.variant.SoLuong, 0)

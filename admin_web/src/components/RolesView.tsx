@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import Icon from './Icon';
+import { useState } from 'react';
 
 interface RolesViewProps {
   roles: any[];
@@ -46,7 +47,7 @@ export default function RolesView({ roles, onSave, onDelete }: RolesViewProps) {
           <p className="text-sm text-gray-500">Quản lý vai trò và phân quyền nhân viên trong hệ thống.</p>
         </div>
         <button onClick={() => openModal()} className="flex items-center gap-2 px-5 py-2.5 bg-red-700 text-white rounded-xl text-sm font-bold shadow-md hover:bg-red-800 transition-all">
-          <span className="material-symbols-outlined text-base">add</span>
+          <Icon name="add" className="text-base" />
           Thêm Chức vụ
         </button>
       </div>
@@ -66,7 +67,7 @@ export default function RolesView({ roles, onSave, onDelete }: RolesViewProps) {
             <div className="flex items-start justify-between mb-3">
               <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{c.label}</span>
               <div className={`w-9 h-9 rounded-xl ${c.bg} flex items-center justify-center ${c.color}`}>
-                <span className="material-symbols-outlined text-xl">{c.icon}</span>
+                <Icon name={c.icon} className="text-xl" />
               </div>
             </div>
             <div className="text-2xl font-bold text-gray-800">{c.value}</div>
@@ -77,7 +78,7 @@ export default function RolesView({ roles, onSave, onDelete }: RolesViewProps) {
       {/* Search */}
       <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4 mb-4">
         <div className="relative w-full md:w-96">
-          <span className="material-symbols-outlined absolute left-3.5 top-2.5 text-gray-400 text-xl">search</span>
+          <Icon name="search" className="absolute left-3.5 top-2.5 text-gray-400 text-xl" />
           <input value={search} onChange={e => setSearch(e.target.value)}
             className="w-full pl-11 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-red-400"
             placeholder="Tìm theo tên chức vụ..." />
@@ -96,14 +97,14 @@ export default function RolesView({ roles, onSave, onDelete }: RolesViewProps) {
             <div key={idx} className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 hover:shadow-md transition-shadow group">
               <div className="flex items-start justify-between mb-4">
                 <div className={`w-12 h-12 rounded-xl ${colorClass} flex items-center justify-center`}>
-                  <span className="material-symbols-outlined text-2xl">{icon}</span>
+                  <Icon name={icon} className="text-2xl" />
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => openModal(r)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
-                    <span className="material-symbols-outlined text-lg">edit</span>
+                    <Icon name="edit" className="text-lg" />
                   </button>
                   <button onClick={() => onDelete(r.id || r.MaChucVu)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600">
-                    <span className="material-symbols-outlined text-lg">delete</span>
+                    <Icon name="delete" className="text-lg" />
                   </button>
                 </div>
               </div>
@@ -116,7 +117,7 @@ export default function RolesView({ roles, onSave, onDelete }: RolesViewProps) {
         })}
         {filtered.length === 0 && (
           <div className="col-span-full py-12 text-center text-gray-400">
-            <span className="material-symbols-outlined text-5xl block mb-2 opacity-30">badge</span>
+            <Icon name="badge" className="text-5xl block mb-2 opacity-30" />
             Không tìm thấy chức vụ nào.
           </div>
         )}
@@ -129,7 +130,7 @@ export default function RolesView({ roles, onSave, onDelete }: RolesViewProps) {
             <div className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
               <h2 className="text-xl font-bold text-gray-800">{editRole ? 'Chỉnh sửa Chức vụ' : 'Thêm Chức vụ mới'}</h2>
               <button onClick={() => setShowModal(false)} className="p-2 hover:bg-gray-100 rounded-lg">
-                <span className="material-symbols-outlined text-gray-400">close</span>
+                <Icon name="close" className="text-gray-400" />
               </button>
             </div>
             <div className="p-6">

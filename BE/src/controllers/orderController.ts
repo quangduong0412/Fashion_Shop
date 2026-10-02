@@ -1,174 +1,160 @@
 import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import prisma from '../db';
-import { adjustOrderInventory, isCancelledOrder } from '../services/orderInventory';
-import { normalizeSaleStatus } from '../services/productVariants';
+import { adjustOrderInventory } from '../services/orderInventory';
+import { ApiError, positiveId, sendApiError, textValue } from '../services/apiErrors';
+import { assertTransition, nextStatuses, orderStatus, paymentStatus } from '../services/orderRules';
+import { cartInput, hash, priceCart, shippingInput } from '../services/checkout';
+import { Principal } from '../services/sessions';
 
-const orderStatuses = new Set(['PENDING', 'Chờ xác nhận', 'PROCESSING', 'Đang đóng gói', 'SHIPPING', 'Đang giao hàng', 'DELIVERED', 'Đã giao', 'CANCELLED', 'Đã hủy']);
-const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
-const errorMessage = (error: unknown) => error instanceof Prisma.PrismaClientKnownRequestError
-  ? 'Không thể lưu đơn hàng. Vui lòng thử lại.'
-  : error instanceof Error ? error.message : 'Không thể xử lý đơn hàng.';
+const detailInclude = { ctDonHangs: { include: { sanPham: { select: { TenSanPham: true, Anh: true } } } } } as const;
+const transactionOptions = { timeout: 20000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted };
+const actor = (req: Request): Principal => (req as any).user;
+function dto(order: any, internal = false, events: any[] = []) {
+  let canonical: string = order.TrangThai;
+  let allowed: string[] = [];
+  try { canonical = orderStatus(order.TrangThai); allowed = nextStatuses(canonical as any); } catch { /* Legacy states require manual reconciliation. */ }
+  const details = order.ctDonHangs.map((line: any) => ({ ...line, sanPham: { TenSanPham: line.TenSanPham ?? line.sanPham?.TenSanPham, Anh: line.AnhSanPham ?? line.sanPham?.Anh } }));
+  return { ...order, TrangThai: canonical, ctDonHangs: details, history: events.map(event => ({ id: event.Id, from: event.FromStatus, to: event.ToStatus,
+    paymentFrom: event.FromPayment, paymentTo: event.ToPayment, at: event.CreatedAt, note: event.Note, shipping: event.Shipping, actorRole: event.ActorRole })),
+    ...(internal ? { id: order.MaPhieuXuat, customer: order.TenNguoiNhan ?? 'Chưa lưu người nhận', phone: order.DienThoaiNhan,
+      address: order.DiaChiNhan, date: order.NgayXuat, total: order.TongTien, status: canonical, paymentMethod: order.PhuongThucThanhToan,
+      paymentStatus: order.TrangThaiThanhToan, shippingProvider: order.DonViVanChuyen, trackingCode: order.MaVanDon,
+      allowedStatuses: allowed, details: details.map((line: any) => ({ id: line.STT, name: line.sanPham.TenSanPham, size: line.KichCo, color: line.MauSac, sku: line.SKU,
+        quantity: line.SoLuong, price: line.DonGiaBan, total: line.ThanhTien })) } : {}) };
+}
+async function readOrders(tx: Prisma.TransactionClient, ids: number[]) {
+  return tx.phieuXuat.findMany({ where: { MaPhieuXuat: { in: ids } }, include: detailInclude, orderBy: { MaPhieuXuat: 'asc' } });
+}
+
+export const quoteOrder = async (req: Request, res: Response) => {
+  try {
+    if (actor(req).role !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Hãy đăng nhập tài khoản khách hàng để đặt hàng.');
+    res.json((await priceCart(prisma, cartInput(req.body?.items))).publicQuote);
+  } catch (error) { sendApiError(res, error); }
+};
 
 export const createOrder = async (req: Request, res: Response) => {
-  const user = (req as any).user;
-  const items = req.body?.items;
-  if (user.role !== 'user') { res.status(403).json({ error: 'Chỉ tài khoản khách hàng mới có thể đặt hàng.' }); return; }
-  if (!Array.isArray(items) || !items.length) { res.status(400).json({ error: 'Giỏ hàng đang trống.' }); return; }
-  if (items.some(item => !item || !Number.isSafeInteger(Number(item.id)) || Number(item.id) <= 0 ||
-    !Number.isSafeInteger(Number(item.quantity)) || Number(item.quantity) <= 0 ||
-    (item.variantId != null && (!Number.isSafeInteger(Number(item.variantId)) || Number(item.variantId) <= 0)))) {
-    res.status(400).json({ error: 'Thông tin sản phẩm, biến thể hoặc số lượng không hợp lệ.' }); return;
-  }
   try {
-    const orders = await prisma.$transaction(async tx => {
-      const customer = await tx.khachHang.findUnique({ where: { MaKhachHang: Number(user.id) } });
-      if (!customer) throw new Error('Không tìm thấy tài khoản khách hàng. Vui lòng đăng nhập lại.');
-      const recipient = {
-        name: text(req.body.shipping?.name ?? customer.TenKhach),
-        phone: text(req.body.shipping?.phone ?? customer.DienThoai),
-        address: text(req.body.shipping?.address ?? customer.DiaChi)
-      };
-      if (!recipient.name || !recipient.phone || !recipient.address) throw new Error('Vui lòng nhập họ tên, số điện thoại và địa chỉ nhận hàng.');
-      if (recipient.name.length > 255 || recipient.phone.length > 50 || recipient.address.length > 8000) throw new Error('Thông tin nhận hàng quá dài.');
-      if (!/^[+\d\s().-]{7,25}$/.test(recipient.phone)) throw new Error('Số điện thoại nhận hàng không hợp lệ.');
-      const paymentMethod = text(req.body.paymentMethod) || 'Thanh toán khi nhận hàng';
-      if (paymentMethod.length > 50) throw new Error('Phương thức thanh toán không hợp lệ.');
-      const productIds = [...new Set<number>(items.map(item => Number(item.id)))].sort((a, b) => a - b);
-      // Read sale settings and variants only after any inventory edit has committed.
-      for (const productId of productIds) {
-        await tx.$queryRaw`SELECT MaSanPham FROM sanpham WHERE MaSanPham = ${productId} FOR UPDATE`;
+    const user = actor(req);
+    if (user.role !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Chỉ khách hàng được đặt hàng.');
+    const items = cartInput(req.body?.items);
+    const shipping = shippingInput(req.body?.shipping);
+    if (!['COD', 'Thanh toán khi nhận hàng', undefined].includes(req.body?.paymentMethod)) throw new ApiError(400, 'UNSUPPORTED_PAYMENT', 'Cửa hàng hiện hỗ trợ thanh toán khi nhận hàng (COD).');
+    const key = req.get('Idempotency-Key') ?? req.body?.requestKey;
+    if (typeof key !== 'string' || !/^[a-zA-Z0-9_-]{16,64}$/.test(key)) throw new ApiError(400, 'REQUEST_KEY_REQUIRED', 'Cần mã yêu cầu đặt hàng để tránh tạo đơn trùng. Hãy cập nhật ứng dụng.');
+    const fingerprint = hash({ items, shipping, paymentMethod: 'COD' });
+    const result = await prisma.$transaction(async tx => {
+      // Lock customer first: concurrent retries serialize before taking any product locks.
+      await tx.$queryRaw`SELECT MaKhachHang FROM khachhang WHERE MaKhachHang = ${user.id} FOR UPDATE`;
+      const previous = await tx.checkoutRequest.findUnique({ where: { CustomerId_Key: { CustomerId: user.id, Key: key } } });
+      if (previous) {
+        if (previous.Fingerprint !== fingerprint) throw new ApiError(409, 'REQUEST_KEY_REUSED', 'Mã yêu cầu đã được dùng cho giỏ/địa chỉ khác.');
+        return { replayed: true, orders: await readOrders(tx, previous.OrderIds as number[]) };
       }
-      const products = await tx.sanPham.findMany({
-        where: { MaSanPham: { in: productIds } }, include: { bienThes: true }
-      });
-      type OrderLine = { product: typeof products[number]; variant?: typeof products[number]['bienThes'][number]; quantity: number; price: number };
-      const lines = new Map<string, OrderLine>();
-      for (const item of items) {
-        const product = products.find(product => product.MaSanPham === Number(item.id));
-        if (!product) throw new Error('Một sản phẩm trong giỏ không còn tồn tại. Vui lòng cập nhật giỏ hàng.');
-        if (normalizeSaleStatus(product.TrangThai) !== 'Đang mở bán') throw new Error(`Sản phẩm “${product.TenSanPham}” đang ngừng bán.`);
-        let variant: OrderLine['variant'];
-        if (item.variantId != null) {
-          variant = product.bienThes.find(variant => variant.MaBienThe === Number(item.variantId));
-          if (!variant) throw new Error(`Biến thể của “${product.TenSanPham}” đã thay đổi. Vui lòng chọn lại sản phẩm.`);
-        } else if (product.bienThes.length) {
-          const selected = item.attributes && typeof item.attributes === 'object' && !Array.isArray(item.attributes) ? item.attributes : {};
-          const candidates = product.bienThes.filter(variant => {
-            const attributes = variant.ThuocTinh && typeof variant.ThuocTinh === 'object' && !Array.isArray(variant.ThuocTinh) ? variant.ThuocTinh : {};
-            return (!item.size || variant.KichCo === item.size) && (!item.color || variant.MauSac === item.color) &&
-              Object.entries(selected).every(([key, value]) => String(key === 'size' ? attributes[key] ?? variant.KichCo : attributes[key]) === String(value));
-          });
-          if (candidates.length !== 1) throw new Error(`Vui lòng chọn lại kích thước và màu của “${product.TenSanPham}”.`);
-          variant = candidates[0];
-        }
-        if (variant && normalizeSaleStatus(variant.TrangThai) !== 'Đang mở bán') throw new Error(`Biến thể của “${product.TenSanPham}” đang ngừng bán.`);
-        const key = `${product.MaSanPham}:${variant?.MaBienThe || 0}`;
-        const quantity = (lines.get(key)?.quantity || 0) + Number(item.quantity);
-        if (!Number.isSafeInteger(quantity)) throw new Error('Số lượng đặt hàng quá lớn.');
-        lines.set(key, { product, ...(variant ? { variant } : {}), quantity, price: variant?.DonGia ?? product.DonGiaBan });
+      for (const id of [...new Set(items.map(item => item.id))].sort((a, b) => a - b)) await tx.$queryRaw`SELECT MaSanPham FROM sanpham WHERE MaSanPham = ${id} FOR UPDATE`;
+      const quote = await priceCart(tx, items);
+      if (req.body?.quoteHash !== quote.quoteHash) throw new ApiError(409, 'PRICE_CHANGED', 'Giá hoặc giỏ hàng đã thay đổi. Hãy xem lại tổng tiền trước khi xác nhận.');
+      const employee = await tx.nhanVien.findFirst({ where: { account: { Role: { in: ['ADMIN', 'STAFF', 'USER'] } } }, orderBy: { MaNhanVien: 'asc' } });
+      if (!employee) throw new ApiError(409, 'STORE_NOT_READY', 'Cửa hàng chưa có nhân viên xử lý đơn.');
+      const byWarehouse = new Map<number, typeof quote.lines>();
+      for (const line of quote.lines) byWarehouse.set(line.product.MaKho, [...(byWarehouse.get(line.product.MaKho) ?? []), line]);
+      const ids: number[] = [];
+      for (const [warehouseId, lines] of byWarehouse) {
+        const order = await tx.phieuXuat.create({ data: { MaNhanVien: employee.MaNhanVien, MaKhachHang: user.id, MaKho: warehouseId,
+          TongTien: lines.reduce((sum, line) => sum + line.total, 0), TrangThai: 'PENDING', PhuongThucThanhToan: 'COD', TrangThaiThanhToan: 'UNPAID',
+          TenNguoiNhan: shipping.name, DienThoaiNhan: shipping.phone, DiaChiNhan: shipping.address,
+          ctDonHangs: { create: lines.map(line => ({ MaSanPham: line.product.MaSanPham, MaBienThe: line.variant?.MaBienThe ?? null,
+            SKU: line.variant?.SKU ?? null, KichCo: line.variant?.KichCo ?? null, MauSac: line.variant?.MauSac ?? null,
+            ...(line.variant?.ThuocTinh ? { ThuocTinh: line.variant.ThuocTinh as Prisma.InputJsonValue } : {}),
+            TenSanPham: line.product.TenSanPham, AnhSanPham: line.product.Anh, SoLuong: line.quantity, DonGiaBan: line.price, ThanhTien: line.total })) } } });
+        ids.push(order.MaPhieuXuat);
+        await adjustOrderInventory(tx, lines.map(line => ({ MaSanPham: line.product.MaSanPham, MaBienThe: line.variant?.MaBienThe, SoLuong: line.quantity })), false, `user:${user.id}`, order.MaPhieuXuat);
+        await tx.orderEvent.create({ data: { OrderId: order.MaPhieuXuat, ToStatus: 'PENDING', ToPayment: 'UNPAID', ActorRole: user.role, ActorId: user.id, Note: 'Đặt hàng COD; tồn khả dụng đã được giữ.' } });
       }
-      await adjustOrderInventory(tx, [...lines.values()].map(line => ({ MaSanPham: line.product.MaSanPham, MaBienThe: line.variant?.MaBienThe, SoLuong: line.quantity })), false);
-      const employee = await tx.nhanVien.findFirst({ orderBy: { MaNhanVien: 'asc' } });
-      if (!employee) throw new Error('Cửa hàng chưa có nhân viên xử lý đơn hàng.');
-      const byWarehouse = new Map<number, OrderLine[]>();
-      for (const line of lines.values()) byWarehouse.set(line.product.MaKho, [...(byWarehouse.get(line.product.MaKho) || []), line]);
-      const createdOrders = [];
-      for (const [warehouseId, warehouseLines] of byWarehouse) {
-        createdOrders.push(await tx.phieuXuat.create({
-          data: {
-            MaNhanVien: employee.MaNhanVien, MaKhachHang: customer.MaKhachHang, MaKho: warehouseId,
-            TongTien: warehouseLines.reduce((sum, line) => sum + line.price * line.quantity, 0), TrangThai: 'PENDING',
-            PhuongThucThanhToan: paymentMethod, TrangThaiThanhToan: 'Chưa thanh toán',
-            TenNguoiNhan: recipient.name, DienThoaiNhan: recipient.phone, DiaChiNhan: recipient.address,
-            ctDonHangs: { create: warehouseLines.map(line => ({
-              MaSanPham: line.product.MaSanPham, MaBienThe: line.variant?.MaBienThe ?? null,
-              SKU: line.variant?.SKU ?? null, KichCo: line.variant?.KichCo ?? null, MauSac: line.variant?.MauSac ?? null,
-              ...(line.variant?.ThuocTinh ? { ThuocTinh: line.variant.ThuocTinh as Prisma.InputJsonValue } : {}),
-              SoLuong: line.quantity, DonGiaBan: line.price, ThanhTien: line.price * line.quantity
-            })) }
-          }, include: { ctDonHangs: { include: { sanPham: true } } }
-        }));
+      await tx.checkoutRequest.create({ data: { CustomerId: user.id, Key: key, Fingerprint: fingerprint, OrderIds: ids } });
+      return { replayed: false, orders: await readOrders(tx, ids) };
+    }, transactionOptions);
+    const orders = result.orders.map(order => dto(order));
+    res.status(result.replayed ? 200 : 201).json({ message: 'Đặt hàng thành công.', replayed: result.replayed, orders, order: orders[0] });
+  } catch (error) { sendApiError(res, error); }
+};
+
+async function list(req: Request, res: Response, own: boolean) {
+  try {
+    const user = actor(req);
+    if (own && user.role !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Hãy dùng tài khoản khách hàng để xem đơn cá nhân.');
+    const page = positiveId(req.query.page ?? 1, 'Trang');
+    const pageSize = positiveId(req.query.pageSize ?? 20, 'Số dòng mỗi trang');
+    if (pageSize > 100 || page > 100000) throw new ApiError(400, 'VALIDATION_ERROR', 'Giới hạn danh sách không hợp lệ.');
+    const search = textValue(req.query.search, 'Tìm kiếm', 100, false);
+    const filter = req.query.status ? orderStatus(req.query.status) : undefined;
+    const variants: Record<string, string[]> = { PENDING: ['PENDING', 'Chờ xác nhận'], PROCESSING: ['PROCESSING', 'Đang đóng gói'], SHIPPING: ['SHIPPING', 'Đang giao hàng'], DELIVERED: ['DELIVERED', 'Đã giao'], CANCELLED: ['CANCELLED', 'Đã hủy'] };
+    const where: Prisma.PhieuXuatWhereInput = { ...(own ? { MaKhachHang: user.id } : {}), ...(filter ? { TrangThai: { in: variants[filter]! } } : {}),
+      ...(search ? { OR: [{ TenNguoiNhan: { contains: search } }, { DienThoaiNhan: { contains: search } }, ...(Number.isSafeInteger(Number(search)) && Number(search) > 0 && Number(search) <= 2147483647 ? [{ MaPhieuXuat: Number(search) }] : [])] } : {}) };
+    const [total, orders] = await prisma.$transaction([prisma.phieuXuat.count({ where }), prisma.phieuXuat.findMany({ where, include: detailInclude, orderBy: [{ NgayXuat: 'desc' }, { MaPhieuXuat: 'desc' }], take: pageSize, skip: (page - 1) * pageSize })]);
+    res.json({ items: orders.map(order => dto(order, !own)), page, pageSize, total, totalPages: Math.ceil(total / pageSize) });
+  } catch (error) { sendApiError(res, error); }
+}
+export const getUserOrders = (req: Request, res: Response) => list(req, res, true);
+export const getStaffOrders = (req: Request, res: Response) => list(req, res, false);
+export const getOrder = async (req: Request, res: Response) => {
+  try {
+    const user = actor(req), id = positiveId(req.params.id, 'Đơn hàng');
+    const order = await prisma.phieuXuat.findFirst({ where: { MaPhieuXuat: id, ...(user.role === 'user' ? { MaKhachHang: user.id } : {}) }, include: detailInclude });
+    if (!order) throw new ApiError(404, 'NOT_FOUND', 'Không tìm thấy đơn.');
+    const events = await prisma.orderEvent.findMany({ where: { OrderId: id }, orderBy: { Id: 'asc' }, take: 100 });
+    res.json(dto(order, user.role !== 'user', events));
+  } catch (error) { sendApiError(res, error); }
+};
+
+async function transition(req: Request, res: Response, customer: boolean) {
+  try {
+    const user = actor(req), id = positiveId(req.params.id, 'Đơn hàng');
+    if (customer && user.role !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Chỉ khách hàng được hủy đơn cá nhân.');
+    const result = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT MaPhieuXuat FROM donhang WHERE MaPhieuXuat = ${id} FOR UPDATE`;
+      const current = await tx.phieuXuat.findUnique({ where: { MaPhieuXuat: id }, include: detailInclude });
+      if (!current || (customer && current.MaKhachHang !== user.id)) throw new ApiError(404, 'NOT_FOUND', 'Không tìm thấy đơn.');
+      const from = orderStatus(current.TrangThai), to = customer ? 'CANCELLED' : orderStatus(req.body?.status ?? from);
+      if (!customer && req.body?.expectedStatus === undefined) throw new ApiError(400, 'EXPECTED_STATUS_REQUIRED', 'Cần trạng thái hiện tại để tránh ghi đè cập nhật của người khác.');
+      assertTransition(from, to, customer);
+      const previousPayment = paymentStatus(current.TrangThaiThanhToan);
+      let nextPayment = previousPayment;
+      if (req.body?.paymentStatus !== undefined) {
+        if (user.role !== 'admin') throw new ApiError(403, 'FORBIDDEN', 'Chỉ quản trị viên được đối soát thanh toán.');
+        nextPayment = paymentStatus(req.body.paymentStatus);
+        if (nextPayment !== previousPayment && !(previousPayment === 'UNPAID' && nextPayment === 'PAID' && from === 'DELIVERED' && to === 'DELIVERED' && ['COD', 'Thanh toán khi nhận hàng'].includes(current.PhuongThucThanhToan ?? ''))) throw new ApiError(409, 'INVALID_PAYMENT_TRANSITION', 'Chỉ xác nhận tiền COD của đơn đã giao. Hoàn tiền cần quy trình đối soát riêng.');
       }
-      return createdOrders;
-    }, { timeout: 15000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
-    res.status(201).json({ message: 'Đặt hàng thành công.', orders, order: orders[0] });
-  } catch (error) {
-    console.error('Order placement failed:', error);
-    res.status(error instanceof Prisma.PrismaClientKnownRequestError ? 500 : 400).json({ error: errorMessage(error) });
-  }
-};
-
-export const getUserOrders = async (req: Request, res: Response) => {
-  const user = (req as any).user;
-  if (user.role !== 'user') { res.status(403).json({ error: 'Vui lòng đăng nhập bằng tài khoản khách hàng.' }); return; }
-  try {
-    res.json(await prisma.phieuXuat.findMany({
-      where: { MaKhachHang: Number(user.id) }, include: { ctDonHangs: { include: { sanPham: true } } }, orderBy: { NgayXuat: 'desc' }
-    }));
-  } catch { res.status(500).json({ error: 'Không thể tải đơn hàng. Vui lòng thử lại.' }); }
-};
-
-export const cancelUserOrder = async (req: Request, res: Response) => {
-  const user = (req as any).user;
-  const orderId = Number(req.params.id);
-  if (user.role !== 'user') { res.status(403).json({ error: 'Chỉ khách hàng mới có thể hủy đơn của mình.' }); return; }
-  if (!Number.isSafeInteger(orderId) || orderId <= 0) { res.status(400).json({ error: 'Mã đơn hàng không hợp lệ.' }); return; }
-  try {
-    const order = await prisma.$transaction(async tx => {
-      const claim = await tx.phieuXuat.updateMany({
-        where: { MaPhieuXuat: orderId, MaKhachHang: Number(user.id), TrangThai: { in: ['PENDING', 'Chờ xác nhận'] } }, data: { TrangThai: 'Đã hủy' }
-      });
-      if (!claim.count) throw new Error('Đơn không tồn tại hoặc không còn ở trạng thái chờ xác nhận.');
-      await adjustOrderInventory(tx, await tx.cTDonHang.findMany({ where: { MaPhieuXuat: orderId } }), true);
-      return tx.phieuXuat.findUnique({ where: { MaPhieuXuat: orderId }, include: { ctDonHangs: { include: { sanPham: true } } } });
-    });
-    res.json({ message: 'Đã hủy đơn hàng.', order });
-  } catch (error) { res.status(400).json({ error: errorMessage(error) }); }
-};
-
-export const updateOrderStatus = async (req: Request, res: Response) => {
-  const orderId = Number(req.params.id);
-  const { status, paymentStatus, shippingProvider, trackingCode } = req.body;
-  if (!Number.isSafeInteger(orderId) || orderId <= 0 || (status !== undefined && !orderStatuses.has(status))) {
-    res.status(400).json({ error: 'Mã đơn hàng hoặc trạng thái không hợp lệ.' }); return;
-  }
-  if ((paymentStatus !== undefined && (typeof paymentStatus !== 'string' || paymentStatus.length > 50)) ||
-    (shippingProvider !== undefined && (typeof shippingProvider !== 'string' || shippingProvider.length > 100)) ||
-    (trackingCode !== undefined && (typeof trackingCode !== 'string' || trackingCode.length > 100))) {
-    res.status(400).json({ error: 'Thông tin thanh toán hoặc vận chuyển không hợp lệ.' }); return;
-  }
-  try {
-    const order = await prisma.$transaction(async tx => {
-      const current = await tx.phieuXuat.findUnique({ where: { MaPhieuXuat: orderId }, include: { ctDonHangs: true } });
-      if (!current) throw new Error('Không tìm thấy đơn hàng.');
-      const nextStatus = status ?? current.TrangThai;
-      const claim = await tx.phieuXuat.updateMany({
-        where: { MaPhieuXuat: orderId, TrangThai: current.TrangThai },
-        data: { TrangThai: nextStatus, ...(paymentStatus !== undefined ? { TrangThaiThanhToan: paymentStatus } : {}),
-          ...(shippingProvider !== undefined ? { DonViVanChuyen: shippingProvider } : {}), ...(trackingCode !== undefined ? { MaVanDon: trackingCode } : {}) }
-      });
-      if (!claim.count) throw new Error('Đơn hàng vừa được cập nhật. Vui lòng tải lại.');
-      if (isCancelledOrder(current.TrangThai) !== isCancelledOrder(nextStatus)) await adjustOrderInventory(tx, current.ctDonHangs, isCancelledOrder(nextStatus));
-      return tx.phieuXuat.findUnique({ where: { MaPhieuXuat: orderId } });
-    });
-    res.json(order);
-  } catch (error) { res.status(400).json({ error: errorMessage(error) }); }
-};
-
+      if (to === 'CANCELLED' && previousPayment === 'PAID') throw new ApiError(409, 'REFUND_REQUIRED', 'Đơn đã thanh toán cần xử lý hoàn tiền trước khi hủy.');
+      const note = textValue(req.body?.reason, 'Lý do', 500, false);
+      if ((to === 'CANCELLED' && to !== from || nextPayment !== previousPayment) && !note) throw new ApiError(400, 'REASON_REQUIRED', 'Cần ghi lý do hủy hoặc căn cứ đối soát tiền.');
+      const provider = req.body?.shippingProvider === undefined ? current.DonViVanChuyen : textValue(req.body.shippingProvider, 'Đơn vị giao', 100, false);
+      const tracking = req.body?.trackingCode === undefined ? current.MaVanDon : textValue(req.body.trackingCode, 'Mã vận đơn', 100, false);
+      const shippingChanged = provider !== current.DonViVanChuyen || tracking !== current.MaVanDon;
+      if (shippingChanged && !['PROCESSING', 'SHIPPING'].includes(from)) throw new ApiError(409, 'SHIPPING_LOCKED', 'Thông tin giao hàng chỉ được sửa lúc đóng gói/đang giao.');
+      if (to === 'SHIPPING' && (!provider || !tracking)) throw new ApiError(400, 'SHIPPING_REQUIRED', 'Cần đơn vị giao hàng và mã vận đơn trước khi bàn giao.');
+      if (to === from && nextPayment === previousPayment && !shippingChanged) return current;
+      if (!customer && orderStatus(req.body.expectedStatus) !== from) throw new ApiError(409, 'ORDER_CHANGED', 'Đơn vừa được cập nhật. Hãy tải lại.');
+      if (from !== 'CANCELLED' && to === 'CANCELLED') {
+        for (const productId of [...new Set(current.ctDonHangs.map(line => line.MaSanPham))].sort((a, b) => a - b)) await tx.$queryRaw`SELECT MaSanPham FROM sanpham WHERE MaSanPham = ${productId} FOR UPDATE`;
+        await adjustOrderInventory(tx, current.ctDonHangs, true, `${user.role}:${user.id}`, id);
+      }
+      const updated = await tx.phieuXuat.update({ where: { MaPhieuXuat: id }, data: { TrangThai: to, TrangThaiThanhToan: nextPayment,
+        DonViVanChuyen: provider, MaVanDon: tracking, ...(!customer ? { MaNhanVien: user.id } : {}) }, include: detailInclude });
+      await tx.orderEvent.create({ data: { OrderId: id, FromStatus: from, ToStatus: to, FromPayment: previousPayment, ToPayment: nextPayment,
+        ActorRole: user.role, ActorId: user.id, Note: note || null, ...(shippingChanged ? { Shipping: { provider, tracking } } : {}) } });
+      return updated;
+    }, transactionOptions);
+    res.json({ message: 'Đã cập nhật đơn hàng.', order: dto(result, !customer) });
+  } catch (error) { sendApiError(res, error); }
+}
+export const cancelUserOrder = (req: Request, res: Response) => transition(req, res, true);
+export const updateOrderStatus = (req: Request, res: Response) => transition(req, res, false);
 export const deleteOrder = async (req: Request, res: Response) => {
-  const orderId = Number(req.params.id);
-  if (!Number.isSafeInteger(orderId) || orderId <= 0) { res.status(400).json({ error: 'Mã đơn hàng không hợp lệ.' }); return; }
   try {
-    await prisma.$transaction(async tx => {
-      const current = await tx.phieuXuat.findUnique({ where: { MaPhieuXuat: orderId }, include: { ctDonHangs: true } });
-      if (!current) throw new Error('Không tìm thấy đơn hàng.');
-      const claim = await tx.phieuXuat.updateMany({ where: { MaPhieuXuat: orderId, TrangThai: current.TrangThai }, data: { TrangThai: 'Đã hủy' } });
-      if (!claim.count) throw new Error('Đơn hàng vừa được cập nhật. Vui lòng tải lại.');
-      if (!isCancelledOrder(current.TrangThai)) await adjustOrderInventory(tx, current.ctDonHangs, true);
-      await tx.cTDonHang.deleteMany({ where: { MaPhieuXuat: orderId } });
-      await tx.phieuXuat.delete({ where: { MaPhieuXuat: orderId } });
-    });
-    res.json({ message: 'Đã xóa đơn hàng.' });
-  } catch (error) { res.status(400).json({ error: errorMessage(error) }); }
+    const id = positiveId(req.params.id, 'Đơn hàng');
+    if (!await prisma.phieuXuat.findUnique({ where: { MaPhieuXuat: id }, select: { MaPhieuXuat: true } })) throw new ApiError(404, 'NOT_FOUND', 'Không tìm thấy đơn.');
+    throw new ApiError(409, 'ORDER_HISTORY_PROTECTED', 'Đơn hàng phải được giữ để đối soát. Hãy dùng thao tác hủy hợp lệ.');
+  } catch (error) { sendApiError(res, error); }
 };

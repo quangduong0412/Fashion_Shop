@@ -1,146 +1,91 @@
-import React, { useState } from 'react';
-interface Props { employees: any[]; branches: any[]; roles: any[]; onSave?: (e: any)=>void; onDelete?: (id: number)=>void; }
-export default function EmployeesView({ employees, branches, roles, onSave, onDelete }: Props) {
+import { useState } from 'react';
+import type { FormEvent } from 'react';
+
+type Employee = { id?: number; name: string; roleId: string | number; roleName?: string; branchId: string | number; branchName?: string;
+  phone: string; address: string; username: string; accountRole: 'ADMIN' | 'STAFF' | 'DISABLED' | null; hasAccount: boolean; password?: string };
+type Props = { employees: Employee[]; branches: { id: number; name: string }[]; roles: { id: number; name: string }[];
+  currentUserId: number; onSave: (employee: Partial<Employee>) => Promise<void>; onDelete: (id: number) => Promise<void> };
+const roleLabels = { ADMIN: 'Quản trị viên', STAFF: 'Nhân viên', DISABLED: 'Đã ngưng đăng nhập' };
+const fieldClass = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal focus:border-red-500 focus:outline-none';
+const emptyEmployee: Employee = { name: '', roleId: '', branchId: '', phone: '', address: '', username: '', password: '', accountRole: 'STAFF', hasAccount: false };
+
+export default function EmployeesView({ employees, branches, roles, currentUserId, onSave, onDelete }: Props) {
   const [search, setSearch] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<Employee | null>(null);
+  const [createAccount, setCreateAccount] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
-  const [showPasswordsList, setShowPasswordsList] = useState<Record<string, boolean>>({});
-
-  const filtered = employees.filter(e =>
-    (e.name||'').toLowerCase().includes(search.toLowerCase()) ||
-    (e.phone||'').includes(search) ||
-    (e.branchName||'').toLowerCase().includes(search.toLowerCase())
-  );
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave?.(editing);
-    setShowModal(false);
-    setEditing(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const filtered = employees.filter(employee => `${employee.name} ${employee.username} ${employee.phone} ${employee.branchName}`.toLocaleLowerCase('vi').includes(search.toLocaleLowerCase('vi')));
+  const open = (employee?: Employee) => {
+    setEditing(employee ? { ...employee, password: '', accountRole: employee.accountRole ?? 'STAFF' } : { ...emptyEmployee });
+    setCreateAccount(employee ? employee.hasAccount : true); setError(''); setShowPassword(false);
   };
-
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editing || saving) return;
+    setSaving(true); setError('');
+    try {
+      await onSave({ ...editing, username: createAccount ? editing.username : '', password: createAccount ? editing.password : '',
+        accountRole: createAccount ? editing.accountRole : undefined });
+      setEditing(null); setNotice('Đã lưu hồ sơ và quyền tài khoản.');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Không thể lưu nhân viên.'); }
+    finally { setSaving(false); }
+  };
+  const deactivate = async (employee: Employee) => {
+    if (saving || !window.confirm(`Ngưng đăng nhập tài khoản ${employee.username}? Hồ sơ và lịch sử giao dịch sẽ được giữ.`)) return;
+    setSaving(true); setNotice('');
+    try { await onDelete(employee.id!); setNotice('Đã ngưng đăng nhập; hồ sơ và lịch sử được giữ nguyên.'); }
+    catch (cause) { setNotice(cause instanceof Error ? cause.message : 'Không thể ngưng tài khoản.'); }
+    finally { setSaving(false); }
+  };
   return (
-    <div className="flex flex-col w-full pb-10">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-800 font-serif mb-1">Quản lý Nhân viên</h1>
-          <p className="text-sm text-gray-500">Quản lý đội ngũ bán hàng, kho vận và điều phối nhân sự các chi nhánh boutique trên toàn quốc.</p>
-        </div>
-        <div className="flex gap-2 self-start lg:self-auto">
-          <button className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 shadow-sm">
-            <span className="material-symbols-outlined text-base">file_download</span> Xuất danh sách
-          </button>
-          <button onClick={()=>{setEditing({}); setShowPassword(false); setShowModal(true);}} className="flex items-center gap-2 px-5 py-2.5 bg-blue-700 text-white rounded-xl text-sm font-bold shadow-md hover:bg-blue-800">
-            <span className="material-symbols-outlined text-base">person_add</span> Thêm nhân viên
-          </button>
-        </div>
+    <div className="space-y-5 pb-10">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div><h1 className="text-3xl font-bold text-gray-900">Nhân viên & quyền truy cập</h1><p className="text-sm text-gray-500 mt-2">Chức vụ quản lý hồ sơ nhân sự; quyền tài khoản quyết định thao tác trong hệ thống.</p></div>
+        <button type="button" onClick={() => open()} className="rounded-xl bg-red-700 text-white font-semibold px-5 py-3">+ Thêm nhân viên</button>
+      </header>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[['Hồ sơ nhân viên', employees.length], ['Tài khoản hoạt động', employees.filter(employee => employee.hasAccount && employee.accountRole !== 'DISABLED').length], ['Quản trị viên', employees.filter(employee => employee.accountRole === 'ADMIN').length]].map(([label, value]) => <div key={String(label)} className="rounded-xl border bg-white p-4"><p className="text-sm text-gray-500">{label}</p><p className="text-2xl font-bold text-gray-900 mt-1">{value}</p></div>)}
       </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {[
-          { label: 'Tổng số nhân viên', value: employees.length, sub: '12 chi nhánh toàn quốc', icon: 'badge', color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'Nhân viên bán hàng', value: employees.filter(e=>e.roleName?.includes('Bán hàng')).length, sub: 'Trực tiếp tư vấn', icon: 'point_of_sale', color: 'text-green-600', bg: 'bg-green-50' },
-          { label: 'Thủ kho & Vận hành', value: employees.filter(e=>e.roleName?.includes('Kho')).length, sub: 'Quản lý tồn kho', icon: 'inventory_2', color: 'text-orange-600', bg: 'bg-orange-50' },
-          { label: 'Quản trị & Điều hành', value: employees.filter(e=>e.roleName?.includes('Quản')).length, sub: 'Ban lãnh đạo', icon: 'workspace_premium', color: 'text-purple-600', bg: 'bg-purple-50' }
-        ].map((c,i)=>(
-          <div key={i} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-            <div className="flex items-start justify-between mb-3">
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider leading-tight">{c.label}</span>
-              <div className={`w-9 h-9 rounded-xl ${c.bg} flex items-center justify-center ${c.color} shrink-0`}>
-                <span className="material-symbols-outlined text-xl">{c.icon}</span>
-              </div>
+      {notice && <p role="status" className="rounded-lg border bg-white p-3 text-sm text-gray-700">{notice}</p>}
+      <section className="rounded-xl border bg-white overflow-hidden">
+        <div className="p-4 border-b"><input aria-label="Tìm nhân viên" className={`${fieldClass} max-w-md`} placeholder="Tên, tài khoản, điện thoại, chi nhánh…" value={search} onChange={event => setSearch(event.target.value)} /></div>
+        <div className="overflow-x-auto"><table className="w-full text-sm text-left">
+          <thead className="bg-gray-50 text-xs text-gray-500 uppercase"><tr>{['Nhân viên', 'Chức vụ / Chi nhánh', 'Liên hệ', 'Tài khoản / Quyền', 'Thao tác'].map(title => <th key={title} className="p-4">{title}</th>)}</tr></thead>
+          <tbody>{filtered.map(employee => <tr key={employee.id} className="border-t">
+            <td className="p-4 font-semibold text-gray-900">{employee.name}<div className="text-xs text-gray-400 font-normal">NV{String(employee.id).padStart(4, '0')}</div></td>
+            <td className="p-4">{employee.roleName}<div className="text-xs text-gray-500">{employee.branchName}</div></td>
+            <td className="p-4 text-gray-600">{employee.phone || '—'}</td>
+            <td className="p-4">{employee.username || 'Chưa cấp tài khoản'}<div className={`mt-1 text-xs ${employee.accountRole === 'DISABLED' ? 'text-orange-700' : 'text-gray-500'}`}>{employee.accountRole ? roleLabels[employee.accountRole] : 'Chỉ có hồ sơ nhân sự'}</div></td>
+            <td className="p-4"><div className="flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => open(employee)} className="text-red-700 font-semibold">Sửa / cấp quyền</button>
+              {employee.hasAccount && employee.accountRole !== 'DISABLED' && employee.id !== currentUserId && <button type="button" disabled={saving} onClick={() => void deactivate(employee)} className="text-gray-600">Ngưng đăng nhập</button>}</div></td>
+          </tr>)}{!filtered.length && <tr><td colSpan={5} className="p-10 text-center text-gray-500">Không tìm thấy nhân viên.</td></tr>}</tbody>
+        </table></div><p className="p-4 border-t text-xs text-gray-500">{filtered.length} / {employees.length} hồ sơ · Mật khẩu được bảo vệ và không hiển thị trong danh sách.</p>
+      </section>
+      {editing && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
+        <form role="dialog" aria-modal="true" aria-labelledby="employee-title" onSubmit={save} className="w-full max-w-2xl max-h-[95vh] rounded-xl bg-white flex flex-col overflow-hidden">
+          <header className="p-5 border-b"><h2 id="employee-title" className="text-xl font-bold">{editing.id ? 'Sửa hồ sơ & tài khoản' : 'Thêm nhân viên'}</h2></header>
+          <fieldset disabled={saving} className="p-5 grid gap-4 sm:grid-cols-2 overflow-y-auto">
+            <label className="text-sm font-semibold space-y-1"><span>Họ tên *</span><input className={fieldClass} required maxLength={255} value={editing.name} onChange={event => setEditing({ ...editing, name: event.target.value })} /></label>
+            <label className="text-sm font-semibold space-y-1"><span>Chức vụ *</span><select className={fieldClass} required value={editing.roleId} onChange={event => setEditing({ ...editing, roleId: event.target.value })}><option value="">Chọn chức vụ</option>{roles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
+            <label className="text-sm font-semibold space-y-1"><span>Chi nhánh *</span><select className={fieldClass} required value={editing.branchId} onChange={event => setEditing({ ...editing, branchId: event.target.value })}><option value="">Chọn chi nhánh</option>{branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
+            <label className="text-sm font-semibold space-y-1"><span>Điện thoại</span><input className={fieldClass} maxLength={50} value={editing.phone ?? ''} onChange={event => setEditing({ ...editing, phone: event.target.value })} /></label>
+            <label className="text-sm font-semibold space-y-1 sm:col-span-2"><span>Địa chỉ</span><input className={fieldClass} maxLength={4000} value={editing.address ?? ''} onChange={event => setEditing({ ...editing, address: event.target.value })} /></label>
+            <div className="sm:col-span-2 border-t pt-4">
+              {!editing.hasAccount && <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={createAccount} onChange={event => setCreateAccount(event.target.checked)} />Cấp tài khoản đăng nhập</label>}
+              <p className="text-xs text-gray-500 mt-2">Nhân viên được xem sản phẩm/tồn kho và xử lý đơn. Quản trị viên được quản lý giá, tồn kho, nhân sự và toàn hệ thống.</p>
             </div>
-            <div className="text-2xl font-bold text-gray-800 mb-1">{c.value}</div>
-            <div className="text-xs text-gray-500">{c.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-        <div className="flex gap-3 p-4 border-b border-gray-100">
-          <div className="relative flex-1 max-w-sm">
-            <span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 text-xl">search</span>
-            <input value={search} onChange={e=>setSearch(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400" placeholder="Tìm tên NV, SĐT, chi nhánh..."/>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-gray-50 text-gray-400 text-xs font-bold uppercase tracking-wider border-b border-gray-100">
-              <tr>
-                <th className="py-4 px-5">Mã NV</th>
-                <th className="py-4 px-5">Họ tên</th>
-                <th className="py-4 px-5">Chức vụ</th>
-                <th className="py-4 px-5">Chi nhánh</th>
-                <th className="py-4 px-5">Điện thoại</th>
-                <th className="py-4 px-5">Tài khoản</th>
-                <th className="py-4 px-5">Mật khẩu</th>
-                <th className="py-4 px-5 text-right">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="text-gray-800 divide-y divide-gray-50">
-              {filtered.map((emp,idx)=>(
-                <tr key={idx} className="hover:bg-blue-50/30 transition-colors group">
-                  <td className="py-4 px-5 font-bold text-blue-700">#{String(emp.id||idx).padStart(3,'0')}</td>
-                  <td className="py-4 px-5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 font-bold text-sm flex items-center justify-center">{(emp.name||'N').charAt(0)}</div>
-                      <span className="font-semibold">{emp.name||'Nhân viên'}</span>
-                    </div>
-                  </td>
-                  <td className="py-4 px-5"><span className="inline-block px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full">{emp.roleName||'—'}</span></td>
-                  <td className="py-4 px-5 text-gray-600">{emp.branchName||'—'}</td>
-                  <td className="py-4 px-5 text-gray-500">{emp.phone||'—'}</td>
-                  <td className="py-4 px-5 text-gray-500 font-mono text-xs">{emp.username||'—'}</td>
-                  <td className="py-4 px-5 text-gray-500 font-mono text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate max-w-[100px]">{showPasswordsList[emp.id] ? (emp.password || '—') : '••••••••'}</span>
-                      <button onClick={() => setShowPasswordsList(p => ({...p, [emp.id]: !p[emp.id]}))} className="text-gray-400 hover:text-gray-600 focus:outline-none">
-                        <span className="material-symbols-outlined text-sm">{showPasswordsList[emp.id] ? 'visibility_off' : 'visibility'}</span>
-                      </button>
-                    </div>
-                  </td>
-                  <td className="py-4 px-5 text-right">
-                    <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={()=>{setEditing(emp); setShowModal(true);}} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
-                        <span className="material-symbols-outlined text-lg">edit</span>
-                      </button>
-                      <button onClick={()=>onDelete?.(emp.id)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-red-600">
-                        <span className="material-symbols-outlined text-lg">delete</span>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length===0&&<tr><td colSpan={8} className="py-12 text-center text-gray-400"><span className="material-symbols-outlined text-5xl block mb-2 opacity-30">badge</span>Không có nhân viên nào.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        <div className="p-4 flex items-center justify-between text-sm text-gray-500 border-t border-gray-100">
-          <span>Hiển thị {filtered.length}/{employees.length} nhân viên</span>
-        </div>
-      </div>
-
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">{editing?.id?'Cập nhật':'Thêm mới'} Nhân viên</h2>
-            <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
-              <div><label className="block text-sm font-bold text-gray-700 mb-1">Họ tên:</label><input value={editing?.name||''} onChange={e=>setEditing({...editing,name:e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" required/></div>
-              <div><label className="block text-sm font-bold text-gray-700 mb-1">Chức vụ:</label><select value={editing?.roleId||''} onChange={e=>setEditing({...editing,roleId:e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white" required><option value="">Chọn chức vụ</option>{roles.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
-              <div><label className="block text-sm font-bold text-gray-700 mb-1">Chi nhánh:</label><select value={editing?.branchId||''} onChange={e=>setEditing({...editing,branchId:e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white" required><option value="">Chọn chi nhánh</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
-              <div><label className="block text-sm font-bold text-gray-700 mb-1">Điện thoại:</label><input value={editing?.phone||''} onChange={e=>setEditing({...editing,phone:e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"/></div>
-              <div className="col-span-2"><label className="block text-sm font-bold text-gray-700 mb-1">Địa chỉ:</label><input value={editing?.address||''} onChange={e=>setEditing({...editing,address:e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"/></div>
-              <div><label className="block text-sm font-bold text-gray-700 mb-1">Tên đăng nhập:</label><input value={editing?.username||''} onChange={e=>setEditing({...editing,username:e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"/></div>
-              <div><label className="block text-sm font-bold text-gray-700 mb-1">Mật khẩu:</label><div className="relative"><input type={showPassword?'text':'password'} value={editing?.password||''} onChange={e=>setEditing({...editing,password:e.target.value})} className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm" placeholder={editing?.id?'Nhập mật khẩu mới nếu cần đổi':'Nhập mật khẩu'}/><button type="button" aria-label={showPassword?'Ẩn mật khẩu':'Hiện mật khẩu'} title={showPassword?'Ẩn mật khẩu':'Hiện mật khẩu'} onClick={()=>setShowPassword(v=>!v)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-800"><span className="material-symbols-outlined text-lg">{showPassword?'visibility_off':'visibility'}</span></button></div></div>
-              <div className="col-span-2 flex justify-end gap-3 mt-4 pt-4 border-t border-gray-100">
-                <button type="button" onClick={()=>setShowModal(false)} className="px-5 py-2.5 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200">Hủy</button>
-                <button type="submit" className="px-5 py-2.5 bg-blue-700 text-white font-bold rounded-lg hover:bg-blue-800">Lưu</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            {createAccount && <>
+              <label className="text-sm font-semibold space-y-1"><span>Tên đăng nhập *</span><input className={fieldClass} required autoComplete="off" maxLength={255} value={editing.username} onChange={event => setEditing({ ...editing, username: event.target.value })} /></label>
+              <label className="text-sm font-semibold space-y-1"><span>Quyền tài khoản *</span><select className={fieldClass} disabled={editing.id === currentUserId} value={editing.accountRole ?? 'STAFF'} onChange={event => setEditing({ ...editing, accountRole: event.target.value as Employee['accountRole'] })}><option value="STAFF">Nhân viên</option><option value="ADMIN">Quản trị viên</option><option value="DISABLED">Ngưng đăng nhập</option></select></label>
+              <label className="text-sm font-semibold space-y-1 sm:col-span-2"><span>{editing.hasAccount ? 'Mật khẩu mới · để trống để giữ nguyên' : 'Mật khẩu mới *'}</span><div className="flex gap-2"><input className={fieldClass} type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={8} required={!editing.hasAccount} value={editing.password} onChange={event => setEditing({ ...editing, password: event.target.value })} /><button type="button" className="text-sm px-2" onClick={() => setShowPassword(!showPassword)}>{showPassword ? 'Ẩn' : 'Hiện'}</button></div></label>
+            </>}
+          </fieldset>
+          <footer className="p-4 border-t space-y-3">{error && <p role="alert" className="p-3 bg-red-50 rounded-lg text-red-700 text-sm">{error}</p>}<div className="flex justify-end gap-2"><button type="button" disabled={saving} onClick={() => setEditing(null)} className="rounded-lg bg-gray-100 px-4 py-2">Hủy</button><button type="submit" disabled={saving} className="rounded-lg bg-red-700 text-white px-5 py-2 disabled:opacity-50">{saving ? 'Đang lưu…' : 'Lưu nhân viên'}</button></div></footer>
+        </form>
+      </div>}
     </div>
   );
 }

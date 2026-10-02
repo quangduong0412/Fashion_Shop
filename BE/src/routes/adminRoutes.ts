@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { getAdminData } from '../controllers/adminController';
-import { authenticateToken, requireAdmin } from '../middlewares/authMiddleware';
+import { authenticateToken, requireStaff } from '../middlewares/authMiddleware';
 
 const router = Router();
 
-router.get('/', authenticateToken, requireAdmin, getAdminData);
+router.get('/', authenticateToken, requireStaff, getAdminData);
 
 export default router;

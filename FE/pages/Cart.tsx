@@ -1,8 +1,9 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View, ScrollView, Pressable, TextInput } from 'react-native';
 import { Image } from 'expo-image';
-import { ApiError, apiRequest, CartItem, cartLineKey, clearSession, currentUser, formatPrice, readCart, saveCart, updateCart } from '@/components/fashion-data';
+import { ApiError, apiRequest, CartItem, cartLineKey, clearSession, currentUser, finishCheckoutCart, formatPrice, readCart, saveCart, updateCart } from '@/components/fashion-data';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +16,9 @@ export default function CartScreen() {
   const checkoutLock = useRef(false);
   const [checkoutError, setCheckoutError] = useState('');
   const [needsLogin, setNeedsLogin] = useState(false);
+  const [quote, setQuote] = useState<any>(null);
+  const [quoting, setQuoting] = useState(false);
+  const [hasPendingRequest, setHasPendingRequest] = useState(false);
   const [shippingAddress, setShippingAddress] = useState({ name: '', phone: '', address: '' });
   const addressEdited = useRef(false);
 
@@ -25,7 +29,9 @@ export default function CartScreen() {
     });
     void (async () => {
       const user = await currentUser();
-      if (user?.role !== 'user') return;
+      if (user?.role !== 'user') { if (active) setHasPendingRequest(false); return; }
+      const pending = await AsyncStorage.getItem(`checkout_pending_${user.id}`);
+      if (active) setHasPendingRequest(!!pending);
       const profile = await apiRequest('/users/profile');
       if (active && !addressEdited.current) setShippingAddress({ name: profile.TenKhach || '', phone: profile.DienThoai || '', address: profile.DiaChi || '' });
     })().catch(error => {
@@ -37,18 +43,37 @@ export default function CartScreen() {
     return () => { active = false; };
   }, []));
 
+  const itemsForApi = (items: CartItem[]) => items.map(item => ({ id: item.id, quantity: item.quantity, variantId: item.variantId, size: item.size, color: item.color }));
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const user = await currentUser();
+      if (!active) return;
+      setQuote(null);
+      if (!cart.length) { setQuoting(false); return; }
+      setQuoting(true);
+      if (!user || user.role !== 'user') { if (active) setNeedsLogin(true); return; }
+      if (active) setHasPendingRequest(!!await AsyncStorage.getItem(`checkout_pending_${user.id}`));
+      const next = await apiRequest('/orders/quote', { method: 'POST', body: JSON.stringify({ items: itemsForApi(cart) }) });
+      if (active) { setQuote(next); setCheckoutError(''); setNeedsLogin(false); }
+    })().catch(cause => {
+      if (active) { setCheckoutError(cause instanceof Error ? cause.message : 'Không thể cập nhật giá/tồn kho.'); setNeedsLogin(cause instanceof ApiError && [401, 403].includes(cause.status)); }
+    }).finally(() => { if (active) setQuoting(false); });
+    return () => { active = false; };
+  }, [cart]);
+
   const changeQuantity = async (lineKey: string, amount: number) => {
     if (checkoutLock.current) return;
     const next = await updateCart(items => items.map(item => cartLineKey(item) === lineKey
       ? { ...item, quantity: Math.max(1, Math.min(item.quantity + amount, item.variantQuantity ?? Number.POSITIVE_INFINITY)) }
       : item));
-    setCart(next);
+    setQuote(null); setCart(next);
   };
 
   const removeItem = async (lineKey: string) => {
     if (checkoutLock.current) return;
     const next = await updateCart(items => items.filter(item => cartLineKey(item) !== lineKey));
-    setCart(next);
+    setQuote(null); setCart(next);
   };
 
   const clearCart = async () => {
@@ -57,13 +82,11 @@ export default function CartScreen() {
     await saveCart([]);
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const discount = 0;
-  const shipping = 0;
-  const total = subtotal - discount + shipping;
+  const subtotal = quote?.subtotal ?? cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const total = quote?.total ?? subtotal;
 
   const checkout = async () => {
-    if (checkoutLock.current || cart.length === 0) return;
+    if (checkoutLock.current || (cart.length === 0 && !hasPendingRequest)) return;
     checkoutLock.current = true;
     setIsCheckingOut(true);
     setCheckoutError('');
@@ -80,22 +103,37 @@ export default function CartScreen() {
         setNeedsLogin(true);
         return;
       }
-      if (!shippingAddress.name.trim() || !shippingAddress.phone.trim() || !shippingAddress.address.trim()) {
-        setCheckoutError('Vui lòng nhập họ tên, số điện thoại và địa chỉ nhận hàng.');
-        return;
+      const storageKey = `checkout_pending_${user.id}`;
+      const stored = await AsyncStorage.getItem(storageKey);
+      let pending: { payload: any; cart: CartItem[] };
+      if (stored) {
+        pending = JSON.parse(stored);
+      } else {
+        if (!shippingAddress.name.trim() || !shippingAddress.phone.trim() || !shippingAddress.address.trim()) {
+          setCheckoutError('Vui lòng nhập họ tên, số điện thoại và địa chỉ nhận hàng.');
+          return;
+        }
+
+        if (!quote || quoting) { setCheckoutError('Cần cập nhật tổng tiền từ cửa hàng trước khi đặt.'); return; }
+        pending = { cart, payload: { paymentMethod: 'COD', shipping: shippingAddress, items: itemsForApi(cart), quoteHash: quote.quoteHash,
+          requestKey: `checkout_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}` } };
+        await AsyncStorage.setItem(storageKey, JSON.stringify(pending));
       }
-
-      await apiRequest('/orders/checkout', {
-        method: 'POST',
-        body: JSON.stringify({
-          paymentMethod: 'Thanh toán khi nhận hàng',
-          shipping: shippingAddress,
-          items: cart.map(item => ({ id: Number(item.id), quantity: item.quantity, variantId: item.variantId, size: item.size, color: item.color, attributes: item.attributes })),
-        }),
-      });
-
-      await saveCart([]);
-      setCart([]);
+      setHasPendingRequest(true);
+      try {
+        await apiRequest('/orders/checkout', { method: 'POST', body: JSON.stringify(pending.payload) });
+      } catch (cause) {
+        // A timeout/server failure is ambiguous: preserve the same request for replay.
+        if (cause instanceof ApiError && [400, 409, 422].includes(cause.status)) {
+          await AsyncStorage.removeItem(storageKey); setHasPendingRequest(false);
+          const updatedQuote = await apiRequest('/orders/quote', { method: 'POST', body: JSON.stringify({ items: itemsForApi(cart) }) }).catch(() => null);
+          setQuote(updatedQuote);
+        }
+        throw cause;
+      }
+      const remaining = await finishCheckoutCart(pending.payload.requestKey, pending.cart, storageKey);
+      setHasPendingRequest(false);
+      setCart(remaining);
       router.replace('/orders' as never);
     } catch (error) {
       setCheckoutError(error instanceof Error ? error.message : 'Không thể kết nối máy chủ.');
@@ -132,20 +170,9 @@ export default function CartScreen() {
               </Pressable>
             </View>
 
-            {/* Progress Bar */}
-            <View style={styles.card}>
-              <View style={styles.progressRow}>
-                <View style={styles.progressTextRow}>
-                  <MaterialIcons name="local-shipping" size={18} color={Colors.light.primary} />
-                  <Text style={styles.progressText}>
-                    Tuyệt vời! Bạn được <Text style={styles.progressTextBold}>Miễn phí vận chuyển</Text>
-                  </Text>
-                </View>
-                <View style={styles.progressBadge}><Text style={styles.progressBadgeText}>100%</Text></View>
-              </View>
-              <View style={styles.progressBarBg}>
-                <View style={[styles.progressBarFill, { width: '100%' }]} />
-              </View>
+            <View style={styles.card}><Text style={styles.summaryLabel}>Thanh toán khi nhận hàng (COD). Cửa hàng hiện chưa thu phí vận chuyển qua checkout.</Text>
+              {quote?.warehouseCount > 1 && <Text style={styles.summaryLabel}>Giỏ được tách thành {quote.warehouseCount} đơn theo kho; tổng tiền giữ nguyên.</Text>}
+              {hasPendingRequest && <Text style={styles.checkoutError}>Có yêu cầu chưa nhận được kết quả. Hãy kiểm tra lại bằng nút bên dưới trước khi đặt thêm.</Text>}
             </View>
 
             {/* Cart Items */}
@@ -174,7 +201,7 @@ export default function CartScreen() {
                       </Text>
                     </View>
                     <View style={styles.itemPriceRow}>
-                      <Text style={styles.itemPrice}>{formatPrice(item.price)}</Text>
+                      <Text style={styles.itemPrice}>{formatPrice(quote?.items.find((line: any) => line.id === item.id && (line.variantId ?? undefined) === item.variantId)?.price ?? item.price)}</Text>
                       <View style={styles.qtyControl}>
                         <Pressable style={styles.qtyBtn} onPress={() => changeQuantity(cartLineKey(item), -1)}>
                           <MaterialIcons name="remove" size={16} color={Colors.light.onSurface} />
@@ -202,7 +229,7 @@ export default function CartScreen() {
                 onChangeText={name => { addressEdited.current = true; setShippingAddress(current => ({ ...current, name })); }} />
               <TextInput accessibilityLabel="Số điện thoại nhận hàng" placeholder="Số điện thoại" value={shippingAddress.phone} editable={!isCheckingOut} keyboardType="phone-pad" maxLength={25} style={styles.shippingInput}
                 onChangeText={phone => { addressEdited.current = true; setShippingAddress(current => ({ ...current, phone })); }} />
-              <TextInput accessibilityLabel="Địa chỉ nhận hàng" placeholder="Số nhà, đường, phường/xã, tỉnh/thành phố" value={shippingAddress.address} editable={!isCheckingOut} multiline maxLength={8000} style={styles.shippingInput}
+              <TextInput accessibilityLabel="Địa chỉ nhận hàng" placeholder="Số nhà, đường, phường/xã, tỉnh/thành phố" value={shippingAddress.address} editable={!isCheckingOut} multiline maxLength={4000} style={styles.shippingInput}
                 onChangeText={address => { addressEdited.current = true; setShippingAddress(current => ({ ...current, address })); }} />
               <Text style={styles.summaryLabel}>Thanh toán khi nhận hàng</Text>
             </View>
@@ -215,21 +242,17 @@ export default function CartScreen() {
                 <Text style={styles.summaryValue}>{formatPrice(subtotal)}</Text>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Giảm giá voucher</Text>
-                <Text style={styles.summaryValueRed}>-{formatPrice(discount)}</Text>
-              </View>
-              <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Phí vận chuyển</Text>
                 <Text style={styles.summaryValueRed}>Miễn phí</Text>
               </View>
               <View style={styles.totalBox}>
                 <View>
                   <Text style={styles.totalLabel}>Tổng thanh toán</Text>
-                  <Text style={styles.totalDesc}>(Đã bao gồm thuế VAT)</Text>
+                  <Text style={styles.totalDesc}>{quote ? 'Giá được xác nhận từ cửa hàng' : 'Giá tạm tính, cần xác nhận'}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={styles.totalAmount}>{formatPrice(total)}</Text>
-                  <Text style={styles.totalSaving}>Tiết kiệm {formatPrice(discount)}</Text>
+
                 </View>
               </View>
             </View>
@@ -238,8 +261,9 @@ export default function CartScreen() {
       </ScrollView>
 
       {/* Bottom Bar */}
-      {cart.length > 0 && (
+      {(cart.length > 0 || hasPendingRequest) && (
         <View style={styles.bottomBar}>
+          {hasPendingRequest && <Text style={styles.checkoutError}>Kiểm tra yêu cầu trước đó để nhận kết quả đơn hàng. Giỏ hiện tại có thể khác giỏ đã gửi.</Text>}
           {!!checkoutError && <Text accessibilityRole="alert" style={styles.checkoutError}>{checkoutError}</Text>}
           {needsLogin && (
             <Pressable accessibilityRole="button" onPress={async () => {
@@ -249,10 +273,10 @@ export default function CartScreen() {
               <Text style={styles.loginButtonText}>Đăng nhập tài khoản khách hàng</Text>
             </Pressable>
           )}
-          <Pressable accessibilityRole="button" accessibilityLabel="Đặt hàng ngay" style={[styles.checkoutBtn, isCheckingOut && styles.checkoutBtnDisabled]} onPress={checkout} disabled={isCheckingOut}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Đặt hàng ngay" style={[styles.checkoutBtn, isCheckingOut && styles.checkoutBtnDisabled]} onPress={checkout} disabled={isCheckingOut || (quoting && !hasPendingRequest)}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               {isCheckingOut ? <ActivityIndicator size="small" color={Colors.light.onPrimary} /> : <MaterialIcons name="lock" size={20} color={Colors.light.onPrimary} />}
-              <Text style={styles.checkoutBtnText}>{isCheckingOut ? 'Đang lưu đơn hàng...' : 'Đặt hàng ngay'}</Text>
+              <Text style={styles.checkoutBtnText}>{isCheckingOut ? 'Đang kiểm tra đơn...' : hasPendingRequest ? 'Kiểm tra yêu cầu đặt hàng' : quoting ? 'Đang cập nhật giá...' : 'Đặt hàng COD'}</Text>
             </View>
             <Text style={styles.checkoutBtnTotal}>{formatPrice(total)} →</Text>
           </Pressable>

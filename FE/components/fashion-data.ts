@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { cartLineKey, normalizeCart } from './cart-state';
+import { applyPurchasedCart, cartEnvelope } from './checkout-cart';
+import type { CartEnvelope } from './checkout-cart';
 export { cartLineKey } from './cart-state';
 
 const defaultHost = Platform.OS === 'web' && typeof window !== 'undefined'
@@ -55,16 +57,6 @@ export type CartItem = Product & {
   size?: string;
 };
 
-export const news = [
-  { id: 1, title: 'Chăm sóc da mùa lạnh', description: 'Cách giữ làn da căng mịn giữa những ngày gió lạnh, khô hanh.', image: 'https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=900' },
-  { id: 2, title: 'Biểu tượng thời trang 2025', description: 'Những gương mặt đang định hình xu hướng thời trang toàn cầu.', image: 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=900' },
-];
-
-export const trends = [
-  { id: 1, title: 'Xuân Hè 2025', description: 'Những thiết kế tươi mới cho kỷ nguyên mới.', image: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=900' },
-  { id: 2, title: 'Thời trang công sở', description: 'Sự kết hợp giữa thanh lịch và hiện đại.', image: 'https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=900' },
-];
-
 export const formatPrice = (value: number) => `${value.toLocaleString('vi-VN')}đ`;
 
 let cartOperations: Promise<unknown> = Promise.resolve();
@@ -74,25 +66,39 @@ function queueCart<T>(operation: () => Promise<T>): Promise<T> {
   return result;
 }
 
-async function readStoredCart(): Promise<CartItem[]> {
+async function readStoredCartEnvelope(): Promise<CartEnvelope> {
   const value = await AsyncStorage.getItem('cart');
-  if (!value) return [];
   let parsed: unknown;
-  try { parsed = JSON.parse(value); } catch { parsed = []; }
-  const cart = normalizeCart(parsed);
-  if (JSON.stringify(cart) !== value) await AsyncStorage.setItem('cart', JSON.stringify(cart));
-  return cart;
+  try { parsed = value ? JSON.parse(value) : []; } catch { parsed = []; }
+  const envelope = cartEnvelope(parsed);
+  if (JSON.stringify(envelope) !== value) await AsyncStorage.setItem('cart', JSON.stringify(envelope));
+  return envelope;
 }
 
 export function readCart(): Promise<CartItem[]> {
-  return queueCart(readStoredCart);
+  return queueCart(async () => (await readStoredCartEnvelope()).items);
 }
 
 export function updateCart(change: (cart: CartItem[]) => CartItem[]): Promise<CartItem[]> {
   return queueCart(async () => {
-    const next = normalizeCart(change(await readStoredCart()));
-    await AsyncStorage.setItem('cart', JSON.stringify(next));
+    const stored = await readStoredCartEnvelope();
+    const next = normalizeCart(change(stored.items));
+    await AsyncStorage.setItem('cart', JSON.stringify({ ...stored, items: next }));
     return next;
+  });
+}
+
+export function finishCheckoutCart(requestKey: string, purchased: CartItem[], pendingStorageKey: string): Promise<CartItem[]> {
+  return queueCart(async () => {
+    const next = applyPurchasedCart(await readStoredCartEnvelope(), requestKey, purchased);
+    // The cart and replay marker are written atomically in one storage entry.
+    await AsyncStorage.setItem('cart', JSON.stringify(next));
+    try {
+      await AsyncStorage.removeItem(pendingStorageKey);
+      // Cleanup failure cannot turn an accepted order into a failed checkout.
+      await AsyncStorage.setItem('cart', JSON.stringify({ ...next, appliedCheckouts: next.appliedCheckouts.filter(key => key !== requestKey) }));
+    } catch { /* Retain the marker so a later replay cannot subtract twice. */ }
+    return next.items;
   });
 }
 
@@ -115,9 +121,14 @@ export function productImageUrl(image?: string) {
   return /^https?:\/\//i.test(image) ? image : `${SERVER_URL}${image.startsWith('/') ? '' : '/'}${image}`;
 }
 
+export type ProductPage = { items: Product[]; page: number; total: number; totalPages: number };
+export async function fetchProductPage(options: { page?: number; pageSize?: number; search?: string; categoryId?: number } = {}): Promise<ProductPage> {
+  const query = new URLSearchParams(Object.entries(options).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+  const result = await apiRequest(`/products?${query}`);
+  return { ...result, items: result.items.map((product: Product) => ({ ...product, image: productImageUrl(product.image) })) };
+}
 export async function fetchProducts(): Promise<Product[]> {
-  const data = await apiRequest('/products');
-  return data.map((product: Product) => ({ ...product, image: productImageUrl(product.image) }));
+  return (await fetchProductPage({ pageSize: 4 })).items;
 }
 
 export async function fetchProductById(id: string | number): Promise<Product> {
@@ -126,7 +137,7 @@ export async function fetchProductById(id: string | number): Promise<Product> {
 }
 
 export function saveCart(cart: CartItem[]) {
-  return queueCart(() => AsyncStorage.setItem('cart', JSON.stringify(normalizeCart(cart))));
+  return updateCart(() => cart);
 }
 
 export async function currentUser() {

@@ -24,10 +24,10 @@ export default {
       "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, 
       "spacing": { "margin-mobile": "1rem", "space-lg": "1.5rem", "space-sm": "0.5rem", "gutter-mobile": "0.75rem", "gutter": "1.5rem", "margin": "2rem", "space-md": "1rem", "space-xl": "2.5rem", "space-xs": "0.25rem" }, 
       "fontFamily": { 
-        "sans": [ "Inter", "Arial", "sans-serif" ], "serif": [ "Inter", "Arial", "sans-serif" ],
-        "headline-lg-mobile": [ "Inter" ], "body-md": [ "Inter" ], "body-sm": [ "Inter" ], "label-lg": [ "Inter" ],
-        "headline-md": [ "Inter" ], "label-md": [ "Inter" ], "display-md-mobile": [ "Inter" ], "headline-sm": [ "Inter" ],
-        "body-lg": [ "Inter" ], "display-lg": [ "Inter" ], "display-md": [ "Inter" ], "headline-lg": [ "Inter" ], "label-sm": [ "Inter" ]
+        "sans": [ "Segoe UI", "system-ui", "-apple-system", "BlinkMacSystemFont", "Arial", "sans-serif" ], "serif": [ "Georgia", "Times New Roman", "serif" ],
+        "headline-lg-mobile": [ "Segoe UI", "system-ui", "-apple-system", "BlinkMacSystemFont", "Arial", "sans-serif" ], "body-md": [ "Segoe UI", "system-ui", "-apple-system", "BlinkMacSystemFont", "Arial", "sans-serif" ], "body-sm": [ "Segoe UI", "system-ui", "-apple-system", "BlinkMacSystemFont", "Arial", "sans-serif" ], "label-lg": [ "Segoe UI", "system-ui", "-apple-system", "BlinkMacSystemFont", "Arial", "sans-serif" ],
+        "headline-md": [ "Segoe UI", "system-ui", "-apple-system", "BlinkMacSystemFont", "Arial", "sans-serif" ], "label-md": [ "Segoe UI", "system-ui", "-apple-system", "BlinkMacSystemFont", "Arial", "sans-serif" ], "display-md-mobile": [ "Segoe UI", "system-ui", "-apple-system", "BlinkMacSystemFont", "Arial", "sans-serif" ], "headline-sm": [ "Segoe UI", "system-ui", "-apple-system", "BlinkMacSystemFont", "Arial", "sans-serif" ],
+        "body-lg": [ "Segoe UI", "system-ui", "-apple-system", "BlinkMacSystemFont", "Arial", "sans-serif" ], "display-lg": [ "Segoe UI", "system-ui", "-apple-system", "BlinkMacSystemFont", "Arial", "sans-serif" ], "display-md": [ "Segoe UI", "system-ui", "-apple-system", "BlinkMacSystemFont", "Arial", "sans-serif" ], "headline-lg": [ "Segoe UI", "system-ui", "-apple-system", "BlinkMacSystemFont", "Arial", "sans-serif" ], "label-sm": [ "Segoe UI", "system-ui", "-apple-system", "BlinkMacSystemFont", "Arial", "sans-serif" ]
       }, 
       "fontSize": { 
         "headline-lg-mobile": [ "22px", { "lineHeight": "28px", "fontWeight": "600" } ], 

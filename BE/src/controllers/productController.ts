@@ -1,8 +1,11 @@
 import { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import prisma from '../db';
 import { normalizeSaleStatus, normalizeVariants, readVariantAttributeDefinitions, serializeVariant, VariantValidationError } from '../services/productVariants';
 import { recordStockAdjustment, stockNumber } from '../services/inventoryAdjustments';
 import { saveProductChanges } from '../services/productEditing';
+import { positiveId, sendApiError } from '../services/apiErrors';
+import { pagination } from '../services/pagination';
 
 const productResponse = (product: any) => ({
   id: product.MaSanPham,
@@ -14,9 +17,6 @@ const productResponse = (product: any) => ({
   categoryAttributes: readVariantAttributeDefinitions(product.loaiHang?.ThuocTinhBienThe),
   quantity: product.SoLuong,
   status: normalizeSaleStatus(product.TrangThai),
-  originalPrice: product.DonGiaNhap,
-  khoId: product.MaKho,
-  nccId: product.MaNCC,
   variants: (product.bienThes || []).map((variant: any) => serializeVariant(variant, product.DonGiaBan))
 });
 
@@ -56,24 +56,35 @@ const findCategory = async (categoryId: number) => {
   return category;
 };
 
-export const getProducts = async (req: Request, res: Response) => {
+async function listProducts(req: Request, res: Response, internal: boolean) {
   try {
-    const products = await prisma.sanPham.findMany({
-      include: { loaiHang: true, bienThes: true }
-    });
-    
-    if(products.length === 0) {
-      res.json([]);
-      return;
-    }
-    
-    // Chuẩn hóa dữ liệu về tiếng Anh để xài cho frontend cũ
-    const formattedProducts = products.map(publicProductResponse).filter(Boolean);
-
-    res.json(formattedProducts);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch products' });
-  }
+    const { page, pageSize, skip, search } = pagination(req);
+    const sale = { notIn: ['Tạm ngừng', 'Ngừng kinh doanh', 'Ngừng bán'] };
+    const where: Prisma.SanPhamWhereInput = {
+      ...(!internal ? { TrangThai: sale, OR: [{ bienThes: { none: {} } }, { bienThes: { some: { TrangThai: sale } } }] } : {}),
+      ...(internal && req.query.warehouseId ? { MaKho: positiveId(req.query.warehouseId, 'Kho') } : {}),
+      ...(internal && req.query.supplierId ? { MaNCC: positiveId(req.query.supplierId, 'Nhà cung cấp') } : {}),
+      ...(req.query.categoryId ? { MaLoaiHang: positiveId(req.query.categoryId, 'Danh mục') } : {}),
+      ...(req.query.status && internal ? req.query.status === 'Hết hàng' ? { SoLuong: 0, TrangThai: sale } : req.query.status === 'Đang mở bán' ? { SoLuong: { gt: 0 }, TrangThai: sale } : { TrangThai: String(req.query.status) } : {}),
+      ...(search ? { AND: [{ OR: [{ TenSanPham: { contains: search } }, ...(Number.isSafeInteger(Number(search)) && Number(search) > 0 && Number(search) <= 2147483647 ? [{ MaSanPham: Number(search) }] : [])] }] } : {})
+    };
+    const [total, products] = await prisma.$transaction([prisma.sanPham.count({ where }), prisma.sanPham.findMany({ where, include: { loaiHang: true, bienThes: true, kho: true, nhaCungCap: true }, orderBy: { MaSanPham: 'desc' }, take: pageSize, skip })]);
+    const pending = internal ? await prisma.cTDonHang.findMany({ where: { MaSanPham: { in: products.map(p => p.MaSanPham) }, donHang: { TrangThai: { notIn: ['DELIVERED', 'Đã giao', 'CANCELLED', 'Đã hủy'] } } }, distinct: ['MaSanPham'], select: { MaSanPham: true } }) : [];
+    const items = products.map(product => internal ? { ...productResponse(product),
+      ...((req as any).user.role === 'admin' ? { originalPrice: product.DonGiaNhap } : {}), khoId: product.MaKho, khoName: product.kho.TenKho, nccId: product.MaNCC, nccName: product.nhaCungCap.TenNCC,
+      hasPendingOrders: pending.some(line => line.MaSanPham === product.MaSanPham) } : publicProductResponse(product)).filter(Boolean);
+    res.json({ items, page, pageSize, total, totalPages: Math.ceil(total / pageSize) });
+  } catch (error) { sendApiError(res, error); }
+}
+export const getProducts = (req: Request, res: Response) => listProducts(req, res, false);
+export const getInternalProducts = (req: Request, res: Response) => listProducts(req, res, true);
+export const getInternalProduct = async (req: Request, res: Response) => {
+  try {
+    const id = positiveId(req.params.id);
+    const product = await prisma.sanPham.findUniqueOrThrow({ where: { MaSanPham: id }, include: { loaiHang: true, bienThes: true } });
+    const pending = await prisma.cTDonHang.count({ where: { MaSanPham: id, donHang: { TrangThai: { notIn: ['DELIVERED', 'Đã giao', 'CANCELLED', 'Đã hủy'] } } } });
+    res.json({ ...productResponse(product), originalPrice: product.DonGiaNhap, khoId: product.MaKho, nccId: product.MaNCC, hasPendingOrders: pending > 0 });
+  } catch (error) { sendApiError(res, error); }
 };
 
 export const getProductById = async (req: Request, res: Response) => {
@@ -97,7 +108,7 @@ export const getProductById = async (req: Request, res: Response) => {
 export const createProduct = async (req: Request, res: Response) => {
   const { name, price, originalPrice, image, categoryId, khoId, nccId, stock, status, variants } = req.body;
   try {
-    if (typeof name !== 'string' || !name.trim() || name.trim().length > 255 || price === '' || price === undefined || price === null || !Number.isFinite(Number(price)) || Number(price) < 0) throw new VariantValidationError('Tên sản phẩm và giá hợp lệ là bắt buộc.');
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 255 || price === '' || price === undefined || price === null || !Number.isSafeInteger(Number(price)) || Number(price) < 0) throw new VariantValidationError('Tên sản phẩm và giá hợp lệ là bắt buộc.');
     if (variants !== undefined && !Array.isArray(variants)) throw new VariantValidationError('Danh sách biến thể không hợp lệ.');
     const category = await findCategory(Number(categoryId));
     const normalized = Array.isArray(variants)
@@ -107,7 +118,7 @@ export const createProduct = async (req: Request, res: Response) => {
     const totalStock = normalized.length ? normalized.reduce((sum, variant) => sum + variant.SoLuong, 0) : requestedStock;
     stockNumber(totalStock);
     const purchasePrice = Number(originalPrice ?? 0);
-    if (originalPrice === '' || !Number.isFinite(purchasePrice) || purchasePrice < 0) throw new VariantValidationError('Giá nhập phải là số không âm.');
+    if (originalPrice === '' || !Number.isSafeInteger(purchasePrice) || purchasePrice < 0) throw new VariantValidationError('Giá nhập phải là số không âm.');
     const warehouse = Number.isSafeInteger(Number(khoId)) && Number(khoId) > 0 ? await prisma.kho.findUnique({ where: { MaKho: Number(khoId) } }) : null;
     const supplier = Number.isSafeInteger(Number(nccId)) && Number(nccId) > 0 ? await prisma.nhaCungCap.findUnique({ where: { MaNCC: Number(nccId) } }) : null;
     if (!warehouse || !supplier) throw new VariantValidationError('Vui lòng chọn kho và nhà cung cấp hợp lệ.');
@@ -185,15 +196,17 @@ const editableVariants = (product: any) => product.bienThes.map((variant: any) =
 export const createProductVariant = async (req: Request, res: Response) => {
   try {
     const productId = Number(req.params.id);
-    const product = await prisma.sanPham.findUnique({ where: { MaSanPham: productId }, include: { bienThes: true } });
-    if (!product) { res.status(404).json({ error: 'Không tìm thấy sản phẩm.' }); return; }
+    let previousIds: number[] = [];
     const actor = (req as any).user?.email || `Quản trị #${(req as any).user?.id}`;
-    const saved = await saveProductChanges(productId, {
-      variants: [...editableVariants(product), { ...req.body, id: undefined }],
-      expectedStock: req.body.expectedStock, inventoryReason: req.body.inventoryReason,
-      expectedVariantIds: product.bienThes.map(row => row.MaBienThe)
+    const saved = await saveProductChanges(productId, current => {
+      previousIds = current.bienThes.map(row => row.MaBienThe);
+      return {
+        variants: [...editableVariants(current), { ...req.body, id: undefined }],
+        expectedStock: req.body?.expectedStock, inventoryReason: req.body?.inventoryReason,
+        expectedVariantIds: previousIds
+      };
     }, actor);
-    const created = saved!.bienThes.find(row => !product.bienThes.some(old => old.MaBienThe === row.MaBienThe));
+    const created = saved!.bienThes.find(row => !previousIds.includes(row.MaBienThe));
     res.status(201).json(serializeVariant(created, saved!.DonGiaBan));
   } catch (error) { sendProductError(res, error); }
 };
@@ -201,13 +214,20 @@ export const createProductVariant = async (req: Request, res: Response) => {
 export const updateProductVariant = async (req: Request, res: Response) => {
   try {
     const productId = Number(req.params.id), variantId = Number(req.params.variantId);
-    const product = await prisma.sanPham.findUnique({ where: { MaSanPham: productId }, include: { bienThes: true } });
-    if (!product || !product.bienThes.some(row => row.MaBienThe === variantId)) { res.status(404).json({ error: 'Không tìm thấy biến thể.' }); return; }
-    const variants = editableVariants(product).map((row: any) => row.id === variantId
-      ? { ...row, ...req.body, id: variantId, quantity: req.body.quantity ?? req.body.SoLuong ?? row.quantity,
-        expectedQuantity: req.body.quantity !== undefined || req.body.SoLuong !== undefined ? req.body.expectedQuantity : row.expectedQuantity } : row);
+    if (!Number.isSafeInteger(variantId) || variantId < 1 || variantId > 2147483647) throw new VariantValidationError('Mã biến thể không hợp lệ.');
     const actor = (req as any).user?.email || `Quản trị #${(req as any).user?.id}`;
-    const saved = await saveProductChanges(productId, { variants, expectedVariantIds: product.bienThes.map(row => row.MaBienThe), inventoryReason: req.body.inventoryReason }, actor);
+    const saved = await saveProductChanges(productId, current => {
+      if (!current.bienThes.some(row => row.MaBienThe === variantId)) {
+        const error = new VariantValidationError('Không tìm thấy biến thể.');
+        error.statusCode = 404;
+        throw error;
+      }
+      const input = req.body ?? {};
+      const variants = editableVariants(current).map((row: any) => row.id === variantId
+        ? { ...row, ...input, id: variantId, quantity: input.quantity ?? input.SoLuong ?? row.quantity,
+          expectedQuantity: input.quantity !== undefined || input.SoLuong !== undefined ? input.expectedQuantity : row.expectedQuantity } : row);
+      return { variants, expectedVariantIds: current.bienThes.map(row => row.MaBienThe), inventoryReason: input.inventoryReason };
+    }, actor);
     res.json(serializeVariant(saved!.bienThes.find(row => row.MaBienThe === variantId), saved!.DonGiaBan));
   } catch (error) { sendProductError(res, error); }
 };
@@ -215,12 +235,18 @@ export const updateProductVariant = async (req: Request, res: Response) => {
 export const deleteProductVariant = async (req: Request, res: Response) => {
   try {
     const productId = Number(req.params.id), variantId = Number(req.params.variantId);
-    const product = await prisma.sanPham.findUnique({ where: { MaSanPham: productId }, include: { bienThes: true } });
-    if (!product || !product.bienThes.some(row => row.MaBienThe === variantId)) { res.status(404).json({ error: 'Không tìm thấy biến thể.' }); return; }
+    if (!Number.isSafeInteger(variantId) || variantId < 1 || variantId > 2147483647) throw new VariantValidationError('Mã biến thể không hợp lệ.');
     const actor = (req as any).user?.email || `Quản trị #${(req as any).user?.id}`;
-    const saved = await saveProductChanges(productId, {
-      variants: editableVariants(product).filter((row: any) => row.id !== variantId), stock: product.SoLuong, expectedStock: product.SoLuong,
-      expectedVariantIds: product.bienThes.map(row => row.MaBienThe)
+    const saved = await saveProductChanges(productId, current => {
+      if (!current.bienThes.some(row => row.MaBienThe === variantId)) {
+        const error = new VariantValidationError('Không tìm thấy biến thể.');
+        error.statusCode = 404;
+        throw error;
+      }
+      return {
+        variants: editableVariants(current).filter((row: any) => row.id !== variantId), stock: current.SoLuong, expectedStock: current.SoLuong,
+        expectedVariantIds: current.bienThes.map(row => row.MaBienThe)
+      };
     }, actor);
     res.json({ deleted: variantId, quantity: saved!.SoLuong });
   } catch (error) { sendProductError(res, error); }

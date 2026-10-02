@@ -1,278 +1,152 @@
 import { Request, Response } from 'express';
 import prisma from '../db';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import { ApiError, positiveId, sendApiError, textValue } from '../services/apiErrors';
+import { hashPassword, isPasswordHash, newPassword, verifyPassword } from '../services/credentials';
+import { internalRole } from '../services/access';
+import { issueToken } from '../services/sessions';
+import { lockLoginNamespace } from '../services/loginNamespace';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fashionheaven_super_secret_key';
-const isBcryptHash = (value: string) => /^\$2[aby]\$/.test(value);
-const verifyPassword = (storedPassword: string, candidate: string) =>
-  isBcryptHash(storedPassword) ? bcrypt.compare(candidate, storedPassword) : Promise.resolve(storedPassword === candidate);
-const hashPassword = (password: string) => bcrypt.hash(password, 10);
+const customerSelect = { MaKhachHang: true, TenKhach: true, Email: true, DiaChi: true, DienThoai: true, HangThanhVien: true } as const;
+const emailValue = (value: unknown) => {
+  const email = textValue(value, 'Email', 255).toLocaleLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ApiError(400, 'VALIDATION_ERROR', 'Email không hợp lệ.');
+  return email;
+};
 
-export const registerUser = async (req: Request, res: Response) => {
-  const { name, email, password } = req.body;
+async function upgradePassword(id: number, stored: string, candidate: string, internal: boolean) {
+  if (isPasswordHash(stored)) return stored;
+  const hashed = await hashPassword(candidate);
+  const result = internal
+    ? await prisma.account.updateMany({ where: { MaNhanVien: id, PassWord: stored }, data: { PassWord: hashed } })
+    : await prisma.khachHang.updateMany({ where: { MaKhachHang: id, MatKhau: stored }, data: { MatKhau: hashed } });
+  if (result.count !== 1) throw new ApiError(409, 'CREDENTIAL_CHANGED', 'Tài khoản vừa được cập nhật. Vui lòng đăng nhập lại.');
+  return hashed;
+}
 
-  if (typeof name !== 'string' || !name.trim() || typeof email !== 'string' || !email.trim() || typeof password !== 'string' || !password) {
-    res.status(400).json({ error: 'Vui lòng nhập đầy đủ họ tên, email và mật khẩu.' });
-    return;
-  }
-  
-  if (email.toLowerCase().includes('admin') || name.toLowerCase().includes('admin')) {
-    res.status(400).json({ error: 'Không được sử dụng từ khóa "admin" trong tên hoặc email đăng ký.' });
-    return;
-  }
-
+export async function registerUser(req: Request, res: Response) {
   try {
-    const userExists = await prisma.khachHang.findUnique({ where: { Email: email } });
-    if (userExists) {
-      res.status(400).json({ error: 'Email này đã được sử dụng.' });
-      return;
-    }
-
-    const adminExists = await prisma.account.findUnique({ where: { UserName: email } });
-    if (adminExists) {
-      res.status(400).json({ error: 'Email này đã được sử dụng bởi hệ thống.' });
-      return;
-    }
-
-    const newUser = await prisma.khachHang.create({
-      data: { TenKhach: name, Email: email, MatKhau: await hashPassword(password) }
+    const body = req.body ?? {}, name = textValue(body.name, 'Họ tên', 255), email = emailValue(body.email);
+    const passwordHash = await hashPassword(newPassword(body.password));
+    const customer = await prisma.$transaction(async tx => {
+      await lockLoginNamespace(tx);
+      if (await tx.account.findUnique({ where: { UserName: email } })) throw new ApiError(409, 'USERNAME_EXISTS', 'Tên đăng nhập đã được sử dụng.');
+      return tx.khachHang.create({ data: { TenKhach: name, Email: email, MatKhau: passwordHash } });
     });
+    const user = { id: customer.MaKhachHang, name: customer.TenKhach, email: customer.Email, role: 'user' as const };
+    res.status(201).json({ user, token: issueToken(user, customer.MatKhau) });
+  } catch (error) { sendApiError(res, error); }
+}
 
-    // Generate token
-    const token = jwt.sign({ id: newUser.MaKhachHang, email: newUser.Email, role: 'user' }, JWT_SECRET, { expiresIn: '7d' });
+export async function loginUser(req: Request, res: Response) {
+  try {
+    const body = req.body ?? {}, login = textValue(body.email, 'Tên đăng nhập', 255);
+    if (typeof body.password !== 'string' || !body.password || Buffer.byteLength(body.password, 'utf8') > 72) throw new ApiError(400, 'VALIDATION_ERROR', 'Vui lòng nhập mật khẩu hợp lệ.');
+    const account = await prisma.account.findUnique({ where: { UserName: login }, include: { nhanVien: { include: { chucVu: true } } } });
+    if (account) {
+      if (!await verifyPassword(account.PassWord, body.password)) throw new ApiError(401, 'LOGIN_FAILED', 'Sai tài khoản hoặc mật khẩu.');
+      const role = internalRole(account.Role);
+      if (!role) throw new ApiError(403, 'ACCOUNT_DISABLED', 'Tài khoản đã ngưng đăng nhập. Liên hệ quản trị viên.');
+      const passwordHash = await upgradePassword(account.MaNhanVien, account.PassWord, body.password, true);
+      const user = { id: account.MaNhanVien, name: account.nhanVien.TenNhanVien, email: account.UserName, role, jobTitle: account.nhanVien.chucVu.TenChucVu };
+      res.json({ user, token: issueToken(user, passwordHash, account.SessionEpoch) }); return;
+    }
+    const customer = await prisma.khachHang.findUnique({ where: { Email: login.toLocaleLowerCase() } });
+    if (!customer || !await verifyPassword(customer.MatKhau, body.password)) throw new ApiError(401, 'LOGIN_FAILED', 'Sai tài khoản hoặc mật khẩu.');
+    const passwordHash = await upgradePassword(customer.MaKhachHang, customer.MatKhau, body.password, false);
+    const user = { id: customer.MaKhachHang, name: customer.TenKhach, email: customer.Email, role: 'user' as const };
+    res.json({ user, token: issueToken(user, passwordHash) });
+  } catch (error) { sendApiError(res, error); }
+}
 
-    res.status(201).json({
-      user: { id: newUser.MaKhachHang, name: newUser.TenKhach, email: newUser.Email, role: 'user' },
-      token
+export async function getUserProfile(req: Request, res: Response) {
+  try {
+    const principal = (req as any).user;
+    if (principal.role !== 'user') {
+      const account = await prisma.account.findUnique({ where: { MaNhanVien: principal.id }, include: { nhanVien: { include: { chucVu: true } } } });
+      if (!account) throw new ApiError(404, 'NOT_FOUND', 'Không tìm thấy tài khoản.');
+      res.json({ id: principal.id, MaKhachHang: principal.id, name: account.nhanVien.TenNhanVien, TenKhach: account.nhanVien.TenNhanVien,
+        Email: account.UserName, DiaChi: account.nhanVien.DiaChi, DienThoai: account.nhanVien.DienThoai,
+        role: principal.role, jobTitle: account.nhanVien.chucVu.TenChucVu, HangThanhVien: principal.role === 'admin' ? 'Quản trị viên' : 'Nhân viên' }); return;
+    }
+    const customer = await prisma.khachHang.findUnique({ where: { MaKhachHang: principal.id }, select: customerSelect });
+    if (!customer) throw new ApiError(404, 'NOT_FOUND', 'Không tìm thấy khách hàng.');
+    res.json({ ...customer, role: 'user' });
+  } catch (error) { sendApiError(res, error); }
+}
+
+export async function updateUserProfile(req: Request, res: Response) {
+  try {
+    const principal = (req as any).user, body = req.body ?? {};
+    const name = textValue(body.name, 'Họ tên', 255), phone = textValue(body.phone, 'Điện thoại', 50, false), address = textValue(body.address, 'Địa chỉ', 4000, false);
+    if (principal.role !== 'user') {
+      await prisma.nhanVien.update({ where: { MaNhanVien: principal.id }, data: { TenNhanVien: name, DienThoai: phone, DiaChi: address } });
+      await getUserProfile(req, res); return;
+    }
+    const customer = await prisma.khachHang.update({ where: { MaKhachHang: principal.id }, data: { TenKhach: name, DienThoai: phone, DiaChi: address }, select: customerSelect });
+    res.json({ ...customer, role: 'user' });
+  } catch (error) { sendApiError(res, error); }
+}
+
+export async function createUser(req: Request, res: Response) {
+  try {
+    const body = req.body ?? {}, email = emailValue(body.email), name = textValue(body.name, 'Họ tên', 255);
+    const phone = textValue(body.phone, 'Điện thoại', 50, false), passwordHash = await hashPassword(newPassword(body.password));
+    const customer = await prisma.$transaction(async tx => {
+      await lockLoginNamespace(tx);
+      if (await tx.account.findUnique({ where: { UserName: email } })) throw new ApiError(409, 'USERNAME_EXISTS', 'Tên đăng nhập đã được sử dụng.');
+      return tx.khachHang.create({ data: { TenKhach: name, Email: email, DienThoai: phone,
+        MatKhau: passwordHash, HangThanhVien: 'Thành viên mới' }, select: customerSelect });
     });
-  } catch (error: any) {
-    console.error('Register Error Details:', error);
-    res.status(500).json({ error: 'Failed to register user: ' + error.message });
-  }
-};
+    res.status(201).json(customer);
+  } catch (error) { sendApiError(res, error); }
+}
 
-export const loginUser = async (req: Request, res: Response) => {
-  const { email, password } = req.body;
+export async function updateUser(req: Request, res: Response) {
   try {
-    // 1. Kiểm tra Admin từ bảng Account (username = email truyền vào)
-    const admin = await prisma.account.findUnique({ where: { UserName: email } });
-    if (admin) {
-      const isMatch = await verifyPassword(admin.PassWord, password);
-
-      if (isMatch) {
-        if (admin.Role.toUpperCase() !== 'ADMIN') {
-          res.status(403).json({ error: 'Tài khoản nhân viên này không có quyền quản trị.' });
-          return;
-        }
-
-        const nhanVien = await prisma.nhanVien.findUnique({
-          where: { MaNhanVien: admin.MaNhanVien },
-          include: { chucVu: true }
-        });
-        const jobTitle = nhanVien?.chucVu?.TenChucVu || 'Quản Trị Viên';
-        const token = jwt.sign({ id: admin.MaNhanVien, email: admin.UserName, role: 'admin' }, JWT_SECRET, { expiresIn: '1d' });
-        res.json({ message: 'Login successful', user: { name: nhanVien?.TenNhanVien || 'Admin', email: admin.UserName, role: 'admin', jobTitle }, token });
-        return;
-      }
-    }
-
-    // 2. Kiểm tra Khách hàng thông thường
-    const user = await prisma.khachHang.findUnique({ where: { Email: email } });
-    if (user) {
-      const isMatch = await verifyPassword(user.MatKhau, password);
-
-      if (isMatch) {
-        const token = jwt.sign({ id: user.MaKhachHang, email: user.Email, role: 'user' }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ message: 'Login successful', user: { name: user.TenKhach, id: user.MaKhachHang, email: user.Email, role: 'user' }, token });
-        return;
-      }
-    }
-
-    res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' });
-  } catch (error: any) {
-    console.error("Login Error Details:", error);
-    res.status(500).json({ error: 'Lỗi Backend: ' + error.message });
-  }
-};
-
-export const getUserProfile = async (req: Request, res: Response) => {
-  try {
-    const userRole = (req as any).user.role;
-    const userId = (req as any).user.id;
-
-    if (userRole === 'admin') {
-      const admin = await prisma.account.findUnique({
-        where: { MaNhanVien: userId }
-      });
-      if (!admin) {
-        res.status(404).json({ error: 'Admin not found' });
-        return;
-      }
-      res.json({ MaKhachHang: userId, TenKhach: 'Admin', Email: admin.UserName, DiaChi: 'Fashion Heaven', DienThoai: '', HangThanhVien: 'Admin' });
-      return;
-    }
-
-    const user = await prisma.khachHang.findUnique({
-      where: { MaKhachHang: userId },
-      select: { MaKhachHang: true, TenKhach: true, Email: true, DiaChi: true, DienThoai: true, HangThanhVien: true }
+    const id = positiveId(req.params.id, 'Mã khách hàng'), body = req.body ?? {};
+    const email = body.email === undefined ? undefined : emailValue(body.email);
+    const passwordHash = body.password ? await hashPassword(newPassword(body.password)) : undefined;
+    const fields = {
+      ...(body.name !== undefined ? { TenKhach: textValue(body.name, 'Họ tên', 255) } : {}),
+      ...(body.phone !== undefined ? { DienThoai: textValue(body.phone, 'Điện thoại', 50, false) } : {}),
+      ...(email !== undefined ? { Email: email } : {}),
+      ...(passwordHash !== undefined ? { MatKhau: passwordHash } : {})
+    };
+    const customer = await prisma.$transaction(async tx => {
+      await lockLoginNamespace(tx);
+      if (email && await tx.account.findUnique({ where: { UserName: email } })) throw new ApiError(409, 'USERNAME_EXISTS', 'Tên đăng nhập đã được sử dụng.');
+      return tx.khachHang.update({ where: { MaKhachHang: id }, data: fields, select: customerSelect });
     });
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-    res.json(user);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to get profile' });
-  }
-};
+    res.json(customer);
+  } catch (error) { sendApiError(res, error); }
+}
 
-export const updateUserProfile = async (req: Request, res: Response) => {
+export async function deleteUser(req: Request, res: Response) {
   try {
-    const userRole = (req as any).user.role;
-    const userId = (req as any).user.id;
-    const { name, phone, address } = req.body;
-
-    if (userRole === 'admin') {
-      // Just mock successful response since Admin's account doesn't have name/phone in table
-      res.json({ MaKhachHang: userId, TenKhach: name, Email: (req as any).user.email, DiaChi: address, DienThoai: phone, HangThanhVien: 'Admin' });
-      return;
-    }
-
-    const updatedUser = await prisma.khachHang.update({
-      where: { MaKhachHang: userId },
-      data: { TenKhach: name, DienThoai: phone, DiaChi: address },
-      select: { MaKhachHang: true, TenKhach: true, Email: true, DiaChi: true, DienThoai: true, HangThanhVien: true }
+    const id = positiveId(req.params.id, 'Mã khách hàng');
+    await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT MaKhachHang FROM khachhang WHERE MaKhachHang = ${id} FOR UPDATE`;
+      if (await tx.phieuXuat.count({ where: { MaKhachHang: id } })) throw new ApiError(409, 'CUSTOMER_HAS_HISTORY', 'Khách hàng đã có đơn hàng; phải giữ tài khoản và lịch sử giao dịch.');
+      await tx.khachHang.delete({ where: { MaKhachHang: id } });
     });
+    res.json({ message: 'Đã xóa tài khoản chưa có giao dịch.' });
+  } catch (error) { sendApiError(res, error); }
+}
 
-    res.json(updatedUser);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update profile' });
-  }
-};
-
-export const createUser = async (req: Request, res: Response) => {
-  const { name, email, phone, password } = req.body;
-  
-  if (email.toLowerCase().includes('admin') || name.toLowerCase().includes('admin')) {
-    res.status(400).json({ error: 'Không được tạo tài khoản chứa từ khóa admin.' });
-    return;
-  }
-
+export async function changePassword(req: Request, res: Response) {
   try {
-    const userExists = await prisma.khachHang.findUnique({ where: { Email: email } });
-    if (userExists) {
-      res.status(400).json({ error: 'Email đã tồn tại' });
-      return;
+    const principal = (req as any).user, body = req.body ?? {}, password = newPassword(body.newPassword);
+    if (principal.role !== 'user') {
+      const account = await prisma.account.findUnique({ where: { MaNhanVien: principal.id } });
+      if (!account || !await verifyPassword(account.PassWord, body.oldPassword)) throw new ApiError(400, 'PASSWORD_MISMATCH', 'Mật khẩu cũ không đúng.');
+      const result = await prisma.account.updateMany({ where: { MaNhanVien: principal.id, PassWord: account.PassWord }, data: { PassWord: await hashPassword(password) } });
+      if (!result.count) throw new ApiError(409, 'CREDENTIAL_CHANGED', 'Mật khẩu vừa được cập nhật. Vui lòng đăng nhập lại.');
+    } else {
+      const customer = await prisma.khachHang.findUnique({ where: { MaKhachHang: principal.id } });
+      if (!customer || !await verifyPassword(customer.MatKhau, body.oldPassword)) throw new ApiError(400, 'PASSWORD_MISMATCH', 'Mật khẩu cũ không đúng.');
+      const result = await prisma.khachHang.updateMany({ where: { MaKhachHang: principal.id, MatKhau: customer.MatKhau }, data: { MatKhau: await hashPassword(password) } });
+      if (!result.count) throw new ApiError(409, 'CREDENTIAL_CHANGED', 'Mật khẩu vừa được cập nhật. Vui lòng đăng nhập lại.');
     }
-
-    const adminExists = await prisma.account.findUnique({ where: { UserName: email } });
-    if (adminExists) {
-      res.status(400).json({ error: 'Email đã được sử dụng bởi hệ thống' });
-      return;
-    }
-
-    const newUser = await prisma.khachHang.create({
-      data: { TenKhach: name, Email: email, DienThoai: phone, MatKhau: await hashPassword(password || '123456'), HangThanhVien: 'Thành viên mới' }
-    });
-
-    res.status(201).json(newUser);
-  } catch (error) {
-    res.status(500).json({ error: 'Lỗi tạo khách hàng' });
-  }
-};
-
-export const updateUser = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { name, phone, email, password } = req.body;
-  try {
-    const dataToUpdate: any = { TenKhach: name, DienThoai: phone };
-
-    if (email) {
-      // Kiểm tra email trùng nếu email thay đổi
-      const existing = await prisma.khachHang.findUnique({ where: { Email: email } });
-      if (existing && existing.MaKhachHang !== Number(id)) {
-        res.status(400).json({ error: 'Email đã được sử dụng bởi người khác' });
-        return;
-      }
-      dataToUpdate.Email = email;
-    }
-
-    if (password && password.trim() !== '') {
-      dataToUpdate.MatKhau = await hashPassword(password);
-    }
-
-    const user = await prisma.khachHang.update({
-      where: { MaKhachHang: Number(id) },
-      data: dataToUpdate
-    });
-    res.json(user);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update user' });
-  }
-};
-
-export const deleteUser = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  try {
-    // Để an toàn với khóa ngoại (nếu có user mua hàng), chúng ta dùng transaction
-    // Tuy nhiên Prisma tự bắt lỗi foreign key nếu không cascade.
-    // Tạm thời xóa nếu không có đơn hàng, nếu có đơn thì phải xóa chi tiết đơn hàng trước.
-    // Ta xóa PhieuXuat trước (nếu có đơn)
-    const phieuXuats = await prisma.phieuXuat.findMany({ where: { MaKhachHang: Number(id) } });
-    for (const px of phieuXuats) {
-      await prisma.cTDonHang.deleteMany({ where: { MaPhieuXuat: px.MaPhieuXuat } });
-      await prisma.phieuXuat.delete({ where: { MaPhieuXuat: px.MaPhieuXuat } });
-    }
-
-    await prisma.khachHang.delete({ where: { MaKhachHang: Number(id) } });
-    res.json({ message: 'User deleted successfully' });
-  } catch (error: any) {
-    res.status(500).json({ error: 'Failed to delete user: ' + error.message });
-  }
-};
-
-export const changePassword = async (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.id;
-    const userRole = (req as any).user.role;
-    const { oldPassword, newPassword } = req.body;
-
-    if (userRole === 'admin') {
-      const admin = await prisma.account.findUnique({ where: { MaNhanVien: userId } });
-      if (!admin) {
-        res.status(404).json({ error: 'Not found' });
-        return;
-      }
-
-      const isMatch = await verifyPassword(admin.PassWord, oldPassword);
-
-      if (!isMatch) {
-        res.status(400).json({ error: 'Mật khẩu cũ không đúng' });
-        return;
-      }
-
-      await prisma.account.update({ where: { MaNhanVien: userId }, data: { PassWord: await hashPassword(newPassword) } });
-      res.json({ message: 'Đổi mật khẩu thành công' });
-      return;
-    }
-
-    const user = await prisma.khachHang.findUnique({ where: { MaKhachHang: userId } });
-    if (!user) {
-      res.status(404).json({ error: 'Not found' });
-      return;
-    }
-
-    const isMatch = await verifyPassword(user.MatKhau, oldPassword);
-
-    if (!isMatch) {
-      res.status(400).json({ error: 'Mật khẩu cũ không đúng' });
-      return;
-    }
-
-    await prisma.khachHang.update({ where: { MaKhachHang: userId }, data: { MatKhau: await hashPassword(newPassword) } });
-    res.json({ message: 'Đổi mật khẩu thành công' });
-  } catch (error) {
-    res.status(500).json({ error: 'Lỗi server' });
-  }
-};
+    res.json({ message: 'Đã đổi mật khẩu. Vui lòng đăng nhập lại trên các thiết bị.' });
+  } catch (error) { sendApiError(res, error); }
+}

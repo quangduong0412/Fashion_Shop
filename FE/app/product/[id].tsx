@@ -1,71 +1,85 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, Pressable, Dimensions, ActivityIndicator } from 'react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { StyleSheet, Text, View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addCartItem, formatPrice, fetchProductById, Product, ProductVariant, VariantAttributeDefinition } from '../../components/fashion-data';
 
-const { width } = Dimensions.get('window');
 
 export default function ProductDetailScreen() {
-  const { id } = useLocalSearchParams();
+  const { id } = useLocalSearchParams<{ id: string | string[] }>();
+  const productId = Array.isArray(id) ? id[0] : id;
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const goBack = () => router.canGoBack() ? router.back() : router.replace('/explore' as never);
 
+  const [retry, setRetry] = useState(0);
   const [product, setProduct] = useState<Product | null>(null);
-  const [loading, setLoading] = useState(true);
+  const loadKey = `${productId || ''}:${retry}`;
+  const [loadedKey, setLoadedKey] = useState('');
+  const loading = loadedKey !== loadKey;
   const [error, setError] = useState('');
   const [cartMessage, setCartMessage] = useState('');
   
-  const [activeImg, setActiveImg] = useState(0);
+  const [units, setUnits] = useState(1);
+  const [adding, setAdding] = useState(false);
+  const addingRef = useRef(false);
+  const generation = useRef(0);
+  const mounted = useRef(true);
+  const focused = useRef(false);
+  useFocusEffect(useCallback(() => { focused.current = true; return () => { focused.current = false; }; }, []));
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string | number>>({});
-  const [isFavorite, setIsFavorite] = useState(false);
 
   useEffect(() => {
+    const request = ++generation.current;
     async function load() {
       try {
-        const p = await fetchProductById(id as string);
-        setProduct(p);
-        const firstVariant = p.variants?.[0];
+        const validId = productId && /^\d+$/.test(productId) && Number.isSafeInteger(Number(productId)) && Number(productId) > 0;
+        const p = await (validId ? fetchProductById(productId) : Promise.reject(new Error('Mã sản phẩm không hợp lệ.')));
+        if (request !== generation.current) return;
+        setProduct(p); setError(''); setCartMessage(''); setUnits(1);
+        const firstVariant = p.variants?.find(variant => variant.quantity > 0 && (!variant.status || variant.status === 'Đang mở bán')) || p.variants?.[0];
+        setSelectedVariantId(firstVariant?.id ?? null);
         setSelectedColor(firstVariant?.color || '');
-        setSelectedAttributes(firstVariant?.attributes || (firstVariant?.size ? { size: firstVariant.size } : {}));
-      } catch (err: any) {
-        setError(err.message || 'Không tìm thấy sản phẩm');
-      } finally {
-        setLoading(false);
-      }
+        setSelectedAttributes({ ...firstVariant?.attributes, ...(firstVariant?.size ? { size: firstVariant.size } : {}) });
+      } catch (cause) {
+        if (request === generation.current) { setProduct(null); setError(cause instanceof Error ? cause.message : 'Không thể tải sản phẩm.'); }
+      } finally { if (request === generation.current) setLoadedKey(loadKey); }
     }
-    if (id) load();
-  }, [id]);
+    void load();
+    return () => { generation.current = request + 1; };
+  }, [productId, loadKey]);
 
-  if (loading) return <View style={[styles.root, { justifyContent: 'center' }]}><ActivityIndicator color={Colors.light.primary} size="large" /></View>;
-  if (error || !product) return <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}><Text style={styles.errorText}>{error || 'Không tìm thấy sản phẩm'}</Text><Pressable onPress={() => router.back()} style={styles.backBtn}><Text style={styles.backText}>Quay lại</Text></Pressable></View>;
-
-  const images = [product.image]; // If there are more images in DB, append them. Currently only 1 image per product.
+  if (loading) return <View style={[styles.root, styles.state]}><ActivityIndicator color={Colors.light.primary} size="large" /><Text style={styles.stateText}>Đang tải sản phẩm…</Text><Pressable accessibilityRole="button" onPress={goBack}><Text style={styles.stateText}>Quay lại</Text></Pressable></View>;
+  if (error || !product) return <View style={[styles.root, styles.state]}><Text accessibilityRole="alert" style={styles.errorText}>{error || 'Không tìm thấy sản phẩm.'}</Text><Pressable accessibilityRole="button" onPress={() => setRetry(value => value + 1)} style={styles.backBtn}><Text style={styles.backText}>Thử lại</Text></Pressable><Pressable accessibilityRole="button" onPress={goBack}><Text style={styles.stateText}>Quay lại</Text></Pressable></View>;
 
   const variants = product.variants || [];
-  const attributeDefinitions = product.categoryAttributes?.length
-    ? product.categoryAttributes
-    : variants.some(variant => variant.size)
-      ? [{ key: 'size', label: 'Kích thước', type: 'select' as const }]
-      : [];
-  const allColors = Array.from(new Set(variants.map(variant => variant.color).filter((color): color is string => Boolean(color))));
   const getAttributeValue = (variant: ProductVariant, key: string) => variant.attributes?.[key] ?? (key === 'size' ? variant.size : undefined);
-  const getAttributeOptions = (definition: VariantAttributeDefinition) => Array.from(new Set(
-    variants.map(variant => getAttributeValue(variant, definition.key)).filter((value): value is string | number => value !== undefined && value !== null && value !== '')
-  ));
-  const currentVariant = variants.length
-    ? variants.find(variant => variant.color === selectedColor && Object.entries(selectedAttributes).every(([key, value]) => String(getAttributeValue(variant, key) ?? '') === String(value)))
-    : undefined;
+  const attributeDefinitions: VariantAttributeDefinition[] = [...(product.categoryAttributes || [])];
+  const observedKeys = new Set(variants.flatMap(variant => [...Object.keys(variant.attributes || {}), ...(variant.size ? ['size'] : [])]));
+  for (const key of observedKeys) {
+    if (!attributeDefinitions.some(definition => definition.key === key)) attributeDefinitions.push({ key, label: key === 'size' ? 'Kích thước' : key, type: 'select' });
+  }
+  const allColors = Array.from(new Set(variants.map(variant => variant.color || '')));
+  const getAttributeOptions = (definition: VariantAttributeDefinition) => {
+    const values = variants.map(variant => getAttributeValue(variant, definition.key));
+    if (!values.some(value => value !== undefined && value !== null && value !== '')) return [];
+    return Array.from(new Map(values.map(value => [String(value ?? ''), value ?? ''] as const)).values());
+  };
+  // All observed dimensions must match. A partial selection must never pick the first SKU silently.
+  const matchingVariants = variants.filter(variant => (variant.color || '') === selectedColor && [...observedKeys].every(key => String(getAttributeValue(variant, key) ?? '') === String(selectedAttributes[key] ?? '')));
+  const currentVariant = matchingVariants.length === 1 ? matchingVariants[0] : matchingVariants.find(variant => variant.id === selectedVariantId);
   const price = currentVariant?.price ?? product.price;
   const quantity = variants.length ? (currentVariant?.quantity ?? 0) : product.quantity;
   const productStatus = product.status || 'Đang mở bán';
   const variantStatus = currentVariant?.status || 'Đang mở bán';
   const status = productStatus === 'Đang mở bán' ? variantStatus : productStatus;
-  const canPurchase = quantity > 0 && productStatus === 'Đang mở bán' && variantStatus === 'Đang mở bán';
+  const canPurchase = (!variants.length || !!currentVariant) && quantity > 0 && units <= quantity && productStatus === 'Đang mở bán' && variantStatus === 'Đang mở bán';
   const selectedAttributeSummary = currentVariant
     ? attributeDefinitions.map(definition => {
         const value = getAttributeValue(currentVariant, definition.key);
@@ -73,26 +87,32 @@ export default function ProductDetailScreen() {
       }).filter(Boolean).join(' · ')
     : '';
 
-  const chooseColor = (color: string) => {
-    setSelectedColor(color);
-    const matchingVariant = variants.find(variant => variant.color === color);
-    if (matchingVariant) setSelectedAttributes(matchingVariant.attributes || (matchingVariant.size ? { size: matchingVariant.size } : {}));
+  const chooseVariant = (variant: ProductVariant) => {
+    setSelectedVariantId(variant.id); setSelectedColor(variant.color || '');
+    setSelectedAttributes({ ...variant.attributes, ...(variant.size ? { size: variant.size } : {}) });
+    setUnits(1); setCartMessage('');
   };
-
+  const chooseColor = (color: string) => {
+    const matching = variants.filter(variant => (variant.color || '') === color);
+    const next = matching.find(variant => variant.quantity > 0 && (!variant.status || variant.status === 'Đang mở bán')) || matching[0];
+    if (next) chooseVariant(next);
+  };
   const chooseAttribute = (key: string, value: string | number) => {
     setSelectedAttributes(current => ({ ...current, [key]: value }));
+    setSelectedVariantId(null); setUnits(1); setCartMessage('');
   };
 
   const addSelectedVariantToCart = async (goToCart = false) => {
+    if (addingRef.current) return;
     if (!canPurchase) {
-      setCartMessage(quantity <= 0 ? 'Sản phẩm đã hết hàng' : status);
+      setCartMessage(variants.length && !currentVariant ? 'Vui lòng chọn một tổ hợp biến thể hợp lệ.' : quantity <= 0 ? 'Sản phẩm đã hết hàng.' : status);
       return;
     }
     const productToAdd = {
       id: product.id,
       name: product.name,
       price,
-      image: images[0],
+      image: product.image,
       category: product.category,
       categoryAttributes: product.categoryAttributes,
       variantId: currentVariant?.id,
@@ -102,13 +122,16 @@ export default function ProductDetailScreen() {
       size: currentVariant?.size || (typeof selectedAttributes.size === 'string' ? selectedAttributes.size : undefined),
       color: selectedColor || undefined
     };
+    const request = generation.current;
+    addingRef.current = true; setAdding(true); setCartMessage('');
     try {
-      await addCartItem({ ...productToAdd, quantity: 1 });
+      await addCartItem({ ...productToAdd, quantity: units });
+      if (request !== generation.current || !focused.current) return;
       if (goToCart) router.push('/cart' as never);
       else setCartMessage('Đã thêm sản phẩm vào giỏ hàng.');
     } catch (error) {
-      setCartMessage(error instanceof Error ? error.message : 'Không thể thêm vào giỏ hàng.');
-    }
+      if (request === generation.current && focused.current) setCartMessage(error instanceof Error ? error.message : 'Không thể thêm vào giỏ hàng.');
+    } finally { addingRef.current = false; if (mounted.current) setAdding(false); }
   };
 
   return (
@@ -116,41 +139,33 @@ export default function ProductDetailScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Pressable style={styles.iconBtn} onPress={() => router.back()}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Quay lại danh sách sản phẩm" style={styles.iconBtn} onPress={goBack}>
             <MaterialIcons name="arrow-back-ios-new" size={20} color={Colors.light.onSurface} />
           </Pressable>
           <Text style={styles.headerTitle} numberOfLines={1}>Chi tiết sản phẩm</Text>
         </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Cập nhật giá và tồn kho" disabled={adding} style={styles.iconBtn} onPress={() => setRetry(value => value + 1)}><MaterialIcons name="refresh" size={23} color={Colors.light.secondary} /></Pressable>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Gallery */}
         <View style={styles.galleryWrapper}>
-          <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} onScroll={(e) => setActiveImg(Math.round(e.nativeEvent.contentOffset.x / width))} scrollEventThrottle={16}>
-            {images.map((img, i) => (
-              <View key={i} style={styles.galleryItem}>
-                <Image source={i === 0 && product?.image ? product.image : img} style={styles.galleryImage} contentFit="cover" />
-              </View>
-            ))}
-          </ScrollView>
-          <View style={styles.galleryDots}>
-            {images.map((_, i) => <View key={i} style={[styles.dot, i === activeImg && styles.activeDot]} />)}
-          </View>
+          <Image source={product.image} accessibilityLabel={product.name} style={styles.galleryImage} contentFit="cover" />
         </View>
 
         {/* Info */}
         <View style={styles.infoSection}>
           <View style={styles.brandRow}>
             <Text style={styles.brandText}>{product.category?.toUpperCase() || 'FASHION'}</Text>
-            <View style={styles.skuBadge}><Text style={styles.skuText}>SKU: {currentVariant?.sku || `FH-${product.id}`}</Text></View>
+            <View style={styles.skuBadge}><Text style={styles.skuText}>{currentVariant?.sku ? `SKU: ${currentVariant.sku}` : `Mã SP: ${product.id}`}</Text></View>
           </View>
           <Text style={styles.title}>{product.name}</Text>
           {!!cartMessage && <Text accessibilityLiveRegion="polite" style={{ color: Colors.light.primary, marginTop: 8 }}>{cartMessage}</Text>}
           
           <View style={styles.priceBox}>
-            <Text style={styles.currentPrice}>{formatPrice(price)}</Text>
+            <Text style={styles.currentPrice}>{variants.length && !currentVariant ? 'Chọn biến thể' : formatPrice(price)}</Text>
             <Text style={{ fontFamily: 'Inter', fontSize: 13, color: Colors.light.secondary, marginTop: 4 }}>
-              {variants.length > 0 && !currentVariant ? 'Chọn đầy đủ thuộc tính để xem tồn kho' : `Tồn kho: ${quantity} • ${quantity > 0 ? status : 'Hết hàng'}`}
+              {variants.length > 0 && !currentVariant ? matchingVariants.length > 1 ? 'Chọn mã SKU để xác định đúng biến thể.' : 'Tổ hợp thuộc tính này chưa có biến thể.' : `Tồn kho: ${quantity} • ${quantity > 0 ? status : 'Hết hàng'}`}
             </Text>
             {selectedAttributeSummary ? <Text style={{ fontFamily: 'Inter', fontSize: 12, color: Colors.light.secondary, marginTop: 5 }}>{selectedAttributeSummary}</Text> : null}
           </View>
@@ -158,11 +173,11 @@ export default function ProductDetailScreen() {
           {/* Color Selector */}
           {allColors.length > 0 && (
             <View style={styles.selectorSection}>
-              <Text style={styles.selectorTitle}>Màu sắc: <Text style={styles.selectorValue}>{selectedColor}</Text></Text>
+              <Text style={styles.selectorTitle}>Màu sắc: <Text style={styles.selectorValue}>{selectedColor || 'Không phân loại màu'}</Text></Text>
               <View style={styles.row}>
                 {allColors.map(c => (
-                  <Pressable key={c} style={[styles.btnOutline, selectedColor === c && styles.btnOutlineActive]} onPress={() => chooseColor(c)}>
-                    <Text style={[styles.btnText, selectedColor === c && styles.btnTextActive]}>{c}</Text>
+                  <Pressable key={c || 'no-color'} accessibilityRole="button" accessibilityLabel={`Màu ${c || 'không phân loại'}`} accessibilityState={{ selected: selectedColor === c, disabled: adding }} disabled={adding} style={[styles.btnOutline, selectedColor === c && styles.btnOutlineActive]} onPress={() => chooseColor(c)}>
+                    <Text style={[styles.btnText, selectedColor === c && styles.btnTextActive]}>{c || 'Không phân loại màu'}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -178,28 +193,41 @@ export default function ProductDetailScreen() {
                 <Text style={styles.selectorTitle}>{definition.label}{definition.unit ? ` (${definition.unit})` : ''}: <Text style={styles.selectorValue}>{selectedValue ?? 'Chọn'}</Text></Text>
                 <View style={styles.row}>
                   {options.map(option => (
-                    <Pressable key={String(option)} style={[styles.btnOutline, String(selectedValue) === String(option) && styles.btnOutlineActive]} onPress={() => chooseAttribute(definition.key, option)}>
-                      <Text style={[styles.btnText, String(selectedValue) === String(option) && styles.btnTextActive]}>{option}{definition.unit ? ` ${definition.unit}` : ''}</Text>
+                    <Pressable key={String(option)} accessibilityRole="button" accessibilityLabel={`${definition.label}: ${option === '' ? 'Không áp dụng' : option}`} accessibilityState={{ selected: String(selectedValue ?? '') === String(option), disabled: adding }} disabled={adding} style={[styles.btnOutline, String(selectedValue ?? '') === String(option) && styles.btnOutlineActive]} onPress={() => chooseAttribute(definition.key, option)}>
+                      <Text style={[styles.btnText, String(selectedValue ?? '') === String(option) && styles.btnTextActive]}>{option === '' ? 'Không áp dụng' : option}{option !== '' && definition.unit ? ` ${definition.unit}` : ''}</Text>
                     </Pressable>
                   ))}
                 </View>
               </View>
             );
           })}
+          {matchingVariants.length > 1 && <View style={styles.selectorSection}>
+            <Text style={styles.selectorTitle}>Chọn mã biến thể</Text><View style={styles.row}>{matchingVariants.map(variant => <Pressable key={variant.id} accessibilityRole="button" accessibilityLabel={`Biến thể ${variant.sku}`} accessibilityState={{ selected: currentVariant?.id === variant.id, disabled: adding }} disabled={adding} style={[styles.btnOutline, currentVariant?.id === variant.id && styles.btnOutlineActive]} onPress={() => chooseVariant(variant)}><Text style={[styles.btnText, currentVariant?.id === variant.id && styles.btnTextActive]}>{variant.sku}</Text></Pressable>)}</View>
+          </View>}
+          <View style={styles.selectorSection}>
+            <Text style={styles.selectorTitle}>Số lượng</Text>
+            <View style={styles.quantityRow}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Giảm số lượng" disabled={adding || units <= 1} accessibilityState={{ disabled: adding || units <= 1 }} style={[styles.quantityButton, (adding || units <= 1) && styles.disabled]} onPress={() => setUnits(value => Math.max(1, value - 1))}><MaterialIcons name="remove" size={20} color={Colors.light.secondary} /></Pressable>
+              <Text accessibilityLiveRegion="polite" style={styles.units}>{units}</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Tăng số lượng" disabled={adding || units >= quantity} accessibilityState={{ disabled: adding || units >= quantity }} style={[styles.quantityButton, (adding || units >= quantity) && styles.disabled]} onPress={() => setUnits(value => Math.min(quantity, value + 1))}><MaterialIcons name="add" size={20} color={Colors.light.secondary} /></Pressable>
+              <Text style={styles.lineTotal}>{variants.length && !currentVariant ? '—' : formatPrice(price * units)}</Text>
+            </View>
+            <Text style={styles.stockHint}>Giá và tồn kho được kiểm tra lại khi đặt hàng.</Text>
+          </View>
         </View>
       </ScrollView>
 
       {/* Bottom Action Bar */}
       <View style={styles.bottomBar}>
-        <Pressable style={styles.chatBtn} onPress={() => router.push('/contact' as never)}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Liên hệ tư vấn" style={styles.chatBtn} onPress={() => router.push('/contact' as never)}>
           <MaterialIcons name="chat-bubble-outline" size={20} color={Colors.light.secondary} />
           <Text style={styles.chatText}>Tư vấn</Text>
         </Pressable>
-        <Pressable style={styles.addCartBtn} onPress={() => addSelectedVariantToCart()}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Thêm biến thể đã chọn vào giỏ" accessibilityState={{ disabled: !canPurchase || adding, busy: adding }} disabled={!canPurchase || adding} style={[styles.addCartBtn, (!canPurchase || adding) && styles.disabled]} onPress={() => addSelectedVariantToCart()}>
           <MaterialIcons name="shopping-bag" size={18} color={Colors.light.primary} />
-          <Text style={styles.addCartText}>Thêm vào giỏ</Text>
+          <Text style={styles.addCartText}>{adding ? 'Đang thêm…' : 'Thêm vào giỏ'}</Text>
         </Pressable>
-        <Pressable style={[styles.buyBtn, !canPurchase && { opacity: 0.5 }]} disabled={!canPurchase} onPress={() => addSelectedVariantToCart(true)}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Thêm vào giỏ và tiếp tục đặt hàng" accessibilityState={{ disabled: !canPurchase || adding, busy: adding }} style={[styles.buyBtn, (!canPurchase || adding) && styles.disabled]} disabled={!canPurchase || adding} onPress={() => addSelectedVariantToCart(true)}>
           <Text style={styles.buyText}>Mua ngay</Text>
         </Pressable>
       </View>
@@ -215,11 +243,7 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, fontFamily: 'Inter', fontSize: 16, fontWeight: '600', color: Colors.light.onSurface, marginLeft: 8 },
   scrollContent: { paddingBottom: 100 },
   galleryWrapper: { position: 'relative', width: '100%', aspectRatio: 3/4, backgroundColor: Colors.light.surfaceContainerLow },
-  galleryItem: { width, aspectRatio: 3/4 },
   galleryImage: { width: '100%', height: '100%' },
-  galleryDots: { position: 'absolute', bottom: 16, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.7)' },
-  activeDot: { width: 20, backgroundColor: Colors.light.primary },
   infoSection: { padding: 16, paddingBottom: 32 },
   brandRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   brandText: { fontFamily: 'Inter', fontSize: 11, fontWeight: '700', color: Colors.light.primary, letterSpacing: 1 },
@@ -243,6 +267,14 @@ const styles = StyleSheet.create({
   addCartText: { fontFamily: 'Inter', fontSize: 14, fontWeight: '600', color: Colors.light.primary },
   buyBtn: { flex: 1, height: 44, borderRadius: 22, backgroundColor: Colors.light.primary, alignItems: 'center', justifyContent: 'center' },
   buyText: { fontFamily: 'Inter', fontSize: 14, fontWeight: '700', color: Colors.light.onPrimary },
+  disabled: { opacity: 0.45 },
+  state: { justifyContent: 'center', alignItems: 'center', padding: 24, gap: 16 },
+  stateText: { color: Colors.light.secondary, fontFamily: 'Inter', fontSize: 14 },
+  quantityRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  quantityButton: { borderWidth: 1, borderColor: Colors.light.outline, borderRadius: 10, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
+  units: { fontFamily: 'Inter', fontSize: 16, fontWeight: '600', minWidth: 24, textAlign: 'center', color: Colors.light.onSurface },
+  lineTotal: { flex: 1, fontFamily: 'Inter', fontSize: 16, fontWeight: '700', color: Colors.light.primary, textAlign: 'right' },
+  stockHint: { color: Colors.light.onSurfaceVariant, fontFamily: 'Inter', fontSize: 12, marginTop: 12 },
   errorText: { fontFamily: 'Inter', fontSize: 16, color: Colors.light.error, marginBottom: 16 },
   backBtn: { paddingHorizontal: 20, paddingVertical: 10, backgroundColor: Colors.light.primary, borderRadius: 8 },
   backText: { color: Colors.light.onPrimary, fontWeight: '600' }

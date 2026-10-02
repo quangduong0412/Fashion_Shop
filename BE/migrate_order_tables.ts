@@ -31,7 +31,7 @@ async function main() {
       throw new Error(`CSDL có cả ${legacy} và ${target}. Cần đối chiếu dữ liệu trước khi chuyển đổi.`);
     }
     const source = names.get(target) || names.get(legacy);
-    if (!source) throw new Error(`Thiếu bảng ${target}. Khởi tạo CSDL bằng FashionHeaven.sql trước.`);
+    if (!source) throw new Error(`Thiếu bảng ${target}. Cần cấu hình đúng database và khôi phục schema đã sao lưu. FashionHeaven.sql có DROP DATABASE, không được chạy trên database có dữ liệu.`);
     const columns = await prisma.$queryRawUnsafe<Array<{ Field: string }>>(`SHOW COLUMNS FROM ${quote(source)}`);
     return { source, target, primaryKey, rename: source.toLowerCase() !== target || (caseSensitive && source !== target), columns: columns.map(column => column.Field) };
   }));

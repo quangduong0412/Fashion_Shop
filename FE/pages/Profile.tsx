@@ -1,9 +1,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState, type ComponentProps } from 'react';
+import { useCallback, useRef, useState, type ComponentProps } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { apiRequest, clearSession, currentUser } from '@/components/fashion-data';
+import { ApiError, apiRequest, clearSession } from '@/components/fashion-data';
 
 type IconName = ComponentProps<typeof MaterialIcons>['name'];
 
@@ -47,39 +47,34 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const generation = useRef(0);
 
-  useFocusEffect(useCallback(() => {
-    let active = true;
-
-    const loadProfile = async () => {
-      try {
-        const sessionUser = await currentUser();
-        if (!sessionUser) {
-          router.replace('/login' as never);
-          return;
-        }
-
-        let profile = sessionUser;
-        try {
-          profile = { ...sessionUser, ...await apiRequest('/users/profile') };
-        } catch {
-          profile = sessionUser;
-        }
-
-        if (active) setUser(profile);
-      } finally {
-        if (active) setLoading(false);
+  const loadProfile = useCallback(async () => {
+    const request = ++generation.current;
+    setLoading(true); setError(''); setUser(null);
+    try {
+      const profile = await apiRequest('/users/profile');
+      if (request === generation.current) setUser(profile);
+    } catch (cause) {
+      if (request !== generation.current) return;
+      if (cause instanceof ApiError && cause.status === 401) {
+        await clearSession();
+        if (request === generation.current) router.replace('/login' as never);
+        return;
       }
-    };
-
+      setError(cause instanceof Error ? cause.message : 'Không thể tải hồ sơ.');
+    } finally { if (request === generation.current) setLoading(false); }
+  }, [router]);
+  useFocusEffect(useCallback(() => {
     void loadProfile();
-    return () => { active = false; };
-  }, [router]));
+    return () => { generation.current++; };
+  }, [loadProfile]));
 
   const logout = async () => {
     const confirmLogout = async () => {
-      await clearSession();
-      router.replace('/' as never);
+      try { await clearSession(); router.replace('/' as never); }
+      catch { setError('Không thể xóa phiên đăng nhập trên thiết bị. Vui lòng thử lại.'); }
     };
 
     if (Platform.OS === 'web') {
@@ -103,12 +98,20 @@ export default function ProfileScreen() {
     );
   }
 
+  if (error || !user) {
+    return <View style={[styles.root, styles.loadingRoot, { paddingHorizontal: 24, paddingTop: insets.top }]}>
+      <Text accessibilityRole="alert" style={styles.errorText}>{error || 'Không thể tải hồ sơ.'}</Text>
+      <Pressable accessibilityRole="button" style={styles.retryButton} onPress={() => void loadProfile()}><Text style={styles.retryText}>Thử lại</Text></Pressable>
+      <Pressable accessibilityRole="button" style={[styles.logoutButton, { marginTop: 16, paddingHorizontal: 24 }]} onPress={logout}><Text style={styles.logoutText}>Đăng xuất</Text></Pressable>
+    </View>;
+  }
+
   const displayName = user?.name || user?.TenKhach || 'Khách hàng';
   const displayEmail = user?.email || user?.Email || 'Chưa cập nhật email';
   const displayPhone = user?.DienThoai || user?.phone || 'Thêm số điện thoại';
   const displayAddress = user?.DiaChi || user?.address || 'Thêm địa chỉ nhận hàng';
-  const isAdmin = user?.role === 'admin';
-  const memberLabel = isAdmin ? 'QUẢN TRỊ VIÊN' : (user?.HangThanhVien || 'THÀNH VIÊN').toLocaleUpperCase('vi-VN');
+  const isAdmin = ['admin', 'staff'].includes(user?.role);
+  const memberLabel = isAdmin ? (user.role === 'admin' ? 'QUẢN TRỊ VIÊN' : 'NHÂN VIÊN') : (user?.HangThanhVien || 'THÀNH VIÊN').toLocaleUpperCase('vi-VN');
   const initials = displayName.trim().split(/\s+/).slice(-2).map((part: string) => part[0]).join('').toLocaleUpperCase('vi-VN');
 
   return (
@@ -154,33 +157,17 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <Text style={styles.sectionLabel}>MUA SẮM & GIAO NHẬN</Text>
+        <Text style={styles.sectionLabel}>{isAdmin ? 'KHÔNG GIAN LÀM VIỆC' : 'MUA SẮM & GIAO NHẬN'}</Text>
         <View style={styles.menuGroup}>
-          <AccountRow
-            icon="receipt-long"
-            iconColor="#8f2639"
-            iconBackground="#f8e9e7"
-            title="Đơn hàng của tôi"
-            detail="Theo dõi đơn và lịch sử mua sắm"
-            onPress={() => router.push('/orders' as never)}
-          />
-          <AccountRow
-            icon="shopping-cart"
-            iconColor="#9a6d19"
-            iconBackground="#f7f0dc"
-            title="Giỏ hàng"
-            detail="Xem các thiết kế bạn đã chọn"
-            onPress={() => router.push('/(tabs)/cart' as never)}
-          />
-          <AccountRow
-            icon="location-on"
-            iconColor="#37675b"
-            iconBackground="#e8f0e9"
-            title="Địa chỉ nhận hàng"
-            detail={displayAddress}
-            onPress={() => router.push('/edit-profile' as never)}
-            last
-          />
+          {isAdmin ? <AccountRow
+            icon="admin-panel-settings" iconColor="#8f2639" iconBackground="#f8e9e7"
+            title="Quản lý cửa hàng" detail={user.role === 'admin' ? 'Mở trang quản trị theo quyền tài khoản' : 'Xem sản phẩm và xử lý đơn hàng'}
+            onPress={() => router.push('/admin' as never)} last
+          /> : <>
+            <AccountRow icon="receipt-long" iconColor="#8f2639" iconBackground="#f8e9e7" title="Đơn hàng của tôi" detail="Theo dõi đơn và lịch sử mua sắm" onPress={() => router.push('/orders' as never)} />
+            <AccountRow icon="shopping-cart" iconColor="#9a6d19" iconBackground="#f7f0dc" title="Giỏ hàng" detail="Xem các thiết kế bạn đã chọn" onPress={() => router.push('/(tabs)/cart' as never)} />
+            <AccountRow icon="location-on" iconColor="#37675b" iconBackground="#e8f0e9" title="Địa chỉ nhận hàng" detail={displayAddress} onPress={() => router.push('/edit-profile' as never)} last />
+          </>}
         </View>
 
         <View style={styles.brandNote}>
@@ -206,6 +193,9 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#f7f5ef' },
   loadingRoot: { alignItems: 'center', justifyContent: 'center' },
+  errorText: { fontFamily: 'Inter', color: '#b6152b', textAlign: 'center', marginBottom: 16 },
+  retryButton: { backgroundColor: '#9f2438', borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
+  retryText: { fontFamily: 'Inter', color: '#fff', fontWeight: '700' },
   content: { paddingHorizontal: 18, paddingTop: 24, gap: 0 },
   intro: { marginBottom: 24 },
   eyebrow: { color: '#8c2838', fontFamily: 'Inter', fontSize: 11, fontWeight: '700', letterSpacing: 1.8, marginBottom: 10 },

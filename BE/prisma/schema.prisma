@@ -49,6 +49,7 @@ model Account {
   UserName   String   @unique @db.VarChar(255)
   PassWord   String   @db.VarChar(255)
   Role       String   @default("USER") @db.VarChar(50)
+  SessionEpoch Int    @default(0)
   nhanVien   NhanVien @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__Account__MaNhanV__403A8C7D")
 
   @@map("account")
@@ -176,6 +177,9 @@ model PhieuNhap {
   TongTien     Float
   MaKho        Int
   TrangThai    String        @default("Chờ kiểm duyệt") @db.VarChar(50)
+  LyDoXuLy     String?       @db.VarChar(500)
+  NguoiXuLy    Int?
+  NgayXuLy     DateTime?
   ctPhieuNhaps CTPhieuNhap[]
   kho          Kho           @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__PhieuNhap__MaKho__59FA5E80")
   nhaCungCap   NhaCungCap    @relation(fields: [MaNCC], references: [MaNCC], onUpdate: NoAction, map: "FK__PhieuNhap__MaNCC__59063A47")
@@ -192,6 +196,11 @@ model CTPhieuNhap {
   DonGiaNhap  Float
   GiamGia     Float     @default(0)
   ThanhTien   Float
+  MaBienThe   Int?
+  SKU         String? @db.VarChar(100)
+  KichCo      String? @db.VarChar(10)
+  MauSac      String? @db.VarChar(50)
+  TenSanPham  String? @db.VarChar(255)
   phieuNhap   PhieuNhap @relation(fields: [MaPhieuNhap], references: [MaPhieuNhap], onUpdate: NoAction, map: "FK__CTPhieuNh__MaPhi__5CD6CB2B")
   sanPham     SanPham   @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__CTPhieuNh__MaSan__5DCAEF64")
 
@@ -234,10 +243,46 @@ model CTDonHang {
   DonGiaBan   Float
   GiamGia     Float     @default(0)
   ThanhTien   Float
+  TenSanPham  String?   @db.VarChar(255)
+  AnhSanPham  String?   @db.Text
   donHang     PhieuXuat @relation(fields: [MaPhieuXuat], references: [MaPhieuXuat], onUpdate: NoAction, map: "FK__CTPhieuXu__MaPhi__68487DD7")
   sanPham     SanPham   @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__CTPhieuXu__MaSan__693CA210")
 
   @@map("ctdonhang")
+}
+
+// Checkout retry receipts and an immutable business audit. No existing records are rewritten.
+model CheckoutRequest {
+  CustomerId  Int
+  Key         String   @db.VarChar(64)
+  Fingerprint String   @db.VarChar(64)
+  OrderIds    Json
+  CreatedAt   DateTime @default(now())
+
+  @@id([CustomerId, Key])
+  @@map("checkoutrequest")
+}
+
+model AppMutex {
+  Name String @id @db.VarChar(64)
+  @@map("appmutex")
+}
+
+model OrderEvent {
+  Id           Int      @id @default(autoincrement())
+  OrderId      Int
+  FromStatus   String?  @db.VarChar(50)
+  ToStatus     String   @db.VarChar(50)
+  FromPayment  String?  @db.VarChar(50)
+  ToPayment    String?  @db.VarChar(50)
+  ActorRole    String   @db.VarChar(20)
+  ActorId      Int
+  Note         String?  @db.VarChar(500)
+  Shipping     Json?
+  CreatedAt    DateTime @default(now())
+
+  @@index([OrderId, Id])
+  @@map("orderevent")
 }
 
 model BaiViet {

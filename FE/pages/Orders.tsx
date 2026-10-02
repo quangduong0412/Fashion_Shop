@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { apiRequest, currentUser, formatPrice } from '@/components/fashion-data';
+import { ApiError, apiRequest, clearSession, currentUser, formatPrice } from '@/components/fashion-data';
 
 type OrderItem = {
   STT?: number;
@@ -28,6 +28,9 @@ type Order = {
   DiaChiNhan?: string | null;
   TrangThaiThanhToan?: string | null;
   ctDonHangs?: OrderItem[];
+  DonViVanChuyen?: string | null;
+  MaVanDon?: string | null;
+  history?: { id: number; to: string; at: string; note: string }[];
 };
 
 const statusColors: Record<string, { background: string; foreground: string }> = {
@@ -46,6 +49,9 @@ const statusColors: Record<string, { background: string; foreground: string }> =
 export default function OrdersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [reload, setReload] = useState(0);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -64,9 +70,10 @@ export default function OrdersScreen() {
           router.replace('/login' as never);
           return;
         }
-        const result = await apiRequest('/orders/me');
-        if (active) setOrders(result);
+        const result = await apiRequest(`/orders/me?page=${page}&pageSize=10&_refresh=${reload}`);
+        if (active) { setOrders(result.items); setTotalPages(result.totalPages); }
       } catch (error) {
+        if (error instanceof ApiError && error.status === 401) { await clearSession(); router.replace('/login' as never); return; }
         if (active) setError(error instanceof Error ? error.message : 'Chưa thể tải đơn hàng. Vui lòng thử lại sau.');
       } finally {
         if (active) setLoading(false);
@@ -75,7 +82,7 @@ export default function OrdersScreen() {
 
     void loadOrders();
     return () => { active = false; };
-  }, [router]));
+  }, [router, page, reload]));
 
   const cancelOrder = async (order: Order) => {
     if (cancellingOrderId !== null) return;
@@ -83,7 +90,7 @@ export default function OrdersScreen() {
     try {
       setCancellingOrderId(order.MaPhieuXuat);
       setActionError('');
-      const result = await apiRequest(`/orders/${order.MaPhieuXuat}/cancel`, { method: 'POST' });
+      const result = await apiRequest(`/orders/${order.MaPhieuXuat}/cancel`, { method: 'POST', body: JSON.stringify({ reason: 'Khách yêu cầu hủy trước khi xác nhận' }) });
       setOrders(current => current.map(item => item.MaPhieuXuat === order.MaPhieuXuat
         ? { ...item, ...(result.order || {}), TrangThai: result.order?.TrangThai || 'Đã hủy' }
         : item));
@@ -116,7 +123,7 @@ export default function OrdersScreen() {
           <Text style={styles.eyebrow}>FASHIONHEAVEN</Text>
           <Text style={styles.title}>Đơn hàng của tôi</Text>
         </View>
-        <View style={styles.headerSpacer} />
+        <Pressable accessibilityLabel="Cập nhật đơn hàng" onPress={() => setReload(value => value + 1)} style={styles.backButton}><MaterialIcons name="refresh" size={22} color="#342a25" /></Pressable>
       </View>
 
       {loading ? (
@@ -124,7 +131,7 @@ export default function OrdersScreen() {
       ) : error ? (
         <View style={styles.centerState}>
           <MaterialIcons name="cloud-off" size={34} color="#9a8d83" />
-          <Text style={styles.emptyTitle}>{error}</Text>
+          <Text style={styles.emptyTitle}>{error}</Text><Pressable onPress={() => setReload(value => value + 1)} style={styles.shopButton}><Text style={styles.shopButtonText}>Thử lại</Text></Pressable>
         </View>
       ) : orders.length === 0 ? (
         <View style={styles.centerState}>
@@ -154,14 +161,20 @@ export default function OrdersScreen() {
                 <View style={styles.orderFooter}>
                   <Text style={styles.orderTotal}>{formatPrice(Number(order.TongTien || 0))}</Text>
                   <View style={[styles.statusPill, { backgroundColor: statusStyle.background }]}>
-                    <Text style={[styles.statusText, { color: statusStyle.foreground }]}>{order.TrangThai || 'PENDING'}</Text>
+                    <Text style={[styles.statusText, { color: statusStyle.foreground }]}>{({ PENDING: 'Chờ xác nhận', PROCESSING: 'Đang đóng gói', SHIPPING: 'Đang giao', DELIVERED: 'Đã giao', CANCELLED: 'Đã hủy' } as Record<string, string>)[order.TrangThai] ?? order.TrangThai}</Text>
                   </View>
                 </View>
                 <View style={styles.actionsRow}>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={isExpanded ? 'Ẩn chi tiết đơn hàng' : 'Xem chi tiết đơn hàng'}
-                    onPress={() => setExpandedOrderId(isExpanded ? null : order.MaPhieuXuat)}
+                    onPress={async () => {
+                      setExpandedOrderId(isExpanded ? null : order.MaPhieuXuat);
+                      if (!isExpanded) {
+                        try { const detail = await apiRequest(`/orders/${order.MaPhieuXuat}`); setOrders(current => current.map(item => item.MaPhieuXuat === order.MaPhieuXuat ? detail : item)); }
+                        catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Không thể tải lịch sử.'); }
+                      }
+                    }}
                     style={styles.detailsButton}
                   >
                     <MaterialIcons name={isExpanded ? 'expand-less' : 'receipt-long'} size={17} color="#733041" />
@@ -197,13 +210,20 @@ export default function OrdersScreen() {
                     <View style={styles.detailPayment}>
                       {!!order.DiaChiNhan && <Text style={styles.detailPaymentValue}>{order.TenNguoiNhan} · {order.DienThoaiNhan}{'\n'}{order.DiaChiNhan}</Text>}
                       <Text style={styles.detailPaymentLabel}>Thanh toán</Text>
-                      <Text style={styles.detailPaymentValue}>{order.PhuongThucThanhToan || 'Tiền mặt'} · {order.TrangThaiThanhToan || 'Chưa thanh toán'}</Text>
+                      <Text style={styles.detailPaymentValue}>{order.PhuongThucThanhToan === 'COD' ? 'Thanh toán khi nhận hàng' : order.PhuongThucThanhToan || 'Chưa ghi nhận'} · {order.TrangThaiThanhToan === 'PAID' ? 'Đã đối soát tiền' : order.TrangThaiThanhToan === 'UNPAID' ? 'Chưa đối soát tiền' : order.TrangThaiThanhToan}</Text>
+                      {!!order.MaVanDon && <Text style={styles.detailPaymentValue}>Vận chuyển: {order.DonViVanChuyen} · {order.MaVanDon}</Text>}
+                      {order.history?.map(event => <Text key={event.id} style={styles.detailProductMeta}>{new Date(event.at).toLocaleString('vi-VN')} · {event.note || event.to}</Text>)}
                     </View>
                   </View>
                 )}
               </View>
             );
           })}
+          <View style={styles.actionsRow}>
+            <Pressable disabled={page <= 1} onPress={() => setPage(value => value - 1)} style={styles.detailsButton}><Text style={styles.detailsButtonText}>← Trước</Text></Pressable>
+            <Text style={styles.orderDate}>Trang {page}/{Math.max(1, totalPages)}</Text>
+            <Pressable disabled={page >= totalPages} onPress={() => setPage(value => value + 1)} style={styles.detailsButton}><Text style={styles.detailsButtonText}>Sau →</Text></Pressable>
+          </View>
         </ScrollView>
       )}
     </View>

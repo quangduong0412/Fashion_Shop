@@ -1,3 +1,4 @@
+import { API_URL, SERVER_URL } from '../api';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import ProductVariantEditor from './ProductVariantEditor';
@@ -12,11 +13,11 @@ type Props = {
   onSaved: () => void;
 };
 
-const API = 'http://localhost:4000/api';
+const API = API_URL;
 const fieldClass = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:border-red-500';
 const headers = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 const stockValue = (value: string | number) => value !== '' && Number.isSafeInteger(Number(value)) && Number(value) >= 0 && Number(value) <= 2147483647;
-const moneyValue = (value: string | number) => value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
+const moneyValue = (value: string | number) => value !== '' && Number.isSafeInteger(Number(value)) && Number(value) >= 0;
 
 const makeDraft = (product: any) => ({
   id: product?.id as number | undefined,
@@ -54,16 +55,19 @@ export default function ProductEditorModal({ product, categories, warehouses, su
   useEffect(() => {
     if (!draft.id) return;
     const controller = new AbortController();
-    setHistoryLoading(true);
-    setHistoryError('');
-    fetch(`${API}/products/${draft.id}/inventory-history`, { headers: headers(), signal: controller.signal })
-      .then(async response => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error ?? 'Không thể tải lịch sử.');
-        return data;
-      }).then(setHistory).catch(cause => {
-        if (!controller.signal.aborted) setHistoryError(cause instanceof Error ? cause.message : 'Không thể tải lịch sử.');
-      }).finally(() => { if (!controller.signal.aborted) setHistoryLoading(false); });
+    queueMicrotask(() => {
+      if (controller.signal.aborted) return;
+      setHistoryLoading(true);
+      setHistoryError('');
+      fetch(`${API}/products/${draft.id}/inventory-history`, { headers: headers(), signal: controller.signal })
+        .then(async response => {
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error ?? 'Không thể tải lịch sử.');
+          return data;
+        }).then(data => { if (!controller.signal.aborted) setHistory(data); }).catch(cause => {
+          if (!controller.signal.aborted) setHistoryError(cause instanceof Error ? cause.message : 'Không thể tải lịch sử.');
+        }).finally(() => { if (!controller.signal.aborted) setHistoryLoading(false); });
+    });
     return () => controller.abort();
   }, [draft.id, reloadCount]);
 
@@ -71,10 +75,10 @@ export default function ProductEditorModal({ product, categories, warehouses, su
     if (!window.confirm('Tải lại sẽ bỏ các thay đổi chưa lưu trong form. Tiếp tục?')) return;
     setSaving(true);
     try {
-      const response = await fetch(`${API}/admin`, { headers: headers() });
+      const response = await fetch(`${API}/products/internal/${draft.id}`, { headers: headers() });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? 'Không thể tải lại sản phẩm.');
-      const latest = data.products?.find((row: any) => row.id === draft.id);
+      const latest = data;
       if (!latest) throw new Error('Sản phẩm không còn tồn tại.');
       setDraft(makeDraft(latest));
       setError('');
@@ -107,7 +111,7 @@ export default function ProductEditorModal({ product, categories, warehouses, su
         body: JSON.stringify({
           name: draft.name.trim(), price: Number(draft.price), originalPrice: Number(draft.originalPrice),
           stock: total, expectedStock: draft.expectedStock, expectedVariantIds: draft.originalVariantIds,
-          inventoryReason: draft.inventoryReason.trim(), image: draft.image || '/images/ao-thun-nu.png',
+          inventoryReason: draft.inventoryReason.trim(), image: draft.image.trim(),
           categoryId: Number(draft.categoryId), khoId: Number(draft.khoId), nccId: Number(draft.nccId), status: draft.status,
           variants: draft.variants.map(variant => ({ ...variant, quantity: Number(variant.quantity), price: Number(variant.price) }))
         })
@@ -207,9 +211,9 @@ export default function ProductEditorModal({ product, categories, warehouses, su
                   <input className={`${fieldClass} mt-1 font-normal`} value={draft.image} onChange={event => setDraft(current => ({ ...current, image: event.target.value }))} placeholder="URL ảnh hoặc đường dẫn ảnh" />
                 </label>
                 <div className="flex gap-3 items-center">
-                  {draft.image && <img src={/^https?:/.test(draft.image) ? draft.image : `http://localhost:4000${draft.image}`} alt="Ảnh sản phẩm" className="h-20 w-20 rounded-lg object-cover border" />}
+                  {draft.image && <img src={/^https?:/.test(draft.image) ? draft.image : `${SERVER_URL}${draft.image}`} alt="Ảnh sản phẩm" className="h-20 w-20 rounded-lg object-cover border" />}
                   <label className="text-sm text-gray-600">{uploading ? 'Đang tải ảnh…' : 'Chọn ảnh từ thiết bị'}
-                    <input type="file" accept="image/*" className="block mt-1 text-xs" onChange={event => {
+                    <input type="file" accept="image/png,image/jpeg,image/webp" className="block mt-1 text-xs" onChange={event => {
                       const file = event.target.files?.[0];
                       if (file) void uploadImage(file);
                       event.target.value = '';

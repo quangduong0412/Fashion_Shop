@@ -121,8 +121,9 @@ export function normalizeVariants(
 
     const colorValue = input.color ?? input.MauSac ?? '';
     const color = String(colorValue).trim();
+    const size = typeof attributes.size === 'string' ? attributes.size : legacySize ? String(legacySize) : null;
     const combination = JSON.stringify([
-      color.toLocaleLowerCase('vi'),
+      color.toLocaleLowerCase('vi'), (size || '').trim().toLocaleLowerCase('vi'),
       Object.entries(attributes).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => [key, String(value).toLocaleLowerCase('vi')])
     ]);
     if (seenCombinations.has(combination)) {
@@ -140,9 +141,8 @@ export function normalizeVariants(
     if (quantityInput === '' || !Number.isSafeInteger(quantity) || quantity < 0 || quantity > 2147483647) throw new VariantValidationError(`Tồn kho của biến thể ${index + 1} phải là số nguyên không âm và không được để trống.`);
     const priceInput = input.price ?? input.DonGia ?? productPrice;
     const price = Number(priceInput);
-    if (priceInput === '' || !Number.isFinite(price) || price < 0) throw new VariantValidationError(`Giá của biến thể ${index + 1} không hợp lệ.`);
+    if (priceInput === '' || !Number.isSafeInteger(price) || price < 0) throw new VariantValidationError(`Giá của biến thể ${index + 1} không hợp lệ.`);
 
-    const size = typeof attributes.size === 'string' ? attributes.size : legacySize ? String(legacySize) : null;
     if (size && size.length > 10) throw new VariantValidationError(`Kích cỡ của biến thể ${index + 1} tối đa 10 ký tự. Nhập các thông số khác vào thuộc tính tương ứng.`);
     return {
       SKU: sku,
@@ -162,6 +162,7 @@ export function assertUniqueVariantCombinations(variants: NormalizedVariant[]) {
   for (const variant of variants) {
     const combination = JSON.stringify([
       (variant.MauSac || '').toLocaleLowerCase('vi'),
+      variant.KichCo.trim().toLocaleLowerCase('vi'),
       Object.entries(variant.ThuocTinh).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => [key, String(value).toLocaleLowerCase('vi')])
     ]);
     if (combinations.has(combination)) throw new VariantValidationError('Không thể lưu các biến thể trùng màu và thuộc tính kích thước.');

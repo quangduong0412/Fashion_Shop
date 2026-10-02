@@ -1,6 +1,11 @@
 import { Request, Response } from 'express';
 import prisma from '../db';
 import { readVariantAttributeDefinitions } from '../services/productVariants';
+import { sendApiError } from '../services/apiErrors';
+export const getCategories = async (_req: Request, res: Response) => {
+  try { res.json((await prisma.loaiHang.findMany({ orderBy: { MaLoaiHang: 'asc' }, take: 100 })).map(category => ({ id: category.MaLoaiHang, name: category.TenLoaiHang }))); }
+  catch (error) { sendApiError(res, error); }
+};
 
 export const getCategoryVariantAttributes = async (req: Request, res: Response) => {
   const categoryId = Number(req.params.id);

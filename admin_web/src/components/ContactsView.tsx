@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import Icon from './Icon';
+import { useState } from 'react';
 
 interface ContactsViewProps {
   contacts: any[];
@@ -53,7 +54,7 @@ export default function ContactsView({ contacts, onDelete }: ContactsViewProps) 
             <div className="flex items-start justify-between mb-3">
               <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{c.label}</span>
               <div className={`w-9 h-9 rounded-xl ${c.bg} flex items-center justify-center ${c.color}`}>
-                <span className="material-symbols-outlined text-xl">{c.icon}</span>
+                <Icon name={c.icon} className="text-xl" />
               </div>
             </div>
             <div className="text-2xl font-bold text-gray-800">{c.value}</div>
@@ -64,7 +65,7 @@ export default function ContactsView({ contacts, onDelete }: ContactsViewProps) 
       {/* Search */}
       <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4 mb-4">
         <div className="relative w-full md:w-96">
-          <span className="material-symbols-outlined absolute left-3.5 top-2.5 text-gray-400 text-xl">search</span>
+          <Icon name="search" className="absolute left-3.5 top-2.5 text-gray-400 text-xl" />
           <input value={search} onChange={e => setSearch(e.target.value)}
             className="w-full pl-11 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-red-400"
             placeholder="Tìm theo tên, email, nội dung..." />
@@ -108,10 +109,10 @@ export default function ContactsView({ contacts, onDelete }: ContactsViewProps) 
                   <td className="py-4 px-5 text-right">
                     <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={() => setSelectedContact(c)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
-                        <span className="material-symbols-outlined text-xl">visibility</span>
+                        <Icon name="visibility" className="text-xl" />
                       </button>
                       <button onClick={() => onDelete(c.id || c.MaLienHe)} className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600">
-                        <span className="material-symbols-outlined text-xl">delete</span>
+                        <Icon name="delete" className="text-xl" />
                       </button>
                     </div>
                   </td>
@@ -119,7 +120,7 @@ export default function ContactsView({ contacts, onDelete }: ContactsViewProps) 
               ))}
               {sortedContacts.length === 0 && (
                 <tr><td colSpan={4} className="py-12 text-center text-gray-400">
-                  <span className="material-symbols-outlined text-5xl block mb-2 opacity-30">mail</span>
+                  <Icon name="mail" className="text-5xl block mb-2 opacity-30" />
                   Không có tin nhắn nào.
                 </td></tr>
               )}
@@ -135,7 +136,7 @@ export default function ContactsView({ contacts, onDelete }: ContactsViewProps) 
             <div className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
               <h2 className="text-xl font-bold text-gray-800">Chi tiết Liên hệ</h2>
               <button onClick={() => setSelectedContact(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                <span className="material-symbols-outlined text-gray-400">close</span>
+                <Icon name="close" className="text-gray-400" />
               </button>
             </div>
             <div className="p-6 space-y-4">
