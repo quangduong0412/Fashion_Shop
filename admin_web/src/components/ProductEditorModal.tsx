@@ -217,7 +217,7 @@ export default function ProductEditorModal({ product, categories, warehouses, su
                 </div>
               </div>
             </div>
-            {draft.categoryId ? <ProductVariantEditor definitions={definitions} productPrice={draft.price} variants={draft.variants} isEditing={isEditing}
+            {draft.categoryId ? <ProductVariantEditor definitions={definitions} productPrice={draft.price} initialQuantity={draft.quantity} variants={draft.variants} isEditing={isEditing}
               onChange={variants => setDraft(current => ({ ...current, variants }))} /> : <p className="text-sm text-gray-500">Chọn danh mục trước khi thêm biến thể.</p>}
             {isEditing && <section className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
               <div className="flex flex-wrap gap-4 text-sm text-blue-900">
@@ -229,7 +229,7 @@ export default function ProductEditorModal({ product, categories, warehouses, su
                 <textarea className={`${fieldClass} mt-1 font-normal`} rows={2} maxLength={500} minLength={stockChanged ? 3 : undefined} required={stockChanged}
                   value={draft.inventoryReason} onChange={event => setDraft(current => ({ ...current, inventoryReason: event.target.value }))} placeholder="Ví dụ: Kiểm kê phát hiện thiếu 2 áo size M" />
               </label>
-              <p className="text-xs text-blue-800">Điều chỉnh dùng cho kiểm kê, hàng hỏng hoặc sửa sai số. Hàng nhập mới nên lập phiếu nhập hàng. Nếu có đơn hàng làm tồn thay đổi khi đang nhập, hãy tải lại để điều chỉnh trên số lượng mới.</p>
+              <p className="text-xs text-blue-800">Nhập tổng số lượng khả dụng sau điều chỉnh. Ví dụ đang có 8, bổ sung 5 thì nhập 13 và ghi mã chứng từ trong lý do. Nếu có đơn hàng làm tồn thay đổi khi đang nhập, hãy tải lại để điều chỉnh trên số lượng mới.</p>
             </section>}
           </fieldset>
           {isEditing && <details className="border-t pt-4">

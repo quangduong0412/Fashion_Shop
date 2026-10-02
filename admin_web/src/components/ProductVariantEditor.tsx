@@ -26,6 +26,7 @@ export type EditableVariant = {
 type Props = {
   definitions: AttributeDefinition[];
   productPrice: string | number;
+  initialQuantity: string | number;
   variants: EditableVariant[];
   isEditing: boolean;
   onChange: (variants: EditableVariant[]) => void;
@@ -34,13 +35,14 @@ type Props = {
 const fieldClass = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-normal bg-white focus:outline-none focus:border-red-500';
 let nextRowKey = 0;
 
-export default function ProductVariantEditor({ definitions, productPrice, variants, isEditing, onChange }: Props) {
+export default function ProductVariantEditor({ definitions, productPrice, initialQuantity, variants, isEditing, onChange }: Props) {
   const update = (index: number, patch: Partial<EditableVariant>) => {
     onChange(variants.map((variant, i) => i === index ? { ...variant, ...patch } : variant));
   };
 
   const addVariant = () => onChange([...variants, {
-    clientKey: `variant-${++nextRowKey}`, color: '', sku: '', price: productPrice, quantity: '0', status: 'Đang mở bán',
+    clientKey: `variant-${++nextRowKey}`, color: '', sku: '', price: productPrice,
+    quantity: variants.length ? '0' : initialQuantity, status: 'Đang mở bán',
     attributes: Object.fromEntries(definitions.filter(definition => definition.defaultValue !== undefined)
       .map(definition => [definition.key, definition.defaultValue!]))
   }]);
