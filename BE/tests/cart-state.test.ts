@@ -22,3 +22,10 @@ test('replaying a pending request with an empty cart does not recreate purchased
   const result = applyPurchasedCart(cartEnvelope([]), 'request-empty', [item]);
   assert.deepEqual(result.items, []); assert.deepEqual(result.appliedCheckouts, ['request-empty']);
 });
+
+test('checkout keeps unselected cart rows and persisted selection during replay', () => {
+  const stored = cartEnvelope([{ ...item, selected: true }, { ...item, variantId: 2, selected: false }]);
+  const first = applyPurchasedCart(stored, 'selected-checkout', stored.items.filter(row => row.selected !== false));
+  assert.equal(first.items.length, 1); assert.equal(first.items[0]!.variantId, 2); assert.equal(first.items[0]!.selected, false);
+  assert.deepEqual(applyPurchasedCart(first, 'selected-checkout', [item]), first);
+});

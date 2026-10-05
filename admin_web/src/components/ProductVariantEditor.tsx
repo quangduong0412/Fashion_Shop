@@ -1,3 +1,4 @@
+import MediaGalleryEditor from './MediaGalleryEditor';
 export type AttributeDefinition = {
   key: string;
   label: string;
@@ -15,6 +16,7 @@ export type EditableVariant = {
   clientKey?: string;
   sku?: string;
   color?: string;
+  image?: string | null;
   size?: string;
   attributes?: Record<string, string | number>;
   price: string | number;
@@ -30,12 +32,13 @@ type Props = {
   variants: EditableVariant[];
   isEditing: boolean;
   onChange: (variants: EditableVariant[]) => void;
+  onBusyChange?: (busy: boolean) => void;
 };
 
 const fieldClass = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-normal bg-white focus:outline-none focus:border-red-500';
 let nextRowKey = 0;
 
-export default function ProductVariantEditor({ definitions, productPrice, initialQuantity, variants, isEditing, onChange }: Props) {
+export default function ProductVariantEditor({ definitions, productPrice, initialQuantity, variants, isEditing, onChange, onBusyChange }: Props) {
   const update = (index: number, patch: Partial<EditableVariant>) => {
     onChange(variants.map((variant, i) => i === index ? { ...variant, ...patch } : variant));
   };
@@ -105,7 +108,7 @@ export default function ProductVariantEditor({ definitions, productPrice, initia
               </label>
               <label className="text-xs font-semibold text-gray-600 space-y-1">
                 <span>Giá bán (đ) *</span>
-                <input className={fieldClass} type="number" min="0" step="any" required value={variant.price} onChange={event => update(index, { price: event.target.value })} />
+                <input className={fieldClass} type="number" min="0" step="1" required value={variant.price} onChange={event => update(index, { price: event.target.value })} />
               </label>
               <label className="text-xs font-semibold text-gray-600 space-y-1">
                 <span>{isEditing && variant.id ? 'Tồn sau điều chỉnh' : 'Tồn ban đầu'} *</span>
@@ -122,6 +125,7 @@ export default function ProductVariantEditor({ definitions, productPrice, initia
                 </select>
               </label>
             </div>
+            <details className="rounded-lg border bg-white p-3"><summary className="cursor-pointer text-xs font-semibold text-gray-600">Ảnh riêng của biến thể {index + 1}{variant.image ? ' · đã có ảnh' : ' · đang dùng ảnh sản phẩm'}</summary><div className="mt-3"><MediaGalleryEditor max={1} showAlt={false} primaryLabel={`Ảnh biến thể ${index + 1}`} value={variant.image ? [{ url: variant.image }] : []} onBusyChange={onBusyChange} onChange={images => update(index, { image: images[0]?.url || null })} /></div></details>
             {cannotRemove && <p className="text-xs text-gray-500">Biến thể đang có hàng. Chọn Tạm ngừng để dừng bán và giữ số lượng tồn.</p>}
           </div>
         );

@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import prisma from '../src/db';
 import app from '../src/app';
+import { createDevelopmentCustomer } from '../src/services/developmentCustomer';
 
 test('Real HTTP API and isolated MySQL', async t => {
   const database = new URL(process.env.DATABASE_URL || '').pathname.slice(1);
@@ -40,6 +41,29 @@ test('Real HTTP API and isolated MySQL', async t => {
     const record = await prisma.khachHang.findUniqueOrThrow({ where: { MaKhachHang: customerId } });
     assert.ok(await bcrypt.compare('CustomerPass1!', record.MatKhau));
     assert.ok(!JSON.stringify(result.body).includes(record.MatKhau));
+  });
+  await t.test('development customer creation is hashed, audited, concurrent-safe and never resets existing accounts', async () => {
+    const input = { email: 'demo-fixture@example.invalid', name: 'Synthetic demo customer' };
+    const hash = await bcrypt.hash('SyntheticDemoPass1!', 12);
+    const results = await Promise.all([1, 2].map(() => prisma.$transaction(tx => createDevelopmentCustomer(tx, input, hash))));
+    assert.equal(results.filter(result => result.created).length, 1);
+    const [first, second] = results;
+    assert.ok(first && second);
+    assert.equal(first.id, second.id);
+    const id = first.id;
+    const created = await prisma.khachHang.findUniqueOrThrow({ where: { MaKhachHang: id } });
+    assert.ok(await bcrypt.compare('SyntheticDemoPass1!', created.MatKhau));
+    assert.equal((await login(input.email, 'SyntheticDemoPass1!')).status, 200);
+    await prisma.khachHang.update({ where: { MaKhachHang: id }, data: { Status: 'DISABLED', DienThoai: '0900000099' } });
+    const repeat = await prisma.$transaction(tx => createDevelopmentCustomer(tx, { ...input, name: 'Should not replace' }, hash));
+    assert.equal(repeat.created, false);
+    const after = await prisma.khachHang.findUniqueOrThrow({ where: { MaKhachHang: id } });
+    assert.equal(after.MatKhau, created.MatKhau); assert.equal(after.TenKhach, input.name);
+    assert.equal(after.Status, 'DISABLED'); assert.equal(after.DienThoai, '0900000099');
+    assert.equal(await prisma.customerAudit.count({ where: { CustomerId: id, Action: 'DEMO_PROVISION' } }), 1);
+    const before = await prisma.khachHang.count();
+    await assert.rejects(prisma.$transaction(tx => createDevelopmentCustomer(tx, { ...input, email: 'test-admin' }, hash)), { code: 'USERNAME_EXISTS' });
+    assert.equal(await prisma.khachHang.count(), before);
   });
   await t.test('administrator provisions a staff account with bcrypt', async () => {
     const result = await request('/employees', 'POST', { name: 'Synthetic employee', roleId: job.MaChucVu, branchId: branch.MaChiNhanh, username: 'test-staff', password: 'StaffPassword1!' }, adminToken);
@@ -101,6 +125,96 @@ test('Real HTTP API and isolated MySQL', async t => {
     assert.equal((await request('/admin', 'GET', undefined, forged)).status, 401);
   });
 
+
+  await t.test('customer management is paged, audited and never exposes existing passwords', async () => {
+    const created = await request('/users', 'POST', { name: 'Account UI fixture', email: 'account-ui@example.invalid', phone: '0900000000', password: 'AccountUiPass1!' }, adminToken);
+    assert.equal(created.status, 201);
+    const id = created.body.MaKhachHang;
+    const list = await request('/users?page=1&pageSize=1&search=account-ui', 'GET', undefined, adminToken);
+    assert.equal(list.status, 200); assert.equal(list.body.total, 1); assert.equal(list.body.items[0].status, 'ACTIVE');
+    assert.doesNotMatch(JSON.stringify(list.body), /"(?:password|MatKhau|PassWord|SessionEpoch)":/);
+    assert.equal((await request('/users', 'GET', undefined, customerToken)).status, 403);
+    assert.equal((await request(`/users/${id}`, 'PUT', { password: 'Unsupported1!', reason: 'Synthetic reason' }, adminToken)).status, 400);
+    assert.equal((await request(`/users/${id}`, 'PUT', { tier: 'Gold' }, adminToken)).status, 400);
+    assert.equal((await request(`/users/${id}`, 'PUT', { tier: 'Gold', reason: 'Synthetic tier update' }, adminToken)).status, 200);
+    const session = await login('account-ui@example.invalid', 'AccountUiPass1!'); assert.equal(session.status, 200);
+    const disabled = { status: 'DISABLED', expectedStatus: 'ACTIVE', reason: 'Synthetic status check' };
+    assert.equal((await request(`/users/${id}/status`, 'PUT', disabled, adminToken)).status, 200);
+    assert.equal((await request(`/users/${id}/status`, 'PUT', disabled, adminToken)).status, 200);
+    assert.equal((await request('/users/profile', 'GET', undefined, session.body.token)).status, 401);
+    assert.equal((await login('account-ui@example.invalid', 'AccountUiPass1!')).status, 403);
+    assert.equal((await request(`/users/${id}/status`, 'PUT', { status: 'ACTIVE', expectedStatus: 'DISABLED', reason: 'Synthetic activation' }, adminToken)).status, 200);
+    assert.equal((await request('/users/profile', 'GET', undefined, session.body.token)).status, 401);
+    const newSession = await login('account-ui@example.invalid', 'AccountUiPass1!');
+    assert.equal((await request(`/users/${id}/reset-password`, 'POST', { newPassword: 'AccountReset1!', reason: 'Synthetic support request' }, customerToken)).status, 403);
+    const reset = await request(`/users/${id}/reset-password`, 'POST', { newPassword: 'AccountReset1!', reason: 'Synthetic support request' }, adminToken);
+    assert.equal(reset.status, 200); assert.ok(!JSON.stringify(reset.body).includes('AccountReset1!'));
+    assert.equal((await request('/users/profile', 'GET', undefined, newSession.body.token)).status, 401);
+    const detail = await request(`/users/${id}`, 'GET', undefined, adminToken);
+    assert.equal(detail.body.audit.filter((a: any) => a.action === 'DISABLE').length, 1);
+    assert.ok(detail.body.audit.some((a: any) => a.action === 'RESET_PASSWORD'));
+    assert.equal((await request(`/users/${id}`, 'DELETE', undefined, adminToken)).status, 409);
+  });
+  await t.test('forgot password configuration, one-use expiry, race and session revocation', async () => {
+    const { resetOutboxFile } = await import('../src/services/passwordRecovery');
+    const { promises: fs } = await import('fs');
+    const email = 'account-ui@example.invalid';
+    const customer = await prisma.khachHang.findUniqueOrThrow({ where: { Email: email } });
+    const before = await login(email, 'AccountReset1!'); assert.equal(before.status, 200);
+    delete process.env.RESET_DELIVERY_MODE;
+    assert.equal((await request('/users/forgot-password', 'POST', { email })).status, 503);
+    assert.equal((await request('/users/forgot-password', 'POST', { email: 'missing@example.invalid' })).status, 503);
+    process.env.RESET_DELIVERY_MODE = 'file'; process.env.CUSTOMER_WEB_URL = 'http://localhost:8081';
+    const missing = await request('/users/forgot-password', 'POST', { email: 'missing@example.invalid' });
+    const issued = await request('/users/forgot-password', 'POST', { email });
+    assert.equal(issued.status, 202); assert.deepEqual(issued.body, missing.body); assert.ok(!('token' in issued.body));
+    let record = await prisma.passwordReset.findFirstOrThrow({ where: { CustomerId: customer.MaKhachHang, UsedAt: null }, orderBy: { Id: 'desc' } });
+    const file = resetOutboxFile(record.Id); t.after(() => fs.rm(file, { force: true }));
+    const delivery = JSON.parse(await fs.readFile(file, 'utf8'));
+    const token = new URL(delivery.link).searchParams.get('token'); assert.ok(token); assert.notEqual(record.TokenHash, token);
+    const attempts = await Promise.all([request('/users/reset-password', 'POST', { token, newPassword: 'RecoveredUi1!' }), request('/users/reset-password', 'POST', { token, newPassword: 'RecoveredUi1!' })]);
+    assert.deepEqual(attempts.map(r => r.status).sort(), [200, 400]);
+    assert.equal((await request('/users/profile', 'GET', undefined, before.body.token)).status, 401);
+    assert.equal((await login(email, 'RecoveredUi1!')).status, 200);
+    assert.equal((await request('/users/reset-password', 'POST', { token, newPassword: 'RecoveredUi2!' })).status, 400);
+    await request('/users/forgot-password', 'POST', { email });
+    record = await prisma.passwordReset.findFirstOrThrow({ where: { CustomerId: customer.MaKhachHang, UsedAt: null }, orderBy: { Id: 'desc' } });
+    const expiredFile = resetOutboxFile(record.Id); t.after(() => fs.rm(expiredFile, { force: true }));
+    const expired = new URL(JSON.parse(await fs.readFile(expiredFile, 'utf8')).link).searchParams.get('token');
+    await prisma.passwordReset.update({ where: { Id: record.Id }, data: { ExpiresAt: new Date(Date.now() - 1000) } });
+    assert.equal((await request('/users/reset-password', 'POST', { token: expired, newPassword: 'RecoveredUi2!' })).status, 400);
+    delete process.env.RESET_DELIVERY_MODE; delete process.env.CUSTOMER_WEB_URL;
+  });
+
+  await t.test('email adapter uses unique reset keys and revokes tokens on provider failure without exposing accounts', async () => {
+    const customer = await prisma.khachHang.create({ data: { TenKhach: 'Synthetic email adapter', Email: 'reset-adapter@example.invalid', MatKhau: await bcrypt.hash('SyntheticEmail1!', 12) } });
+    const keys = ['RESET_DELIVERY_MODE', 'CUSTOMER_WEB_URL', 'RESEND_API_KEY', 'RESET_EMAIL_FROM'] as const;
+    const config = keys.map(key => [key, process.env[key]] as const);
+    const originalFetch = global.fetch;
+    const deliveries: string[] = [];
+    global.fetch = async (input, init) => {
+      if (String(input) !== 'https://api.resend.com/emails') return originalFetch(input, init);
+      deliveries.push(new Headers(init?.headers).get('Idempotency-Key') ?? '');
+      return new Response('Synthetic provider failure', { status: 503 });
+    };
+    try {
+      process.env.RESET_DELIVERY_MODE = 'resend'; process.env.CUSTOMER_WEB_URL = 'https://customer.example.invalid';
+      process.env.RESEND_API_KEY = 'synthetic-provider-fixture'; process.env.RESET_EMAIL_FROM = 'fixture@example.invalid';
+      const unknown = await request('/users/forgot-password', 'POST', { email: 'not-an-account@example.invalid' });
+      for (const attempt of [1, 2]) {
+        const result = await request('/users/forgot-password', 'POST', { email: customer.Email });
+        assert.equal(result.status, 202); assert.deepEqual(result.body, unknown.body); assert.ok(!('token' in result.body));
+        const receipt = await prisma.passwordReset.findFirstOrThrow({ where: { CustomerId: customer.MaKhachHang }, orderBy: { Id: 'desc' } });
+        assert.ok(receipt.UsedAt, 'Provider failure must revoke the issued token');
+        assert.equal(deliveries[attempt - 1], `password-reset-${receipt.TokenHash}`);
+      }
+      assert.equal(deliveries.length, 2); assert.notEqual(deliveries[0], deliveries[1]);
+    } finally {
+      global.fetch = originalFetch;
+      for (const [key, value] of config) if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
+
   // Fixtures below are created only after verifying the isolated schema name above.
   const warehouse = await prisma.kho.create({ data: { TenKho: 'Test warehouse', DiaChi: 'Synthetic warehouse' } });
   const secondWarehouse = await prisma.kho.create({ data: { TenKho: 'Test warehouse 2', DiaChi: 'Synthetic warehouse' } });
@@ -115,13 +229,36 @@ test('Real HTTP API and isolated MySQL', async t => {
   staffToken = (await login('test-staff', 'StaffPassword1!')).body.token;
   const shipping = { name: 'Synthetic recipient', phone: '0900000000', address: 'Synthetic address only' };
   const items = [{ id: product.MaSanPham, variantId, quantity: 2, price: 1 }];
-  const quote = async (lines: any[], token = customerToken) => request('/orders/quote', 'POST', { items: lines }, token);
+  const quote = async (lines: any[], token = customerToken) => request('/orders/quote', 'POST', { items: lines, shipping }, token);
   const submit = async (lines: any[], key: string, quoted: string, token = customerToken) => request('/orders/checkout', 'POST', { items: lines, shipping, requestKey: key, quoteHash: quoted, paymentMethod: 'COD', total: 1 }, token);
   let orderId = 0;
   await t.test('catalog hides purchase cost and internal supplier/warehouse identifiers', async () => {
     const result = await request(`/products/${product.MaSanPham}`);
     assert.equal(result.status, 200); assert.equal(result.body.originalPrice, undefined); assert.equal(result.body.khoId, undefined); assert.equal(result.body.nccId, undefined);
   });
+
+  await t.test('catalog media preserves omitted images, validates URLs and hides inactive categories', async () => {
+    const gallery = [{ url: '/images/ao-somi-nam.jpg', alt: 'Synthetic gallery' }, { url: '/images/ao-thun-nu.png' }];
+    assert.equal((await request(`/products/${product.MaSanPham}`, 'PUT', { gallery, description: 'Synthetic description', material: 'Cotton', brand: 'Fixture' }, adminToken)).status, 200);
+    assert.equal((await request(`/products/${product.MaSanPham}`, 'PUT', { price: 100000 }, adminToken)).status, 200);
+    let dto = (await request(`/products/${product.MaSanPham}`)).body;
+    assert.deepEqual(dto.gallery, gallery); assert.equal(dto.image, gallery[0]!.url); assert.equal(dto.material, 'Cotton');
+    assert.equal((await request(`/products/${product.MaSanPham}`, 'PUT', { image: 'https://www.bing.com/images/search?q=coat' }, adminToken)).status, 400);
+    assert.equal((await request(`/products/${product.MaSanPham}/variants/${variantId}`, 'PUT', { image: '/images/ao-somi-nam.jpg' }, adminToken)).status, 200);
+    assert.equal((await request(`/products/${product.MaSanPham}/variants/${variantId}`, 'PUT', { price: 120000 }, adminToken)).status, 200);
+    dto = (await request(`/products/${product.MaSanPham}`)).body; assert.equal(dto.variants[0].image, gallery[0]!.url);
+    assert.equal((await request(`/categories/${category.MaLoaiHang}`, 'PUT', { image: '/images/ao-somi-nam.jpg', icon: 'shirt', position: 1 }, adminToken)).status, 200);
+    assert.equal((await request(`/categories/${category.MaLoaiHang}`, 'PUT', { name: 'Test category' }, adminToken)).status, 200);
+    assert.equal((await request(`/categories/${category.MaLoaiHang}`, 'PUT', { isActive: false }, adminToken)).status, 200);
+    assert.ok(!(await request('/categories')).body.some((c: any) => c.id === category.MaLoaiHang));
+    assert.equal((await request(`/products/${product.MaSanPham}`)).status, 404);
+    assert.equal((await request(`/products/${product.MaSanPham}/variants`)).status, 404);
+    assert.equal((await quote(items)).status, 409);
+    assert.equal((await request('/categories/internal/list', 'GET', undefined, customerToken)).status, 403);
+    assert.equal((await request(`/categories/${category.MaLoaiHang}`, 'PUT', { isActive: true }, adminToken)).status, 200);
+    const restored = (await request('/categories')).body.find((c: any) => c.id === category.MaLoaiHang); assert.equal(restored.image, gallery[0]!.url);
+  });
+
   await t.test('quote and checkout recalculate variant prices and reserve actual inventory', async () => {
     const priced = await quote(items); assert.equal(priced.status, 200); assert.equal(priced.body.total, 240000);
     const result = await submit(items, randomUUID(), priced.body.quoteHash); assert.equal(result.status, 201); orderId = result.body.order.MaPhieuXuat;
@@ -130,6 +267,15 @@ test('Real HTTP API and isolated MySQL', async t => {
     assert.equal((await prisma.bienTheSanPham.findUniqueOrThrow({ where: { MaBienThe: variantId } })).SoLuong, 4);
     assert.equal(await prisma.dieuChinhTonKho.count({ where: { MaSanPham: product.MaSanPham, Loai: 'ORDER_RESERVE' } }), 1);
     assert.doesNotMatch(JSON.stringify(result.body), /DonGiaNhap|MatKhau/);
+  });
+  await t.test('pre-upgrade checkout receipts still replay without a second reservation', async () => {
+    const { cartInput, hash } = await import('../src/services/checkout');
+    const key = randomUUID();
+    await prisma.checkoutRequest.create({ data: { CustomerId: customerId, Key: key, Fingerprint: hash({ items: cartInput(items), shipping, paymentMethod: 'COD' }), OrderIds: [orderId] } });
+    const stock = (await prisma.sanPham.findUniqueOrThrow({ where: { MaSanPham: product.MaSanPham } })).SoLuong;
+    const result = await submit(items, key, 'legacy-price-quote'); assert.equal(result.status, 200); assert.equal(result.body.order.MaPhieuXuat, orderId);
+    assert.equal((await prisma.sanPham.findUniqueOrThrow({ where: { MaSanPham: product.MaSanPham } })).SoLuong, stock);
+    assert.equal((await request('/orders/checkout', 'POST', { items, shipping, paymentMethod: 'COD', requestKey: key, note: 'Changed transaction context' }, customerToken)).status, 409);
   });
   await t.test('concurrent identical checkout retries create one order and reserve once', async () => {
     const lines = [{ id: remote.MaSanPham, quantity: 1 }], key = randomUUID();
@@ -286,7 +432,7 @@ test('Real HTTP API and isolated MySQL', async t => {
   });
   await t.test('cancellation refuses inventory overflow and invalid legacy quantities without partial writes', async () => {
     const item = await prisma.sanPham.create({ data: { TenSanPham: 'Stock limit fixture', MaLoaiHang: category.MaLoaiHang, MaKho: warehouse.MaKho, MaNCC: supplier.MaNCC, DonGiaNhap: 0, DonGiaBan: 1000, SoLuong: 1 } });
-    const quoted = await request('/orders/quote', 'POST', { items: [{ id: item.MaSanPham, quantity: 1 }] }, customerToken);
+    const quoted = await request('/orders/quote', 'POST', { items: [{ id: item.MaSanPham, quantity: 1 }], shipping }, customerToken);
     const checkout = await request('/orders/checkout', 'POST', { items: [{ id: item.MaSanPham, quantity: 1 }], shipping, paymentMethod: 'COD', quoteHash: quoted.body.quoteHash, requestKey: randomUUID() }, customerToken);
     assert.equal(checkout.status, 201);
     const id = checkout.body.orders[0].MaPhieuXuat;
@@ -315,6 +461,14 @@ test('Real HTTP API and isolated MySQL', async t => {
     const large = await upload(Buffer.alloc(5 * 1024 * 1024 + 1), adminToken);
     assert.equal(large.status, 413); assert.equal((await large.json() as any).code, 'IMAGE_TOO_LARGE');
   });
+  const { testStoreFlows } = await import('./store-flow');
+  await testStoreFlows(t, request, adminToken, customerToken, {warehouseId: warehouse.MaKho,secondWarehouseId: secondWarehouse.MaKho,supplierId:supplier.MaNCC,categoryId:category.MaLoaiHang});
+  const { testContentFlows } = await import('./content-flow');
+  await testContentFlows(t, request, adminToken, staffToken);
+  const { testSettingsFlows } = await import('./settings-flow');
+  await testSettingsFlows(t, request, adminToken, staffToken);
+  const { runReportFlow } = await import('./report-flow');
+  await t.test('reports aggregate all orders with explicit UTC+7 boundaries and scoped permissions', () => runReportFlow({request,adminToken,customerToken,prisma}));
   if (process.env.PLAYWRIGHT_MODULE) {
     await t.test('customer web checkout and admin fulfillment in a real browser', async () => {
       const { runBrowser } = require('./browser.cjs');

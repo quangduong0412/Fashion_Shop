@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { mediaUrl } from './catalogMedia';
 
 export type VariantAttributeDefinition = {
   key: string;
@@ -14,6 +15,7 @@ export type VariantAttributeDefinition = {
 
 export type NormalizedVariant = {
   SKU: string;
+  Anh?: string | null;
   KichCo: string;
   MauSac: string | null;
   ThuocTinh: Record<string, string | number>;
@@ -146,6 +148,7 @@ export function normalizeVariants(
     if (size && size.length > 10) throw new VariantValidationError(`Kích cỡ của biến thể ${index + 1} tối đa 10 ký tự. Nhập các thông số khác vào thuộc tính tương ứng.`);
     return {
       SKU: sku,
+      ...(input.image !== undefined || input.Anh !== undefined ? { Anh: mediaUrl(input.image !== undefined ? input.image : input.Anh) } : {}),
       KichCo: size || '',
       MauSac: color || null,
       ThuocTinh: attributes,
@@ -177,6 +180,7 @@ export function serializeVariant(variant: any, fallbackPrice: number) {
   const attributes = variant.ThuocTinh && typeof variant.ThuocTinh === 'object' ? variant.ThuocTinh : {};
   return {
     id: variant.MaBienThe,
+    image: variant.Anh,
     sku: variant.SKU || `FH-${variant.MaSanPham}-${variant.MaBienThe}`,
     color: variant.MauSac || '',
     size: variant.KichCo || attributes.size || '',

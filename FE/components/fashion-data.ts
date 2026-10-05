@@ -18,6 +18,10 @@ export type Product = {
   category: string;
   categoryId?: number;
   image: string;
+  gallery?: { url: string; alt?: string }[];
+  description?: string | null;
+  material?: string | null;
+  brand?: string | null;
   quantity: number;
   status?: string;
   categoryAttributes?: VariantAttributeDefinition[];
@@ -41,6 +45,7 @@ export type ProductVariant = {
   sku: string;
   size?: string;
   color?: string;
+  image?: string | null;
   attributes?: Record<string, string | number>;
   price?: number;
   status?: string;
@@ -48,6 +53,7 @@ export type ProductVariant = {
 };
 
 export type CartItem = Product & {
+  selected?: boolean;
   quantity: number;
   variantQuantity?: number;
   variantId?: number;
@@ -117,15 +123,24 @@ export function addCartItem(item: CartItem): Promise<CartItem[]> {
 }
 
 export function productImageUrl(image?: string) {
-  if (!image) return 'https://placehold.co/600x800/f3f4f6/6b7280?text=FashionHeaven';
+  if (!image) return '';
   return /^https?:\/\//i.test(image) ? image : `${SERVER_URL}${image.startsWith('/') ? '' : '/'}${image}`;
+}
+
+function normalizeProductMedia(product: Product): Product {
+  const images = product.gallery?.length ? product.gallery : product.image ? [{ url: product.image }] : [];
+  return {
+    ...product, image: productImageUrl(product.image),
+    gallery: images.filter(image => typeof image.url === 'string' && !!image.url).map(image => ({ ...image, url: productImageUrl(image.url) })),
+    ...(product.variants ? { variants: product.variants.map(variant => ({ ...variant, image: productImageUrl(variant.image || undefined) })) } : {}),
+  };
 }
 
 export type ProductPage = { items: Product[]; page: number; total: number; totalPages: number };
 export async function fetchProductPage(options: { page?: number; pageSize?: number; search?: string; categoryId?: number } = {}): Promise<ProductPage> {
   const query = new URLSearchParams(Object.entries(options).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
   const result = await apiRequest(`/products?${query}`);
-  return { ...result, items: result.items.map((product: Product) => ({ ...product, image: productImageUrl(product.image) })) };
+  return { ...result, items: result.items.map(normalizeProductMedia) };
 }
 export async function fetchProducts(): Promise<Product[]> {
   return (await fetchProductPage({ pageSize: 4 })).items;
@@ -133,7 +148,7 @@ export async function fetchProducts(): Promise<Product[]> {
 
 export async function fetchProductById(id: string | number): Promise<Product> {
   const product = await apiRequest(`/products/${id}`);
-  return { ...product, image: productImageUrl(product.image) };
+  return normalizeProductMedia(product);
 }
 
 export function saveCart(cart: CartItem[]) {

@@ -6,12 +6,14 @@ import { recordStockAdjustment, stockNumber } from '../services/inventoryAdjustm
 import { saveProductChanges } from '../services/productEditing';
 import { positiveId, sendApiError } from '../services/apiErrors';
 import { pagination } from '../services/pagination';
+import { productMediaChanges, readGallery } from '../services/catalogMedia';
 
 const productResponse = (product: any) => ({
   id: product.MaSanPham,
   name: product.TenSanPham,
   price: product.DonGiaBan,
   image: product.Anh,
+  gallery: readGallery(product.Gallery, product.Anh), description: product.GhiChu, material: product.ChatLieu, brand: product.ThuongHieu,
   category: product.loaiHang?.TenLoaiHang || 'fashion',
   categoryId: product.MaLoaiHang,
   categoryAttributes: readVariantAttributeDefinitions(product.loaiHang?.ThuocTinhBienThe),
@@ -23,7 +25,7 @@ const productResponse = (product: any) => ({
 const isPaused = (status?: string | null) => ['tạm ngừng', 'ngừng kinh doanh', 'ngừng bán'].includes((status || '').trim().toLocaleLowerCase('vi'));
 
 const publicProductResponse = (product: any) => {
-  if (isPaused(product.TrangThai)) return null;
+  if (isPaused(product.TrangThai) || product.loaiHang?.IsActive === false) return null;
   const variants = (product.bienThes || []).filter((variant: any) => !isPaused(variant.TrangThai));
   if (product.bienThes?.length && !variants.length) return null;
   const quantity = product.bienThes?.length
@@ -45,8 +47,7 @@ const sendProductError = (res: Response, error: any) => {
     res.status(409).json({ error: 'Dữ liệu đang được cập nhật bởi giao dịch khác. Vui lòng tải lại rồi lưu lại.' });
     return;
   }
-  console.error('Product API error:', error);
-  res.status(500).json({ error: 'Không thể lưu dữ liệu sản phẩm.' });
+  sendApiError(res, error);
 };
 
 const findCategory = async (categoryId: number) => {
@@ -61,7 +62,7 @@ async function listProducts(req: Request, res: Response, internal: boolean) {
     const { page, pageSize, skip, search } = pagination(req);
     const sale = { notIn: ['Tạm ngừng', 'Ngừng kinh doanh', 'Ngừng bán'] };
     const where: Prisma.SanPhamWhereInput = {
-      ...(!internal ? { TrangThai: sale, OR: [{ bienThes: { none: {} } }, { bienThes: { some: { TrangThai: sale } } }] } : {}),
+      ...(!internal ? { loaiHang: { IsActive: true }, TrangThai: sale, OR: [{ bienThes: { none: {} } }, { bienThes: { some: { TrangThai: sale } } }] } : {}),
       ...(internal && req.query.warehouseId ? { MaKho: positiveId(req.query.warehouseId, 'Kho') } : {}),
       ...(internal && req.query.supplierId ? { MaNCC: positiveId(req.query.supplierId, 'Nhà cung cấp') } : {}),
       ...(req.query.categoryId ? { MaLoaiHang: positiveId(req.query.categoryId, 'Danh mục') } : {}),
@@ -106,7 +107,7 @@ export const getProductById = async (req: Request, res: Response) => {
 };
 
 export const createProduct = async (req: Request, res: Response) => {
-  const { name, price, originalPrice, image, categoryId, khoId, nccId, stock, status, variants } = req.body;
+  const { name, price, originalPrice, categoryId, khoId, nccId, stock, status, variants } = req.body;
   try {
     if (typeof name !== 'string' || !name.trim() || name.trim().length > 255 || price === '' || price === undefined || price === null || !Number.isSafeInteger(Number(price)) || Number(price) < 0) throw new VariantValidationError('Tên sản phẩm và giá hợp lệ là bắt buộc.');
     if (variants !== undefined && !Array.isArray(variants)) throw new VariantValidationError('Danh sách biến thể không hợp lệ.');
@@ -129,7 +130,7 @@ export const createProduct = async (req: Request, res: Response) => {
           TenSanPham: name.trim(),
           DonGiaNhap: purchasePrice,
           DonGiaBan: Number(price),
-          Anh: image,
+          ...productMediaChanges(req.body),
           SoLuong: totalStock,
           MaLoaiHang: category.MaLoaiHang,
           MaKho: warehouse.MaKho,
@@ -174,12 +175,12 @@ export const getInventoryHistory = async (req: Request, res: Response) => {
 export const getProductVariants = async (req: Request, res: Response) => {
   const productId = Number(req.params.id);
   try {
-    const product = await prisma.sanPham.findUnique({ where: { MaSanPham: productId }, include: { bienThes: true } });
+    const product = await prisma.sanPham.findUnique({ where: { MaSanPham: productId }, include: { bienThes: true, loaiHang: true } });
     if (!product) {
       res.status(404).json({ error: 'Không tìm thấy sản phẩm.' });
       return;
     }
-    if (isPaused(product.TrangThai)) {
+    if (isPaused(product.TrangThai) || !product.loaiHang.IsActive) {
       res.status(404).json({ error: 'Sản phẩm hiện không được mở bán.' });
       return;
     }

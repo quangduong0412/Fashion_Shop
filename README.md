@@ -1,6 +1,6 @@
 # Fashion Haven
 
-Hệ thống bán lẻ thời trang gồm ứng dụng khách hàng, trang quản trị và API dùng chung. Tình trạng triển khai và kiểm chứng ngày **02/10/2026** được ghi trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md); các hạng mục tiếp theo nằm trong [PLAN.md](PLAN.md).
+Hệ thống bán lẻ thời trang gồm ứng dụng khách hàng, trang quản trị và API dùng chung. Tình trạng triển khai và kiểm chứng ngày **05/10/2026** được ghi trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md); các hạng mục tiếp theo nằm trong [PLAN.md](PLAN.md).
 
 ## Nguồn đang sử dụng
 
@@ -15,6 +15,8 @@ Hệ thống bán lẻ thời trang gồm ứng dụng khách hàng, trang quả
 Phát triển chức năng khách hàng trong `FE`, chức năng nội bộ trong `admin_web`. Không xóa các bản tham khảo hoặc thư mục chứa ảnh khi chưa kiểm tra phụ thuộc.
 
 ## Chạy tại máy phát triển
+
+Từ bản clone mới: `git clone https://github.com/quangduong0412/Fashion_Shop.git`, rồi `cd Fashion_Shop`. Clone mang source/assets phát hành; MySQL, tài khoản và ảnh upload cần kết nối/khôi phục riêng từ cấu hình và bản sao lưu do người vận hành quản lý. Các migration tương thích giả định database ứng dụng đã có các bảng cơ sở; không chạy SQL có DROP để chữa lỗi kết nối hoặc tạo demo trên database cửa hàng.
 
 Các lệnh dưới đây dùng PowerShell trên Windows; mở một terminal riêng cho mỗi ứng dụng. Cần Node.js tương thích với dependency hiện có và một MySQL database đã được cấu hình.
 
@@ -64,9 +66,22 @@ npm.cmd run web
 | `admin_web` | `npm.cmd run typecheck`; `npm.cmd run lint`; `npm.cmd run build` |
 | `FE` | `npx.cmd tsc --noEmit`; `npm.cmd run lint`; `npx.cmd expo export --platform web` |
 
-Test backend tạo database **mới** có tên `fashionhaven_test_*` trên MySQL local, đưa dữ liệu tổng hợp vào đó và giữ database này sau kiểm tra. Cần quyền `CREATE DATABASE`; test không dùng database cửa hàng để tạo đơn thử. Kiểm tra trình duyệt tùy chọn dùng bản build thật trong `FE/dist` và `admin_web/dist`, nối tới Express và schema kiểm tra này.
+Test backend tạo database **mới** dạng `fashionhaven_test_<timestamp>_<random>` trên MySQL local. Runner đóng tiến trình/kết nối và dọn đúng database do lần chạy đó tạo trong `finally`, kể cả setup/test lỗi. `KEEP_TEST_DB=true` giữ lại có chủ đích để debug. Cần quyền CREATE/DROP DATABASE; không tạo fixtures trong database cửa hàng. Lệnh liệt kê trước khi dọn: `cd BE; npm.cmd run test:db:list`. Xem [quy tắc cleanup và danh sách đã dọn](BE/TEST_DATABASE_CLEANUP.md).
 
-Lượt kiểm tra mới nhất đạt **43/43 mục Node test**: 32 ca HTTP, 4 ca giỏ hàng, 5 ca limiter và 1 ca trình duyệt, cộng nhóm cha. Trình duyệt đã chạy khách đăng nhập → mua biến thể COD → theo dõi đơn/vận đơn → admin xử lý/giao/đối soát, cùng tạo hai biến thể, sửa tồn/giữ ảnh, lập/nhận phiếu nhập và kiểm tra menu/quyền STAFF trên giao diện web hẹp. Ảnh tĩnh trả 200/`nosniff`; typecheck/lint/build/export đã đạt. Phần thiết bị native và nghiệp vụ chưa hỗ trợ được ghi rõ trong tài liệu tiến độ.
+Kiểm tra trình duyệt tùy chọn dùng bản build thật `FE/dist`, `admin_web/dist`, Express và MySQL kiểm tra. Lượt mới nhất đạt **71/71** (44 integration API/MySQL, 25 unit, 1 browser và nhóm cha). Phạm vi web và giới hạn thiết bị native nằm trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md); không dùng kết quả checkpoint cũ để nghiệm thu mã mới.
+
+### Khách hàng thử nghiệm riêng
+
+Trong `BE/.env` local, đặt `NODE_ENV=development`, `ALLOW_DEMO_CUSTOMER=true`, `DEMO_CUSTOMER_EMAIL`, `DEMO_CUSTOMER_PASSWORD` (8 ký tự trở lên, tối đa 72 byte UTF-8), tùy chọn `DEMO_CUSTOMER_NAME`. Sau đó:
+
+```powershell
+cd BE
+npm.cmd run demo:customer
+```
+
+Script chỉ chạy có chủ đích trên MySQL phát triển local ngoài production, tạo tài khoản trong database FE đang kết nối, hash bcrypt, ghi audit và **không đổi mật khẩu/hồ sơ nếu email đã tồn tại**. Không commit/gửi mật khẩu qua chat. Hiện chưa cấp tài khoản mới trên máy này vì chưa có mật khẩu do người vận hành cấu hình; cơ chế cấp được kiểm tra bằng dữ liệu tổng hợp riêng.
+
+Quên mật khẩu có token 15 phút dùng một lần và thu hồi session. Với local: đặt `NODE_ENV=development`, `RESET_DELIVERY_MODE=file`, `CUSTOMER_WEB_URL=http://localhost:8081`; liên kết xuất tại `BE/dev-outbox/<database-hash>/*.json` riêng tư, không trả token trong API. Email thật cần `RESET_DELIVERY_MODE=resend`, `RESEND_API_KEY`, `RESET_EMAIL_FROM` và URL FE HTTPS. Phần gửi email nhà cung cấp chưa được nghiệm thu thực tế; thiếu cấu hình trả lỗi rõ ràng.
 
 Seed tài khoản không chạy tự động: `BE/prisma/seed.ts` và `BE/add_sample_data.ts` chỉ cho phép phát triển với `ALLOW_SAMPLE_PROVISIONING=true`, yêu cầu các mật khẩu `SEED_ADMIN_PASSWORD`, `SEED_STAFF_PASSWORD`, `SEED_CUSTOMER_PASSWORD` do người vận hành đặt. Không có mật khẩu mẫu cố định; seed bị chặn khi `NODE_ENV=production`. Không chạy seed trên dữ liệu thật để xử lý lỗi kết nối.
 
@@ -74,4 +89,31 @@ Seed tài khoản không chạy tự động: `BE/prisma/seed.ts` và `BE/add_sa
 
 12 ảnh catalog/bài viết đang được tham chiếu (khoảng 7,75 MB) đã được đưa vào `BE/public/images` để bản clone có đủ assets chính. Backend phục vụ `/images` từ thư mục này trước, rồi fallback sang thư mục ảnh legacy; thư mục legacy vẫn được giữ. Ảnh người dùng tải lên nằm trong `BE/uploads`, bị loại khỏi Git và cần sao lưu/khôi phục riêng khi chuyển máy hoặc triển khai.
 
-Hệ thống hiện ưu tiên COD, nghiệp vụ sản phẩm/tồn kho và đơn hàng. Báo cáo chuyên sâu, cài đặt, thanh toán online, hoàn/đổi hàng và một số màn hình quản trị cũ chưa được nghiệm thu; xem tài liệu tiến độ để biết giới hạn cụ thể.
+## Kịch bản demo hiện có
+
+1. Admin cấu hình thông tin cửa hàng, phí giao cho một lần checkout, chính sách và banner; tạo danh mục/ảnh, sản phẩm, bộ ảnh và từng SKU size–màu với tồn riêng.
+2. Khách đăng nhập bằng tài khoản được cấp riêng; xem sản phẩm, chọn SKU, chọn các dòng giỏ muốn mua, điền địa chỉ/ghi chú, xem **tiền hàng + phí giao − giảm giá = tổng thanh toán**, xác nhận COD.
+3. Admin/nhân viên xác nhận → đóng gói → nhập vận đơn và bàn giao → giao thành công; admin ghi căn cứ đối soát COD. Khách theo dõi đơn và vận đơn.
+4. Khách chỉ hủy khi đơn còn PENDING; tồn khả dụng hoàn đúng một lần. Nhập kho dùng DRAFT → RECEIVED, không cộng tồn lúc tạo nháp.
+5. Admin quản lý trạng thái tài khoản/audit, đăng bài để FE đọc chi tiết; xem báo cáo aggregate theo ngày tạo đơn UTC+7, xuất CSV. Phân biệt giá trị đơn đã giao với tiền đã đối soát.
+
+Phí giao lấy từ database và chia vào các đơn theo kho, tổng không đổi; retry dùng snapshot cũ. Chỉ COD; **voucher, đổi trả/hoàn tiền, yêu thích, đánh giá, thông báo, bộ lọc nâng cao và CMS nháp/lịch xuất bản bài viết còn thiếu**. Banner đã có trạng thái/lịch hiển thị riêng. Không bật thanh toán online giả hoặc tự sửa chứng từ cũ. Bảng theo dõi đầy đủ ở [PLAN.md](PLAN.md).
+
+## Mô hình dữ liệu cốt lõi
+
+```mermaid
+erDiagram
+    KhachHang ||--o{ DonHang : mua
+    DonHang ||--|{ ChiTietDonHang : gom
+    SanPham ||--o{ BienThe : co
+    SanPham ||--o{ ChiTietDonHang : tham_chieu
+    BienThe o|--o{ ChiTietDonHang : SKU
+    LoaiHang ||--o{ SanPham : phan_loai
+    Kho ||--o{ SanPham : ton_kha_dung
+    DonHang ||--o{ OrderEvent : lich_su
+    KhachHang ||--o{ CheckoutRequest : retry
+    KhachHang ||--o{ CustomerAudit : quan_ly
+    KhachHang ||--o{ PasswordReset : khoi_phuc
+```
+
+Đây là sơ đồ quan hệ nghiệp vụ chính, không khẳng định mọi cạnh là foreign key vật lý; xem schema Prisma đầy đủ. Model `PhieuXuat` map tới bảng `donhang`, model `CTDonHang` map tới `ctdonhang` để giữ tương thích. `StoreSettings`/`SettingsAudit` lưu cấu hình có version; snapshot tiền/ảnh/thông tin đơn không thay đổi theo catalog hoặc cài đặt mới.

@@ -10,6 +10,7 @@ import ProductsView from '../components/ProductsView';
 import ProductEditorModal from '../components/ProductEditorModal';
 import OrdersView from '../components/OrdersView';
 import CustomersView from '../components/CustomersView';
+import CategoriesView from '../components/CategoriesView';
 import EmployeesView from '../components/EmployeesView';
 import SuppliersView from '../components/SuppliersView';
 import ImportsView from '../components/ImportsView';
@@ -86,14 +87,15 @@ export default function Admin() {
           openProductModal={product => setEditingProduct(product || {})} handleDeleteProduct={id => remove('products', id, 'Xóa sản phẩm chưa có tồn/lịch sử? Có thể chọn Tạm ngừng để giữ dữ liệu.')} />}
         {activeTab === 'orders' && <OrdersView isAdmin={isAdmin} onChanged={() => void loadData()} />}
         {isAdmin && <>
-          {activeTab === 'customers' && <CustomersView users={data.users} />}
+          {activeTab === 'customers' && <CustomersView onChanged={() => void loadData()} />}
+          {activeTab === 'categories' && <CategoriesView categories={data.categories} onSaved={() => void loadData()} onError={showError} />}
           {activeTab === 'employees' && <EmployeesView employees={data.employees} branches={data.branches} roles={data.roles} currentUserId={principal.id}
             onSave={async employee => { await save('employees', employee); }} onDelete={async id => { await mutate(`/employees/${id}`, 'DELETE'); }} />}
           {activeTab === 'suppliers' && <SuppliersView suppliers={data.suppliers} onSave={record => legacySave('suppliers', record)} onDelete={id => remove('suppliers', id, 'Xóa nhà cung cấp chưa có lịch sử?')} />}
           {activeTab === 'imports' && <ImportsView suppliers={data.suppliers} warehouses={data.warehouses} onChanged={() => void loadData()} />}
           {activeTab === 'exports' && <ExportsView exports={data.exportReceipts} />}
-          {activeTab === 'posts' && <PostsView posts={data.posts} onSave={record => legacySave('posts', record)} onDelete={id => remove('posts', id, 'Xóa bài viết này?')} />}
-          {activeTab === 'contacts' && <ContactsView contacts={data.contacts} onDelete={id => remove('contacts', id, 'Xóa liên hệ này?')} />}
+          {activeTab === 'posts' && <PostsView posts={data.posts} onSave={async record => { await save('posts', record); }} onDelete={async id => { await mutate(`/posts/${id}`, 'DELETE'); }} />}
+          {activeTab === 'contacts' && <ContactsView contacts={data.contacts} onDelete={async id => { await mutate(`/contacts/${id}`, 'DELETE'); }} />}
           {activeTab === 'branches' && <BranchesView branches={data.branches} onSave={record => legacySave('branches', record)} onDelete={id => remove('branches', id, 'Xóa chi nhánh chưa có nhân viên/giao dịch?')} />}
           {activeTab === 'roles' && <RolesView roles={data.roles} onSave={record => legacySave('roles', record)} onDelete={id => remove('roles', id, 'Xóa chức vụ chưa được sử dụng?')} />}
           {activeTab === 'reports' && <ReportsView />}{activeTab === 'settings' && <SettingsView />}

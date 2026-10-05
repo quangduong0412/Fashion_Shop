@@ -31,7 +31,9 @@ Không có endpoint công khai để tự cấp quyền quản trị. Máy mới
 1. `db:migrate-orders`: đối chiếu tên bảng cũ và mới; nếu cần thì sao lưu riêng vào `db-backups`, đổi tên `phieuxuat` → `donhang`, `ctphieuxuat` → `ctdonhang`, thêm cột tùy chọn và đối chiếu dữ liệu cũ. Có cả hai tên bảng thì dừng để người vận hành đối soát.
 2. `db:migrate-inventory`: thêm bảng nhật ký `dieuchinhtonkho` nếu chưa có; không đặt lại tồn kho.
 3. `db:migrate-order-safety`: thêm `checkoutrequest`, `orderevent`, `appmutex`, `Account.SessionEpoch`, snapshot tên/ảnh dòng đơn, tên/biến thể dòng nhập và metadata xử lý phiếu. Snapshot bổ sung cho dữ liệu cũ cho phép null; session epoch mặc định 0.
-4. `prisma generate`: tạo Prisma Client theo schema hiện tại.
+4. `db:migrate-accounts-media`: thêm status/session epoch khách, token reset có hash/expiry, audit tài khoản; ảnh/icon/trạng thái/thứ tự danh mục, gallery/chất liệu/thương hiệu sản phẩm và ảnh biến thể. Không đặt lại mật khẩu hay thay ảnh cũ.
+5. `db:migrate-store-settings`: thêm cấu hình/audit có version và snapshot tiền hàng, giảm giá, phí giao (`Decimal(18,0)` nullable), phương thức/nhãn giao, ghi chú vào đơn. Không chuyển cột Float cũ hoặc tính lại đơn cũ.
+6. `prisma generate`: tạo Prisma Client theo schema hiện tại.
 
 Các bước này không thực thi `DROP DATABASE`, không seed và không viết lại giá/tồn/đơn cũ. Tuy vậy, đổi tên bảng ảnh hưởng ứng dụng khác nếu cùng dùng database: phải kiểm tra bản sao lưu và các consumer trước khi áp dụng ở môi trường mới. `db-backups` có thể chứa thông tin khách hàng, phải giữ riêng ngoài Git.
 
@@ -99,11 +101,13 @@ Danh sách sản phẩm/đơn/phiếu nhập dùng `page` (mặc định 1), `pa
 
 ### Checkout và xử lý đơn
 
-Quote/checkout nhận `items: [{ id, variantId, quantity }]`; checkout thêm `shipping: { name, phone, address }`, `paymentMethod: "COD"`, `quoteHash` và `requestKey` (16–64 ký tự chữ/số/`_`/`-`, hoặc header `Idempotency-Key`). Không gửi tổng tiền để backend tin dùng.
+Quote **và** checkout nhận `items: [{ id, variantId, quantity }]`, `shipping: { name, phone, address }`, `shippingMethod: "STANDARD"`, `paymentMethod: "COD"`, tùy chọn `note`. Checkout thêm `quoteHash` và `requestKey` (16–64 ký tự chữ/số/`_`/`-`, hoặc header `Idempotency-Key`). Khách chỉ gửi các dòng giỏ đã chọn; những dòng chưa chọn giữ nguyên. Backend không tin tổng tiền/phí do client gửi.
 
-Backend tự chọn giá biến thể/giá sản phẩm, kiểm tra trạng thái bán và tồn, gộp dòng trùng, tính lại tổng. Tiền hiện là **số nguyên VND an toàn**; từ chối số lẻ/ngoài giới hạn. Cột database còn là `Float`, chuyển sang Decimal cần một đợt migration riêng được rà soát. Hiện giảm giá và phí vận chuyển bằng 0; không tự cộng VAT hoặc tích hợp cổng thanh toán giả.
+Quote trả tiền hàng, phí giao, giảm giá và tổng. Phí STANDARD lấy từ `StoreSettings`, tính **một lần cho toàn checkout**; ngưỡng miễn phí tùy chọn xét tiền hàng. Phí chia vào các đơn theo tỷ lệ tiền hàng bằng phép tính số nguyên và phân bổ phần dư xác định; tổng các đơn bằng tổng đã xác nhận. Quote hash xét dòng hàng/giá, địa chỉ, phương thức, ghi chú, version cài đặt, phí/nhãn giao. Fingerprint request xét đầy đủ nội dung khách gửi; retry trả snapshot đã lưu kể cả cấu hình mới thay đổi hoặc tắt giao hàng. Receipt cũ được hỗ trợ cho STANDARD không ghi chú; nội dung khác bị từ chối.
 
-Trong một transaction, backend khóa khách hàng và sản phẩm theo thứ tự, giữ tồn sản phẩm/biến thể và lưu request đã xử lý. Gửi lại cùng key/nội dung trả các đơn cũ, không trừ tồn lần nữa; tái dùng key với nội dung khác bị từ chối. Nếu giá thay đổi, trả `PRICE_CHANGED` để khách xem quote mới. Giỏ thuộc nhiều kho tạo nhiều đơn trong cùng transaction; tổng các đơn bằng quote.
+Backend tự chọn giá biến thể/giá sản phẩm, kiểm tra trạng thái bán và tồn, gộp dòng trùng, tính lại tổng. Tiền hiện là **số nguyên VND an toàn**; từ chối số lẻ/ngoài giới hạn. Cột database còn là `Float`, chuyển sang Decimal cần một đợt migration riêng được rà soát. Hiện giảm giá bằng 0 và voucher chưa hỗ trợ (`VOUCHER_UNAVAILABLE`); phí giao lấy từ cài đặt, mặc định 0 để giữ hành vi cũ. Không tự cộng VAT hoặc tích hợp cổng thanh toán giả.
+
+Trong một transaction, backend khóa khách hàng và sản phẩm theo thứ tự, giữ tồn sản phẩm/biến thể và lưu request đã xử lý. Gửi lại cùng key/nội dung trả các đơn cũ, không trừ tồn lần nữa; tái dùng key với nội dung khác bị từ chối. Nếu giá, địa chỉ/ghi chú hoặc cấu hình ảnh hưởng quote thay đổi, trả `PRICE_CHANGED` để khách xem và xác nhận tổng mới. Giỏ thuộc nhiều kho tạo nhiều đơn trong cùng transaction; tổng các đơn bằng quote.
 
 Trạng thái: `PENDING → PROCESSING → SHIPPING → DELIVERED`. Staff/admin chỉ được hủy từ `PENDING` hoặc `PROCESSING`; khách chỉ từ `PENDING`. Hủy cần lý do và hoàn tồn một lần. Đơn đã thu tiền phải qua quy trình hoàn tiền riêng, chưa triển khai. Chuyển sang `SHIPPING` cần đơn vị giao và mã vận đơn; `DELIVERED`/`CANCELLED` không quay lại bán/xử lý. Chỉ admin được xác nhận `UNPAID → PAID` cho COD đã giao, kèm căn cứ đối soát. Các thay đổi ghi vào `orderevent`; giao, hủy và thu tiền là ba nghiệp vụ riêng.
 
@@ -120,8 +124,49 @@ npm.cmd run typecheck
 npm.cmd test
 ```
 
-`tests/run-integration.ts` chỉ chấp nhận MySQL local (`localhost`, `127.0.0.1`, `::1`). Runner tạo `fashionhaven_test_<timestamp>_<random>`, dùng `prisma db push` **chỉ trên database mới này**, tạo fixtures tổng hợp và chạy HTTP thật qua `src/app.ts` trên cổng tạm. Database kiểm tra được giữ để đối soát; cần quyền `CREATE DATABASE`.
+`tests/run-integration.ts` chỉ chấp nhận MySQL local (`localhost`, `127.0.0.1`, `::1`). Runner tạo `fashionhaven_test_<timestamp>_<random>`, ghi manifest/lease và marker nguồn sở hữu; `prisma db push` chỉ áp dụng database mới này. HTTP dùng `src/app.ts` trên cổng tạm, fixtures tổng hợp không vào cửa hàng. Runner đóng tiến trình/kết nối và DROP **đúng database của lần chạy** trong `finally`, kể cả setup/test lỗi. Cleanup lỗi được báo riêng và không che mã lỗi test ban đầu.
 
-Runner cũng chạy test chuẩn hóa giỏ hàng và limiter. Test trình duyệt là tùy chọn khi đã cấu hình `PLAYWRIGHT_MODULE` trỏ tới package Playwright đã có; cần Chromium/Edge tương ứng và build/export mới nhất trong `FE/dist`, `admin_web/dist`. Test phục vụ hai bản build thật, chuyển request API tới Express trên cổng tạm và dùng schema MySQL kiểm tra.
+```powershell
+npm.cmd test
+# Giữ riêng một lượt để debug:
+$env:KEEP_TEST_DB='true'
+npm.cmd test
+Remove-Item Env:KEEP_TEST_DB
+# Liệt kê/dry-run, chưa xóa:
+npm.cmd run test:db:list
+npm.cmd run test:db:cleanup -- --dry-run
+# Sau khi kiểm tra từng tên:
+npm.cmd run test:db:cleanup -- --drop fashionhaven_test_TIMESTAMP_RANDOM
+# Database legacy chỉ được dọn sau xác minh fixture đầy đủ:
+npm.cmd run test:db:cleanup -- --drop fashionhaven_test_TIMESTAMP_RANDOM --allow-legacy
+```
 
-Lượt mới nhất đạt 43/43 mục Node: 32 ca HTTP + 4 ca giỏ + 5 ca limiter + 1 ca trình duyệt + nhóm cha. Trình duyệt đã kiểm tra customer đăng nhập/mua biến thể COD/theo dõi trạng thái/vận đơn, admin xử lý/giao/đối soát, tạo sản phẩm hai biến thể (5 + 3 = 8), sửa tồn/giữ ảnh và lập/nhận phiếu nhập. STAFF đăng nhập trên giao diện web hẹp chỉ có menu sản phẩm/đơn và không có nút sửa/tạo. Ca overflow tồn khi hủy và smoke ảnh chính cũng đạt; không suy rằng mọi CRUD/thiết bị native đã nghiệm thu. Kết quả và rủi ro còn lại được ghi trong [COMPLETED_FEATURES.md](../COMPLETED_FEATURES.md).
+Helper bảo vệ DATABASE_URL, database hệ thống, cấu hình consumer khác, connection và runner đang chạy; yêu cầu quyền PROCESS/ALL để thấy đủ connection. Không có wildcard DROP. Tên chứa test hoặc schema rỗng không chứng minh nguồn sở hữu. `--dry-run`/`--list` luôn ưu tiên kể cả có `--drop`. Danh sách 14 database cũ đã xóa và 2 database giữ lại ở [TEST_DATABASE_CLEANUP.md](TEST_DATABASE_CLEANUP.md).
+
+Probe kiểm tra cleanup lỗi, **cố ý trả exit code khác 0**:
+
+```powershell
+node.exe -r ts-node/register tests/run-integration.ts --cleanup-probe=setup-failure
+node.exe -r ts-node/register tests/run-integration.ts --cleanup-probe=test-failure
+```
+
+Runner còn chạy unit test giỏ hàng, limiter, validation CMS/settings và lifecycle. Browser tùy chọn khi `PLAYWRIGHT_MODULE` trỏ tới package Playwright đã cài và có Chromium/Edge; cần build/export mới trong `FE/dist`, `admin_web/dist`. Browser phục vụ hai build thật, nối Express và schema MySQL riêng; không trả API giả. Kết quả chính xác ở [COMPLETED_FEATURES.md](../COMPLETED_FEATURES.md). Chưa nghiệm thu thiết bị native Android/iOS hoặc toàn bộ CRUD cũ.
+
+## Cấp khách demo và khôi phục mật khẩu
+
+Đặt riêng trong `BE/.env`: `NODE_ENV=development`, `ALLOW_DEMO_CUSTOMER=true`, `DEMO_CUSTOMER_EMAIL`, `DEMO_CUSTOMER_PASSWORD`, tùy chọn `DEMO_CUSTOMER_NAME`; chạy `npm.cmd run demo:customer`. Script từ chối production, MySQL ngoài local và database integration test; dùng bcrypt/transaction/namespace/audit, không tự khởi chạy hay reset tài khoản đã tồn tại. Tài khoản nằm trong database phát triển mà FE gọi qua backend. Mật khẩu tối thiểu 8 ký tự, tối đa 72 byte UTF-8. `.env.example` không có credentials. Trên máy này chưa tạo demo mới vì người vận hành chưa cấu hình mật khẩu.
+
+- Khách: POST `/users/forgot-password` `{email}` → 202 generic khi đã cấu hình; POST `/users/reset-password` `{token,newPassword}` → thay mật khẩu, thu hồi session/reset cũ. Token random 32 byte, hash SHA-256 trong database, hiệu lực 15 phút, dùng một lần; lock chống hai lần tiêu thụ đồng thời. Thiếu dịch vụ trả 503 đồng nhất cho email tồn tại/không tồn tại.
+- Local: `NODE_ENV=development`, `RESET_DELIVERY_MODE=file`, `CUSTOMER_WEB_URL=http://localhost:8081`. Liên kết lưu riêng ở `dev-outbox/<hash-database>/<receipt-id>.json`, không log/trả token trong API. Bảo vệ thư mục bằng quyền truy cập máy; không đưa outbox vào storage công khai. Không dùng mode file trong production.
+- Email thật: `RESET_DELIVERY_MODE=resend`, `RESEND_API_KEY`, `RESET_EMAIL_FROM` với sender đã xác minh, `CUSTOMER_WEB_URL=https://...`. Adapter dùng REST của Resend, timeout/idempotency; chưa kiểm tra gửi email thật vì thiếu cấu hình. Gửi lỗi thu hồi token và ghi receipt ID, không lộ email/token.
+- ADMIN: GET `/users?page&pageSize&search&status`, GET `/:id`, GET `/:id/orders`, PUT `/:id/status` `{status,expectedStatus,reason}`, POST `/:id/reset-password` `{newPassword,reason}`. Thao tác reset nhập mật khẩu mới; admin không xem mật khẩu gốc/hash. API profile/tier update yêu cầu lý do; không chấp nhận password inline. Audit lưu actor/thời gian/lý do; ngưng/bật lại không hồi sinh session cũ. Không xóa cứng khách có lịch sử.
+
+## Catalog, CMS, báo cáo và cài đặt
+
+- Categories public chỉ active, sắp thứ tự; ADMIN GET `/categories/internal/list`, POST/PUT `/categories[/:id]` quản lý name/image/icon/isActive/position/attributes. Ẩn danh mục chặn catalog/detail/variants/checkout mới nhưng giữ chứng từ.
+- Products có ordered gallery (tối đa 8, ảnh đầu là ảnh chính), description/material/brand; biến thể có image riêng. Bỏ qua trường ảnh khi chỉ sửa giá/tồn giữ ảnh đã có; null/rỗng khi xóa có chủ đích. Upload thật; lỗi ảnh dùng fallback trung tính, không lấy ảnh khác làm ảnh sản phẩm.
+- GET `/posts?paginated=true&page&pageSize&search&type`, GET `/posts/:id`; ADMIN CRUD payload `title/description/image/type`, validation và giữ ảnh bị bỏ qua. Legacy GET `/posts` còn trả array tối đa 100. Bài viết hiện công khai, **chưa có draft/schedule bài**. GET `/contacts` ADMIN có phân trang/tìm; POST contact validation/ack không echo PII. Inbox chưa có trạng thái xử lý/reply/audit.
+- GET `/settings` public chỉ banner active trong lịch; GET `/settings/internal` ADMIN thêm history; PUT `/settings` ADMIN `{expectedVersion,settings,reason}` CAS version + audit. Cấu hình gồm storeName/contact/policies, STANDARD fee/freeFrom/enabled, tối đa 5 banner image/link/title/subtitle/button/start/end/order. FE Home/Contact/Policies và quote dùng dữ liệu này. Nếu chưa có row: default read-only, phí 0, không tạo địa chỉ/hotline giả hay seed.
+- GET `/reports?from=YYYY-MM-DD&to=YYYY-MM-DD` ADMIN: hai ngày bao gồm, UTC+7, tối đa 366 ngày; mặc định 30 ngày. RepeatableRead aggregate toàn bộ đơn trong kỳ **theo ngày tạo**, trạng thái hiện tại. Giá trị đơn đã giao khác tiền đối soát; gồm phí giao, chưa trừ hoàn trả. Top 20 hàng đã giao, tồn khả dụng catalog đang bán/biến thể active và cảnh báo <=5; tồn là hiện tại, không theo kỳ. Chưa có sổ tiền theo ngày thu; giảm giá/hoàn tiền/đổi trả trả null với giới hạn rõ. CSV frontend escape công thức và UTF-8.
+
+Voucher, hoàn/đổi/hoàn tiền, wishlist/review/notifications, lọc nâng cao, phân quyền kho riêng và ledger thanh toán chưa có luồng hoàn chỉnh; xem bảng nghiệm thu [PLAN.md](../PLAN.md). Không đổi dữ liệu cũ để giả lập tính năng.

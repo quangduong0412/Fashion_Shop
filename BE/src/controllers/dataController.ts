@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
 import prisma from '../db';
+import { readGallery, serializeCategory } from '../services/catalogMedia';
 import { readVariantAttributeDefinitions, serializeVariant } from '../services/productVariants';
 import { deleteOrder } from './orderController';
 import { employeeInclude, employeeResponse, saveEmployee, deactivateEmployee } from '../services/employees';
 import { ApiError, positiveId, sendApiError } from '../services/apiErrors';
+import { contentPage, contactInput, contactResponse, postChanges, postResponse, postTypes } from '../services/content';
 
 export const getAdminData = async (req: Request, res: Response) => {
   try {
@@ -50,14 +52,15 @@ export const getAdminData = async (req: Request, res: Response) => {
       statuses: orderGroups.map(group => ({ status: group.TrangThai, count: group._count._all, total: group._sum.TongTien ?? 0 })) };
     res.json({
       ...(!staff ? { statistics } : {}), fetchedAt: new Date().toISOString(), bootstrapLimit: 100, recentOrdersLimit: 50,
-      access: { role: (req as any).user.role, allowedTabs: staff ? ['orders', 'products'] : ['dashboard', 'products', 'orders', 'customers', 'employees', 'suppliers', 'imports', 'exports', 'posts', 'contacts', 'branches', 'roles', 'reports', 'settings'] },
-      categories: categories.map(c => ({ id: c.MaLoaiHang, name: c.TenLoaiHang, variantAttributes: readVariantAttributeDefinitions(c.ThuocTinhBienThe) })),
+      access: { role: (req as any).user.role, allowedTabs: staff ? ['orders', 'products'] : ['dashboard', 'products', 'categories', 'orders', 'customers', 'employees', 'suppliers', 'imports', 'exports', 'posts', 'contacts', 'branches', 'roles', 'reports', 'settings'] },
+      categories: categories.map(c => ({ ...serializeCategory(c), variantAttributes: readVariantAttributeDefinitions(c.ThuocTinhBienThe) })),
       warehouses: warehouses.map(w => ({ id: w.MaKho, name: w.TenKho })),
       products: products.map(p => ({
         id: p.MaSanPham,
         name: p.TenSanPham,
         price: p.DonGiaBan,
         image: p.Anh,
+        gallery: readGallery(p.Gallery, p.Anh), description: p.GhiChu, material: p.ChatLieu, brand: p.ThuongHieu,
         category: p.loaiHang?.TenLoaiHang || 'fashion',
         categoryId: p.MaLoaiHang,
         categoryName: p.loaiHang?.TenLoaiHang,
@@ -173,66 +176,69 @@ export const getAdminData = async (req: Request, res: Response) => {
 
 export const getPostsData = async (req: Request, res: Response) => {
   try {
-    const posts = await prisma.baiViet.findMany({ orderBy: { NgayTao: 'desc' }, take: 100 });
-    res.json(posts.map(p => ({
-      id: p.MaBaiViet,
-      title: p.TieuDe,
-      description: p.MoTa,
-      image: p.Anh,
-      type: p.TheLoai,
-      date: p.NgayTao.toLocaleDateString('vi-VN')
-    })));
-  } catch (error) {
-    res.status(500).json({ error: 'Failed' });
-  }
+    const { page, pageSize, search } = contentPage(req.query);
+    const type = req.query.type;
+    if (type !== undefined && (typeof type !== 'string' || !(postTypes as readonly string[]).includes(type))) throw new ApiError(400, 'VALIDATION_ERROR', 'Thể loại không hợp lệ.');
+    const where = { ...(search ? { TieuDe: { contains: search } } : {}), ...(type ? { TheLoai: String(type) } : {}) };
+    if (req.query.paginated !== 'true') {
+      const posts = await prisma.baiViet.findMany({ where, orderBy: [{ NgayTao: 'desc' }, { MaBaiViet: 'desc' }], take: 100 });
+      res.json(posts.map(postResponse)); return;
+    }
+    const [posts, total] = await prisma.$transaction([
+      prisma.baiViet.findMany({ where, orderBy: [{ NgayTao: 'desc' }, { MaBaiViet: 'desc' }], skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.baiViet.count({ where })
+    ]);
+    res.json({ items: posts.map(postResponse), page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
+  } catch (error) { sendApiError(res, error); }
+};
+
+export const getPostById = async (req: Request, res: Response) => {
+  try {
+    const post = await prisma.baiViet.findUnique({ where: { MaBaiViet: positiveId(req.params.id, 'Mã bài viết') } });
+    if (!post) throw new ApiError(404, 'POST_NOT_FOUND', 'Bài viết không tồn tại hoặc đã được gỡ.');
+    res.json(postResponse(post));
+  } catch (error) { sendApiError(res, error); }
+};
+
+export const getContacts = async (req: Request, res: Response) => {
+  try {
+    const { page, pageSize, search } = contentPage(req.query);
+    const where = search ? { OR: [{ HoTen: { contains: search } }, { Email: { contains: search } }, { NoiDung: { contains: search } }] } : {};
+    const [contacts, total] = await prisma.$transaction([
+      prisma.lienHe.findMany({ where, orderBy: [{ NgayTao: 'desc' }, { MaLienHe: 'desc' }], skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.lienHe.count({ where })
+    ]);
+    res.json({ items: contacts.map(contactResponse), page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
+  } catch (error) { sendApiError(res, error); }
 };
 
 export const createContact = async (req: Request, res: Response) => {
-    try {
-        const { name, email, message } = req.body;
-        const newContact = await prisma.lienHe.create({
-            data: { HoTen: name, Email: email, NoiDung: message }
-        });
-        res.json(newContact);
-    } catch(err) {
-        res.status(500).json({ error: 'Failed' });
-    }
+  try {
+    const contact = await prisma.lienHe.create({ data: contactInput(req.body) });
+    res.status(201).json({ id: contact.MaLienHe, message: 'Đã tiếp nhận yêu cầu. Cửa hàng sẽ phản hồi qua email bạn cung cấp.' });
+  } catch (error) { sendApiError(res, error); }
 };
 
 export const createPost = async (req: Request, res: Response) => {
-    try {
-        const { title, description, image, type } = req.body;
-        const newPost = await prisma.baiViet.create({
-            data: { TieuDe: title, MoTa: description, Anh: image, TheLoai: type }
-        });
-        res.json(newPost);
-    } catch(err) {
-        res.status(500).json({ error: 'Failed' });
-    }
+  try {
+    const changes = postChanges(req.body);
+    const post = await prisma.baiViet.create({ data: { TieuDe: changes.TieuDe!, MoTa: changes.MoTa!, Anh: changes.Anh!, TheLoai: changes.TheLoai! } });
+    res.status(201).json(postResponse(post));
+  } catch (error) { sendApiError(res, error); }
 };
 
 export const updatePost = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { title, description, image, type } = req.body;
   try {
-    const post = await prisma.baiViet.update({
-      where: { MaBaiViet: Number(id) },
-      data: { TieuDe: title, MoTa: description, Anh: image, TheLoai: type }
-    });
-    res.json(post);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update post' });
-  }
+    const post = await prisma.baiViet.update({ where: { MaBaiViet: positiveId(req.params.id, 'Mã bài viết') }, data: postChanges(req.body, true) });
+    res.json(postResponse(post));
+  } catch (error) { sendApiError(res, error); }
 };
 
 export const deletePost = async (req: Request, res: Response) => {
-  const { id } = req.params;
   try {
-    await prisma.baiViet.delete({ where: { MaBaiViet: Number(id) } });
-    res.json({ message: 'Deleted' });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to delete post' });
-  }
+    await prisma.baiViet.delete({ where: { MaBaiViet: positiveId(req.params.id, 'Mã bài viết') } });
+    res.json({ message: 'Đã gỡ bài viết.' });
+  } catch (error) { sendApiError(res, error); }
 };
 
 export const createSupplier = async (req: Request, res: Response) => {
@@ -274,13 +280,10 @@ export const deleteSupplier = async (req: Request, res: Response) => {
 };
 
 export const deleteContact = async (req: Request, res: Response) => {
-  const { id } = req.params;
   try {
-    await prisma.lienHe.delete({ where: { MaLienHe: Number(id) } });
-    res.json({ message: 'Deleted' });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed' });
-  }
+    await prisma.lienHe.delete({ where: { MaLienHe: positiveId(req.params.id, 'Mã liên hệ') } });
+    res.json({ message: 'Đã xóa liên hệ.' });
+  } catch (error) { sendApiError(res, error); }
 };
 
 // --- NEW CRUD FOR BRANCHES (Chi Nhanh) ---

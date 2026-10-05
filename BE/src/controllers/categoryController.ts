@@ -1,10 +1,32 @@
 import { Request, Response } from 'express';
 import prisma from '../db';
 import { readVariantAttributeDefinitions } from '../services/productVariants';
-import { sendApiError } from '../services/apiErrors';
+import { ApiError, positiveId, textValue, sendApiError } from '../services/apiErrors';
+import { categoryIcons, mediaUrl, serializeCategory } from '../services/catalogMedia';
 export const getCategories = async (_req: Request, res: Response) => {
-  try { res.json((await prisma.loaiHang.findMany({ orderBy: { MaLoaiHang: 'asc' }, take: 100 })).map(category => ({ id: category.MaLoaiHang, name: category.TenLoaiHang }))); }
+  try { res.json((await prisma.loaiHang.findMany({ where: { IsActive: true }, orderBy: [{ Position: 'asc' }, { MaLoaiHang: 'asc' }], take: 100 })).map(category => ({ ...serializeCategory(category), variantAttributes: readVariantAttributeDefinitions(category.ThuocTinhBienThe) }))); }
   catch (error) { sendApiError(res, error); }
+};
+
+export const getInternalCategories = async (_req: Request, res: Response) => {
+  try { res.json((await prisma.loaiHang.findMany({ orderBy: [{ Position: 'asc' }, { MaLoaiHang: 'asc' }], take: 100 })).map(c => ({ ...serializeCategory(c), variantAttributes: readVariantAttributeDefinitions(c.ThuocTinhBienThe) }))); }
+  catch (error) { sendApiError(res, error); }
+};
+export const saveCategory = async (req: Request, res: Response) => {
+  try {
+    const body = req.body ?? {};
+    const id = req.params.id === undefined ? undefined : positiveId(req.params.id);
+    if (body.icon !== undefined && body.icon !== null && !categoryIcons.includes(body.icon)) throw new ApiError(400, 'VALIDATION_ERROR', 'Biểu tượng không hợp lệ.');
+    if (body.isActive !== undefined && typeof body.isActive !== 'boolean') throw new ApiError(400, 'VALIDATION_ERROR', 'Trạng thái danh mục không hợp lệ.');
+    if (body.position !== undefined && (!Number.isSafeInteger(body.position) || body.position < 0 || body.position > 10000)) throw new ApiError(400, 'VALIDATION_ERROR', 'Thứ tự từ 0 đến 10000.');
+    const data = {
+      ...(body.name !== undefined || id === undefined ? { TenLoaiHang: textValue(body.name, 'Tên danh mục', 255) } : {}),
+      ...(body.image !== undefined ? { Anh: mediaUrl(body.image) } : {}), ...(body.icon !== undefined ? { Icon: body.icon } : {}),
+      ...(body.isActive !== undefined ? { IsActive: body.isActive } : {}), ...(body.position !== undefined ? { Position: body.position } : {})
+    };
+    const category = id === undefined ? await prisma.loaiHang.create({ data: { ...data, TenLoaiHang: data.TenLoaiHang! } }) : await prisma.loaiHang.update({ where: { MaLoaiHang: id }, data });
+    res.status(id === undefined ? 201 : 200).json({ ...serializeCategory(category), variantAttributes: readVariantAttributeDefinitions(category.ThuocTinhBienThe) });
+  } catch (error) { sendApiError(res, error); }
 };
 
 export const getCategoryVariantAttributes = async (req: Request, res: Response) => {

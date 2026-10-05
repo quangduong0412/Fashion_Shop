@@ -1,7 +1,7 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, Text, View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
-import { Image } from 'expo-image';
+import { StyleSheet, Text, View, ScrollView, Pressable, ActivityIndicator, useWindowDimensions } from 'react-native';
+import CatalogImage from '../../components/CatalogImage';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ export default function ProductDetailScreen() {
   const productId = Array.isArray(id) ? id[0] : id;
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const goBack = () => router.canGoBack() ? router.back() : router.replace('/explore' as never);
 
   const [retry, setRetry] = useState(0);
@@ -34,6 +35,7 @@ export default function ProductDetailScreen() {
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string | number>>({});
+  const [selectedImage, setSelectedImage] = useState('');
 
   useEffect(() => {
     const request = ++generation.current;
@@ -42,7 +44,7 @@ export default function ProductDetailScreen() {
         const validId = productId && /^\d+$/.test(productId) && Number.isSafeInteger(Number(productId)) && Number(productId) > 0;
         const p = await (validId ? fetchProductById(productId) : Promise.reject(new Error('Mã sản phẩm không hợp lệ.')));
         if (request !== generation.current) return;
-        setProduct(p); setError(''); setCartMessage(''); setUnits(1);
+        setProduct(p); setError(''); setCartMessage(''); setUnits(1); setSelectedImage('');
         const firstVariant = p.variants?.find(variant => variant.quantity > 0 && (!variant.status || variant.status === 'Đang mở bán')) || p.variants?.[0];
         setSelectedVariantId(firstVariant?.id ?? null);
         setSelectedColor(firstVariant?.color || '');
@@ -80,6 +82,11 @@ export default function ProductDetailScreen() {
   const variantStatus = currentVariant?.status || 'Đang mở bán';
   const status = productStatus === 'Đang mở bán' ? variantStatus : productStatus;
   const canPurchase = (!variants.length || !!currentVariant) && quantity > 0 && units <= quantity && productStatus === 'Đang mở bán' && variantStatus === 'Đang mở bán';
+  const gallery = [
+    ...(currentVariant?.image ? [{ url: currentVariant.image, alt: `${product.name} · ${currentVariant.color || currentVariant.sku}` }] : []),
+    ...(product.gallery?.length ? product.gallery : product.image ? [{ url: product.image, alt: product.name }] : []),
+  ].filter((image, index, all) => all.findIndex(other => other.url === image.url) === index);
+  const activeImage = gallery.find(image => image.url === selectedImage) || gallery[0];
   const selectedAttributeSummary = currentVariant
     ? attributeDefinitions.map(definition => {
         const value = getAttributeValue(currentVariant, definition.key);
@@ -90,7 +97,7 @@ export default function ProductDetailScreen() {
   const chooseVariant = (variant: ProductVariant) => {
     setSelectedVariantId(variant.id); setSelectedColor(variant.color || '');
     setSelectedAttributes({ ...variant.attributes, ...(variant.size ? { size: variant.size } : {}) });
-    setUnits(1); setCartMessage('');
+    setUnits(1); setCartMessage(''); setSelectedImage('');
   };
   const chooseColor = (color: string) => {
     const matching = variants.filter(variant => (variant.color || '') === color);
@@ -99,7 +106,7 @@ export default function ProductDetailScreen() {
   };
   const chooseAttribute = (key: string, value: string | number) => {
     setSelectedAttributes(current => ({ ...current, [key]: value }));
-    setSelectedVariantId(null); setUnits(1); setCartMessage('');
+    setSelectedVariantId(null); setUnits(1); setCartMessage(''); setSelectedImage('');
   };
 
   const addSelectedVariantToCart = async (goToCart = false) => {
@@ -112,7 +119,7 @@ export default function ProductDetailScreen() {
       id: product.id,
       name: product.name,
       price,
-      image: product.image,
+      image: currentVariant?.image || product.image,
       category: product.category,
       categoryAttributes: product.categoryAttributes,
       variantId: currentVariant?.id,
@@ -148,15 +155,20 @@ export default function ProductDetailScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <View style={[styles.productBody, width >= 820 && styles.productBodyWide]}>
         {/* Gallery */}
-        <View style={styles.galleryWrapper}>
-          <Image source={product.image} accessibilityLabel={product.name} style={styles.galleryImage} contentFit="cover" />
+        <View style={[styles.gallerySection, width >= 820 && styles.gallerySectionWide]}>
+          <View style={styles.galleryWrapper}>
+            <CatalogImage source={activeImage?.url} label={activeImage?.alt || product.name} style={styles.galleryImage} contentFit="contain" />
+            {!!gallery.length && <View style={styles.galleryCounter}><Text style={styles.galleryCounterText}>{gallery.findIndex(image => image.url === activeImage?.url) + 1}/{gallery.length}</Text></View>}
+          </View>
+          {gallery.length > 1 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbnails}>{gallery.map((image, index) => <Pressable key={image.url} accessibilityRole="button" accessibilityLabel={`Xem ảnh ${index + 1}: ${image.alt || product.name}`} accessibilityState={{ selected: activeImage?.url === image.url }} style={[styles.thumbnail, activeImage?.url === image.url && styles.thumbnailActive]} onPress={() => setSelectedImage(image.url)}><CatalogImage source={image.url} label={image.alt || `${product.name}, ảnh ${index + 1}`} fallbackLabel="" style={styles.thumbnailImage} contentFit="contain" /></Pressable>)}</ScrollView>}
         </View>
 
         {/* Info */}
-        <View style={styles.infoSection}>
+        <View style={[styles.infoSection, width >= 820 && styles.infoSectionWide]}>
           <View style={styles.brandRow}>
-            <Text style={styles.brandText}>{product.category?.toUpperCase() || 'FASHION'}</Text>
+            <Text style={styles.brandText}>{product.brand?.toUpperCase() || product.category?.toUpperCase() || 'FASHION'}</Text>
             <View style={styles.skuBadge}><Text style={styles.skuText}>{currentVariant?.sku ? `SKU: ${currentVariant.sku}` : `Mã SP: ${product.id}`}</Text></View>
           </View>
           <Text style={styles.title}>{product.name}</Text>
@@ -192,11 +204,12 @@ export default function ProductDetailScreen() {
               <View key={definition.key} style={styles.selectorSection}>
                 <Text style={styles.selectorTitle}>{definition.label}{definition.unit ? ` (${definition.unit})` : ''}: <Text style={styles.selectorValue}>{selectedValue ?? 'Chọn'}</Text></Text>
                 <View style={styles.row}>
-                  {options.map(option => (
-                    <Pressable key={String(option)} accessibilityRole="button" accessibilityLabel={`${definition.label}: ${option === '' ? 'Không áp dụng' : option}`} accessibilityState={{ selected: String(selectedValue ?? '') === String(option), disabled: adding }} disabled={adding} style={[styles.btnOutline, String(selectedValue ?? '') === String(option) && styles.btnOutlineActive]} onPress={() => chooseAttribute(definition.key, option)}>
+                  {options.map(option => {
+                    const exists = variants.some(variant => (variant.color || '') === selectedColor && String(getAttributeValue(variant, definition.key) ?? '') === String(option));
+                    return <Pressable key={String(option)} accessibilityRole="button" accessibilityLabel={`${definition.label}: ${option === '' ? 'Không áp dụng' : option}${exists ? '' : ', tổ hợp không có'}`} accessibilityState={{ selected: String(selectedValue ?? '') === String(option), disabled: adding || !exists }} disabled={adding || !exists} style={[styles.btnOutline, String(selectedValue ?? '') === String(option) && styles.btnOutlineActive, !exists && styles.disabled]} onPress={() => chooseAttribute(definition.key, option)}>
                       <Text style={[styles.btnText, String(selectedValue ?? '') === String(option) && styles.btnTextActive]}>{option === '' ? 'Không áp dụng' : option}{option !== '' && definition.unit ? ` ${definition.unit}` : ''}</Text>
-                    </Pressable>
-                  ))}
+                    </Pressable>;
+                  })}
                 </View>
               </View>
             );
@@ -214,11 +227,19 @@ export default function ProductDetailScreen() {
             </View>
             <Text style={styles.stockHint}>Giá và tồn kho được kiểm tra lại khi đặt hàng.</Text>
           </View>
+          <View style={styles.descriptionSection}>
+            <Text style={styles.descriptionTitle}>Thông tin sản phẩm</Text>
+            {!!product.material && <Text style={styles.descriptionText}><Text style={styles.descriptionLabel}>Chất liệu: </Text>{product.material}</Text>}
+            {!!product.brand && <Text style={styles.descriptionText}><Text style={styles.descriptionLabel}>Thương hiệu: </Text>{product.brand}</Text>}
+            <Text style={styles.descriptionText}>{product.description || 'Cửa hàng đang bổ sung mô tả chi tiết. Liên hệ tư vấn nếu bạn cần thông tin trước khi đặt hàng.'}</Text>
+            {observedKeys.has('size') && <View style={styles.sizeHelp}><MaterialIcons name="straighten" size={21} color={Colors.light.secondary} /><Text style={styles.sizeHelpText}>Chọn size theo thông số cửa hàng cung cấp. Nếu chưa rõ kích thước, hãy liên hệ tư vấn trước khi đặt.</Text></View>}
+          </View>
+        </View>
         </View>
       </ScrollView>
 
       {/* Bottom Action Bar */}
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: Math.max(12, insets.bottom) }]}>
         <Pressable accessibilityRole="button" accessibilityLabel="Liên hệ tư vấn" style={styles.chatBtn} onPress={() => router.push('/contact' as never)}>
           <MaterialIcons name="chat-bubble-outline" size={20} color={Colors.light.secondary} />
           <Text style={styles.chatText}>Tư vấn</Text>
@@ -242,11 +263,22 @@ const styles = StyleSheet.create({
   iconBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, fontFamily: 'Inter', fontSize: 16, fontWeight: '600', color: Colors.light.onSurface, marginLeft: 8 },
   scrollContent: { paddingBottom: 100 },
+  productBody: { width: '100%', maxWidth: 1100, alignSelf: 'center' },
+  productBodyWide: { flexDirection: 'row', alignItems: 'flex-start', paddingTop: 20 },
+  gallerySection: { width: '100%' },
+  gallerySectionWide: { width: '48%', paddingHorizontal: 16 },
   galleryWrapper: { position: 'relative', width: '100%', aspectRatio: 3/4, backgroundColor: Colors.light.surfaceContainerLow },
   galleryImage: { width: '100%', height: '100%' },
+  galleryCounter: { position: 'absolute', bottom: 12, right: 12, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5 },
+  galleryCounterText: { fontFamily: 'Inter', fontSize: 11, color: Colors.light.secondary },
+  thumbnails: { gap: 8, padding: 12 },
+  thumbnail: { width: 66, height: 82, borderWidth: 2, borderColor: Colors.light.surfaceContainerHigh, borderRadius: 10, overflow: 'hidden' },
+  thumbnailActive: { borderColor: Colors.light.primary },
+  thumbnailImage: { width: '100%', height: '100%' },
   infoSection: { padding: 16, paddingBottom: 32 },
+  infoSectionWide: { width: '52%', paddingTop: 8 },
   brandRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  brandText: { fontFamily: 'Inter', fontSize: 11, fontWeight: '700', color: Colors.light.primary, letterSpacing: 1 },
+  brandText: { flex: 1, fontFamily: 'Inter', fontSize: 11, fontWeight: '700', color: Colors.light.primary, letterSpacing: 1, marginRight: 8 },
   skuBadge: { backgroundColor: Colors.light.surfaceContainer, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
   skuText: { fontFamily: 'Inter', fontSize: 11, color: Colors.light.onSurfaceVariant },
   title: { fontFamily: 'Playfair Display', fontSize: 24, fontWeight: '600', color: Colors.light.onSurface, lineHeight: 32, marginBottom: 12 },
@@ -275,6 +307,12 @@ const styles = StyleSheet.create({
   units: { fontFamily: 'Inter', fontSize: 16, fontWeight: '600', minWidth: 24, textAlign: 'center', color: Colors.light.onSurface },
   lineTotal: { flex: 1, fontFamily: 'Inter', fontSize: 16, fontWeight: '700', color: Colors.light.primary, textAlign: 'right' },
   stockHint: { color: Colors.light.onSurfaceVariant, fontFamily: 'Inter', fontSize: 12, marginTop: 12 },
+  descriptionSection: { marginTop: 28, borderTopWidth: 1, borderTopColor: Colors.light.surfaceContainerHigh, paddingTop: 20, gap: 10 },
+  descriptionTitle: { fontFamily: 'Inter', fontSize: 16, fontWeight: '600', color: Colors.light.onSurface },
+  descriptionText: { fontFamily: 'Inter', fontSize: 13, lineHeight: 22, color: Colors.light.onSurfaceVariant },
+  descriptionLabel: { fontWeight: '600', color: Colors.light.onSurface },
+  sizeHelp: { marginTop: 8, backgroundColor: Colors.light.surfaceContainerHigh, padding: 14, borderRadius: 12, flexDirection: 'row', gap: 10 },
+  sizeHelpText: { flex: 1, fontFamily: 'Inter', fontSize: 12, lineHeight: 19, color: Colors.light.secondary },
   errorText: { fontFamily: 'Inter', fontSize: 16, color: Colors.light.error, marginBottom: 16 },
   backBtn: { paddingHorizontal: 20, paddingVertical: 10, backgroundColor: Colors.light.primary, borderRadius: 8 },
   backText: { color: Colors.light.onPrimary, fontWeight: '600' }

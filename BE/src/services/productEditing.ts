@@ -1,4 +1,5 @@
 import prisma from '../db';
+import { productMediaChanges } from './catalogMedia';
 import type { Prisma } from '@prisma/client';
 import { normalizeSaleStatus, normalizeVariants, readVariantAttributeDefinitions, VariantValidationError } from './productVariants';
 import { adjustmentReason, recordStockAdjustment, resolveStock, stockConflict, stockNumber } from './inventoryAdjustments';
@@ -57,7 +58,7 @@ export async function saveProductChanges(productId: number, source: ChangeSource
       if (previous && retainedIds.has(previous.MaBienThe)) throw new VariantValidationError('Mã biến thể bị trùng.');
       if (previous) retainedIds.add(previous.MaBienThe);
       const quantity = previous ? resolveStock(previous.SoLuong, variant.SoLuong, input.expectedQuantity, `Biến thể ${index + 1}`) : variant.SoLuong;
-      return { previous, variant: { ...variant, SoLuong: quantity } };
+      return { previous, variant: { ...variant, Anh: variant.Anh === undefined ? previous?.Anh ?? null : variant.Anh, SoLuong: quantity } };
     });
     const removed = normalized === null ? [] : current.bienThes.filter(variant => !retainedIds.has(variant.MaBienThe));
     const identity = (variant: { MauSac: string | null; KichCo: string; ThuocTinh: Record<string, string | number> }) => JSON.stringify([
@@ -97,7 +98,7 @@ export async function saveProductChanges(productId: number, source: ChangeSource
     const reason = hasStockChange ? adjustmentReason(body.inventoryReason) : 'Phân bổ tồn kho theo biến thể';
     const saved = await tx.sanPham.updateMany({
       where: { MaSanPham: productId, SoLuong: current.SoLuong },
-      data: { TenSanPham: name, DonGiaBan: price, DonGiaNhap: purchasePrice, Anh: body.image ?? current.Anh,
+      data: { TenSanPham: name, DonGiaBan: price, DonGiaNhap: purchasePrice, ...productMediaChanges(body, current),
         MaLoaiHang: categoryId, MaKho: warehouseId, MaNCC: supplierId, SoLuong: targetStock, TrangThai: normalizeSaleStatus(body.status ?? current.TrangThai) }
     });
     if (saved.count !== 1) stockConflict();

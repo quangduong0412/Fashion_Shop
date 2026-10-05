@@ -17,7 +17,7 @@ export function normalizeCart(value: unknown): CartItem[] {
     if (!row || typeof row !== 'object' || !Number.isSafeInteger(Number(row.id)) || Number(row.id) <= 0) continue;
     const quantity = Number(row.quantity);
     const item: CartItem = {
-      ...row, id: Number(row.id),
+      ...row, id: Number(row.id), selected: row.selected !== false,
       price: Number.isFinite(Number(row.price)) ? Number(row.price) : 0,
       quantity: Number.isSafeInteger(quantity) && quantity > 0 ? quantity : 1,
       attributes: row.attributes && typeof row.attributes === 'object' && !Array.isArray(row.attributes) ? row.attributes : undefined,

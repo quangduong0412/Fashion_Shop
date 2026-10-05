@@ -1,31 +1,18 @@
-import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
 import { Product, formatPrice } from './fashion-data';
 import { Colors } from '../constants/theme';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useState } from 'react';
+import CatalogImage from './CatalogImage';
 
-export default function ProductCard({ product, onAdd, onPress, style }: { product: Product; onAdd: () => void, onPress?: () => void, style?: any }) {
-  const [isFavorite, setIsFavorite] = useState(false);
-
-  // Default image if not provided
-  const imageUrl = product.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCugn3XY3FkOSHN2WeES-Ap7FYbm7EusG8QbtwRn2xGLjC9Ctwyln7G3btams8-jre1JlAXhdR2l-8s6xLn0sq4BLeMhdaylfMqWkiTnr-N14sMGjUcZ9N0Y6xLy8esl8KDunlSJXmQ7B-FNbdx41zfDTtqGTrqt2wcCiK0PsRakLdbGZjO8py-kG5Gw8N1n-VOHc9LOulCboo7d23SHHVwzRvKMSIULc0wrHSJF3gEKjlAGap5IJajlg';
+export default function ProductCard({ product, onAdd, onPress, style }: { product: Product; onAdd: () => void, onPress?: () => void, style?: StyleProp<ViewStyle> }) {
+  const canPurchase = product.quantity > 0 && (!product.status || product.status === 'Đang mở bán');
   const category = product.category || 'FASHION HEAVEN';
   return (
-    <Pressable style={[styles.card, style]} onPress={onPress}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Xem ${product.name}`} style={[styles.card, style]} onPress={onPress}>
       <View style={styles.imageContainer}>
-        <Image source={imageUrl} style={styles.image} contentFit="cover" />
-        {/* Wishlist Button */}
-        <Pressable
-          style={styles.wishlistBtn}
-          onPress={() => setIsFavorite(!isFavorite)}
-        >
-          <MaterialIcons
-            name={isFavorite ? "favorite" : "favorite-border"}
-            size={18}
-            color={isFavorite ? Colors.light.primary : Colors.light.outline}
-          />
-        </Pressable>
+        <CatalogImage source={product.image} label={product.name} style={styles.image} />
+        {!canPurchase && <View style={styles.stockBadge}><Text style={styles.stockBadgeText}>{product.quantity <= 0 ? 'Hết hàng' : 'Tạm ngừng bán'}</Text></View>}
       </View>
       <View style={styles.body}>
         <View>
@@ -37,7 +24,7 @@ export default function ProductCard({ product, onAdd, onPress, style }: { produc
           <View>
             <Text style={styles.price}>{formatPrice(product.price)}</Text>
           </View>
-          <Pressable style={styles.addBtn} onPress={onAdd} accessibilityLabel={product.variants?.length ? 'Chọn biến thể' : 'Thêm vào giỏ'}>
+          <Pressable accessibilityRole="button" disabled={!canPurchase} accessibilityState={{ disabled: !canPurchase }} style={[styles.addBtn, !canPurchase && styles.disabled]} onPress={event => { event.stopPropagation(); onAdd(); }} accessibilityLabel={`${product.variants?.length ? 'Chọn biến thể' : 'Thêm vào giỏ'} ${product.name}`}>
             <MaterialIcons name={product.variants?.length ? 'tune' : 'add'} size={18} color={Colors.light.onPrimary} />
           </Pressable>
         </View>
@@ -70,17 +57,9 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  wishlistBtn: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(251, 248, 255, 0.8)', // surface/80
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  stockBadge: { position: 'absolute', bottom: 10, left: 10, right: 10, padding: 7, borderRadius: 8, backgroundColor: 'rgba(251,248,255,0.95)' },
+  stockBadgeText: { color: Colors.light.onSurfaceVariant, fontFamily: 'Inter', fontSize: 11, textAlign: 'center' },
+  disabled: { opacity: 0.4 },
   body: {
     padding: 12,
     flex: 1,

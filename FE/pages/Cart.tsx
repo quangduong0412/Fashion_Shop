@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View, ScrollView, Pressable, TextInput } from 'react-native';
-import { Image } from 'expo-image';
+import CatalogImage from '@/components/CatalogImage';
 import { ApiError, apiRequest, CartItem, cartLineKey, clearSession, currentUser, finishCheckoutCart, formatPrice, readCart, saveCart, updateCart } from '@/components/fashion-data';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../constants/theme';
@@ -21,6 +21,8 @@ export default function CartScreen() {
   const [hasPendingRequest, setHasPendingRequest] = useState(false);
   const [shippingAddress, setShippingAddress] = useState({ name: '', phone: '', address: '' });
   const addressEdited = useRef(false);
+  const [note, setNote] = useState('');
+  const selectedCart = cart.filter(item => item.selected !== false);
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -50,43 +52,50 @@ export default function CartScreen() {
       const user = await currentUser();
       if (!active) return;
       setQuote(null);
-      if (!cart.length) { setQuoting(false); return; }
+      const quoteItems = cart.filter(item => item.selected !== false);
+      if (!quoteItems.length) { setQuoting(false); return; }
       setQuoting(true);
       if (!user || user.role !== 'user') { if (active) setNeedsLogin(true); return; }
       if (active) setHasPendingRequest(!!await AsyncStorage.getItem(`checkout_pending_${user.id}`));
-      const next = await apiRequest('/orders/quote', { method: 'POST', body: JSON.stringify({ items: itemsForApi(cart) }) });
+      if (!shippingAddress.name.trim() || !shippingAddress.phone.trim() || !shippingAddress.address.trim()) { setCheckoutError('Nhập đủ địa chỉ để xác nhận tổng thanh toán.'); return; }
+      const next = await apiRequest('/orders/quote', { method: 'POST', body: JSON.stringify({ items: itemsForApi(quoteItems), shipping: shippingAddress, shippingMethod: 'STANDARD', paymentMethod: 'COD', note }) });
       if (active) { setQuote(next); setCheckoutError(''); setNeedsLogin(false); }
     })().catch(cause => {
       if (active) { setCheckoutError(cause instanceof Error ? cause.message : 'Không thể cập nhật giá/tồn kho.'); setNeedsLogin(cause instanceof ApiError && [401, 403].includes(cause.status)); }
     }).finally(() => { if (active) setQuoting(false); });
     return () => { active = false; };
-  }, [cart]);
+  }, [cart, shippingAddress, note]);
 
   const changeQuantity = async (lineKey: string, amount: number) => {
     if (checkoutLock.current) return;
-    const next = await updateCart(items => items.map(item => cartLineKey(item) === lineKey
-      ? { ...item, quantity: Math.max(1, Math.min(item.quantity + amount, item.variantQuantity ?? Number.POSITIVE_INFINITY)) }
-      : item));
-    setQuote(null); setCart(next);
+    try {
+      const next = await updateCart(items => items.map(item => cartLineKey(item) === lineKey
+        ? { ...item, quantity: Math.max(1, Math.min(item.quantity + amount, item.variantQuantity ?? 999, 999)) } : item));
+      setQuote(null); setCart(next);
+    } catch { setCheckoutError('Không thể lưu số lượng. Vui lòng thử lại.'); }
   };
-
   const removeItem = async (lineKey: string) => {
     if (checkoutLock.current) return;
-    const next = await updateCart(items => items.filter(item => cartLineKey(item) !== lineKey));
-    setQuote(null); setCart(next);
+    try { const next = await updateCart(items => items.filter(item => cartLineKey(item) !== lineKey)); setQuote(null); setCart(next); }
+    catch { setCheckoutError('Không thể xóa sản phẩm khỏi giỏ. Vui lòng thử lại.'); }
   };
-
   const clearCart = async () => {
     if (checkoutLock.current) return;
-    setCart([]);
-    await saveCart([]);
+    try { await saveCart([]); setQuote(null); setCart([]); }
+    catch { setCheckoutError('Không thể xóa giỏ hàng. Vui lòng thử lại.'); }
   };
 
-  const subtotal = quote?.subtotal ?? cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const toggleSelection = async (lineKey?: string) => {
+    if (checkoutLock.current) return;
+    const allSelected = cart.every(item => item.selected !== false);
+    try { const next = await updateCart(items => items.map(item => !lineKey || cartLineKey(item) === lineKey ? { ...item, selected: lineKey ? item.selected === false : !allSelected } : item)); setQuote(null); setCart(next); }
+    catch { setCheckoutError('Không thể lưu lựa chọn. Vui lòng thử lại.'); }
+  };
+  const subtotal = quote?.subtotal ?? selectedCart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const total = quote?.total ?? subtotal;
 
   const checkout = async () => {
-    if (checkoutLock.current || (cart.length === 0 && !hasPendingRequest)) return;
+    if (checkoutLock.current || (selectedCart.length === 0 && !hasPendingRequest)) return;
     checkoutLock.current = true;
     setIsCheckingOut(true);
     setCheckoutError('');
@@ -115,7 +124,7 @@ export default function CartScreen() {
         }
 
         if (!quote || quoting) { setCheckoutError('Cần cập nhật tổng tiền từ cửa hàng trước khi đặt.'); return; }
-        pending = { cart, payload: { paymentMethod: 'COD', shipping: shippingAddress, items: itemsForApi(cart), quoteHash: quote.quoteHash,
+        pending = { cart: selectedCart, payload: { paymentMethod: 'COD', shipping: shippingAddress, shippingMethod: 'STANDARD', note, items: itemsForApi(selectedCart), quoteHash: quote.quoteHash,
           requestKey: `checkout_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}` } };
         await AsyncStorage.setItem(storageKey, JSON.stringify(pending));
       }
@@ -126,7 +135,7 @@ export default function CartScreen() {
         // A timeout/server failure is ambiguous: preserve the same request for replay.
         if (cause instanceof ApiError && [400, 409, 422].includes(cause.status)) {
           await AsyncStorage.removeItem(storageKey); setHasPendingRequest(false);
-          const updatedQuote = await apiRequest('/orders/quote', { method: 'POST', body: JSON.stringify({ items: itemsForApi(cart) }) }).catch(() => null);
+          const updatedQuote = await apiRequest('/orders/quote', { method: 'POST', body: JSON.stringify({ items: itemsForApi(selectedCart), shipping: shippingAddress, shippingMethod: 'STANDARD', paymentMethod: 'COD', note }) }).catch(() => null);
           setQuote(updatedQuote);
         }
         throw cause;
@@ -164,13 +173,15 @@ export default function CartScreen() {
         ) : (
           <>
             <View style={styles.actionRow}>
+              <Pressable accessibilityRole="checkbox" aria-checked={cart.every(item => item.selected !== false)} accessibilityState={{ checked: cart.every(item => item.selected !== false), disabled: isCheckingOut }} disabled={isCheckingOut} accessibilityLabel="Chọn tất cả sản phẩm" onPress={() => void toggleSelection()} style={styles.clearBtn}><MaterialIcons name={cart.every(item => item.selected !== false) ? 'check-box' : 'check-box-outline-blank'} size={24} color={Colors.light.primary} /><Text style={styles.clearBtnText}>Chọn tất cả</Text></Pressable>
               <Pressable style={styles.clearBtn} onPress={clearCart}>
                 <MaterialIcons name="delete-sweep" size={18} color={Colors.light.onSurfaceVariant} />
                 <Text style={styles.clearBtnText}>Xóa tất cả</Text>
               </Pressable>
             </View>
 
-            <View style={styles.card}><Text style={styles.summaryLabel}>Thanh toán khi nhận hàng (COD). Cửa hàng hiện chưa thu phí vận chuyển qua checkout.</Text>
+            <View style={styles.card}><Text style={styles.summaryLabel}>Thanh toán khi nhận hàng (COD). Phí giao hàng được cửa hàng tính lại trước khi xác nhận.</Text>
+              {quote?.shippingLabel && <Text style={styles.summaryLabel}>Phương thức: {quote.shippingLabel}</Text>}
               {quote?.warehouseCount > 1 && <Text style={styles.summaryLabel}>Giỏ được tách thành {quote.warehouseCount} đơn theo kho; tổng tiền giữ nguyên.</Text>}
               {hasPendingRequest && <Text style={styles.checkoutError}>Có yêu cầu chưa nhận được kết quả. Hãy kiểm tra lại bằng nút bên dưới trước khi đặt thêm.</Text>}
             </View>
@@ -179,8 +190,9 @@ export default function CartScreen() {
             <View style={styles.itemsContainer}>
               {cart.map(item => (
                   <View style={styles.cartItem} key={cartLineKey(item)}>
+                  <View><Pressable accessibilityRole="checkbox" aria-checked={item.selected !== false} accessibilityState={{ checked: item.selected !== false, disabled: isCheckingOut }} disabled={isCheckingOut} accessibilityLabel={`Thanh toán ${item.name} ${item.size || ''} ${item.color || ''}`} onPress={() => void toggleSelection(cartLineKey(item))} style={{ padding: 4 }}><MaterialIcons name={item.selected !== false ? 'check-box' : 'check-box-outline-blank'} size={28} color={Colors.light.primary} /></Pressable></View>
                   <View style={styles.itemImageWrapper}>
-                    <Image source={item.image} style={styles.itemImage} contentFit="cover" />
+                    <CatalogImage source={item.image} label={item.name} style={styles.itemImage} contentFit="cover" />
                   </View>
                   <View style={styles.itemInfo}>
                     <View>
@@ -234,21 +246,24 @@ export default function CartScreen() {
               <Text style={styles.summaryLabel}>Thanh toán khi nhận hàng</Text>
             </View>
 
+            <View style={styles.card}><Text style={styles.cardTitle}>Ghi chú giao hàng</Text><TextInput accessibilityLabel="Ghi chú đơn hàng" placeholder="Hướng dẫn giao hàng (không bắt buộc)" value={note} editable={!isCheckingOut} onChangeText={setNote} maxLength={500} multiline style={styles.shippingInput} /></View>
             {/* Summary */}
             <View style={[styles.card, { marginBottom: 0 }]}>
               <Text style={styles.summaryTitle}>Chi tiết đơn hàng</Text>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Tạm tính ({cart.length} sản phẩm)</Text>
+                <Text style={styles.summaryLabel}>Tiền hàng ({selectedCart.length} dòng đã chọn)</Text>
                 <Text style={styles.summaryValue}>{formatPrice(subtotal)}</Text>
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Phí vận chuyển</Text>
-                <Text style={styles.summaryValueRed}>Miễn phí</Text>
+                <Text style={styles.summaryValueRed}>{quote ? formatPrice(quote.shippingFee) : 'Chưa xác nhận'}</Text>
               </View>
+              <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Giảm giá</Text><Text style={styles.summaryValue}>{formatPrice(quote?.discount ?? 0)}</Text></View>
+              <Text style={styles.summaryLabel}>Tiền hàng + phí vận chuyển − giảm giá = tổng thanh toán</Text>
               <View style={styles.totalBox}>
                 <View>
                   <Text style={styles.totalLabel}>Tổng thanh toán</Text>
-                  <Text style={styles.totalDesc}>{quote ? 'Giá được xác nhận từ cửa hàng' : 'Giá tạm tính, cần xác nhận'}</Text>
+                  <Text style={styles.totalDesc}>{quote ? 'Tổng từ cửa hàng; các dòng chưa chọn được giữ lại' : 'Giá tạm tính, cần xác nhận địa chỉ'}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={styles.totalAmount}>{formatPrice(total)}</Text>
@@ -273,7 +288,7 @@ export default function CartScreen() {
               <Text style={styles.loginButtonText}>Đăng nhập tài khoản khách hàng</Text>
             </Pressable>
           )}
-          <Pressable accessibilityRole="button" accessibilityLabel="Đặt hàng ngay" style={[styles.checkoutBtn, isCheckingOut && styles.checkoutBtnDisabled]} onPress={checkout} disabled={isCheckingOut || (quoting && !hasPendingRequest)}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Đặt hàng ngay" style={[styles.checkoutBtn, (isCheckingOut || (!hasPendingRequest && (quoting || (!quote && !needsLogin) || !selectedCart.length))) && styles.checkoutBtnDisabled]} onPress={checkout} disabled={isCheckingOut || (!hasPendingRequest && (quoting || (!quote && !needsLogin) || !selectedCart.length))}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               {isCheckingOut ? <ActivityIndicator size="small" color={Colors.light.onPrimary} /> : <MaterialIcons name="lock" size={20} color={Colors.light.onPrimary} />}
               <Text style={styles.checkoutBtnText}>{isCheckingOut ? 'Đang kiểm tra đơn...' : hasPendingRequest ? 'Kiểm tra yêu cầu đặt hàng' : quoting ? 'Đang cập nhật giá...' : 'Đặt hàng COD'}</Text>
@@ -299,7 +314,7 @@ const styles = StyleSheet.create({
   loginButton: { paddingVertical: 10, marginBottom: 8 },
   loginButtonText: { color: Colors.light.primary, fontFamily: 'Inter', fontWeight: '600', textDecorationLine: 'underline' },
 
-  actionRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 },
+  actionRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   clearBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8 },
   clearBtnText: { fontFamily: 'Inter', fontSize: 12, color: Colors.light.onSurfaceVariant },
 

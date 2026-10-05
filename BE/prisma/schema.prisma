@@ -7,6 +7,47 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model PasswordReset {
+  Id                Int       @id @default(autoincrement())
+  CustomerId        Int
+  TokenHash         String    @unique @db.VarChar(64)
+  CredentialVersion String    @db.VarChar(64)
+  ExpiresAt         DateTime   @db.DateTime(3)
+  UsedAt            DateTime?  @db.DateTime(3)
+  CreatedAt         DateTime   @default(now()) @db.DateTime(3)
+  @@index([CustomerId, CreatedAt])
+  @@map("passwordreset")
+}
+
+model CustomerAudit {
+  Id         Int      @id @default(autoincrement())
+  CustomerId Int
+  ActorId    Int
+  ActorRole  String   @db.VarChar(20)
+  Action     String   @db.VarChar(50)
+  Note       String   @db.VarChar(500)
+  CreatedAt  DateTime @default(now()) @db.DateTime(3)
+  @@index([CustomerId, Id])
+  @@map("customeraudit")
+}
+
+model StoreSettings {
+  Id        Int      @id
+  Value     Json
+  Version   Int      @default(1)
+  UpdatedAt DateTime @updatedAt @db.DateTime(3)
+  @@map("storesettings")
+}
+
+model SettingsAudit {
+  Id        Int      @id @default(autoincrement())
+  Version   Int
+  ActorId   Int
+  Note      String   @db.VarChar(500)
+  CreatedAt DateTime @default(now()) @db.DateTime(3)
+  @@map("settingsaudit")
+}
+
 model ChucVu {
   MaChucVu  Int        @id @default(autoincrement())
   TenChucVu String     @db.VarChar(255)
@@ -63,6 +104,8 @@ model KhachHang {
   DiaChi        String?     @db.Text
   DienThoai     String?     @db.VarChar(50)
   HangThanhVien String?     @db.VarChar(100)
+  Status        String      @default("ACTIVE") @db.VarChar(20)
+  SessionEpoch  Int         @default(0)
   phieuXuats    PhieuXuat[]
 
   @@map("khachhang")
@@ -72,6 +115,10 @@ model LoaiHang {
   MaLoaiHang       Int       @id @default(autoincrement())
   TenLoaiHang      String    @db.VarChar(255)
   ThuocTinhBienThe Json?
+  Anh              String?   @db.Text
+  Icon             String?   @db.VarChar(30)
+  IsActive         Boolean   @default(true)
+  Position         Int       @default(0)
   sanPhams         SanPham[]
 
   @@map("loaihang")
@@ -108,6 +155,9 @@ model SanPham {
   DonGiaBan       Float
   Anh             String?          @db.Text
   GhiChu          String?          @db.Text
+  Gallery         Json?
+  ChatLieu        String?          @db.VarChar(255)
+  ThuongHieu      String?          @db.VarChar(255)
   MaKho           Int
   MaNCC           Int
   TrangThai       String           @default("Đang mở bán") @db.VarChar(50)
@@ -131,6 +181,7 @@ model BienTheSanPham {
   KichCo     String  @db.VarChar(10)
   MauSac     String? @db.VarChar(50)
   ThuocTinh  Json?
+  Anh        String? @db.Text
   DonGia     Float?
   SoLuong    Int     @default(0)
   TrangThai  String  @default("Đang mở bán") @db.VarChar(50)
@@ -213,6 +264,12 @@ model PhieuXuat {
   NgayXuat     DateTime      @default(now())
   MaKhachHang  Int
   TongTien             Float
+  TienHang             Decimal? @db.Decimal(18, 0)
+  GiamGiaDon           Decimal? @db.Decimal(18, 0)
+  PhiGiaoHang          Decimal? @db.Decimal(18, 0)
+  ShippingMethod       String? @db.VarChar(30)
+  ShippingLabel        String? @db.VarChar(100)
+  GhiChuDonHang        String? @db.VarChar(500)
   MaKho                Int
   TrangThai            String        @default("PENDING") @db.VarChar(50)
   PhuongThucThanhToan  String?       @db.VarChar(50)

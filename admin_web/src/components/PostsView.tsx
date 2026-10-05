@@ -1,210 +1,76 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { apiRequest } from '../api';
+import { imageInputError } from '../catalogMedia';
+import MediaGalleryEditor, { MediaPreview } from './MediaGalleryEditor';
 import Icon from './Icon';
-import { useState } from 'react';
 
-interface PostsViewProps {
-  posts: any[];
-  onSave: (post: any) => void;
-  onDelete: (id: any) => void;
-}
+type Post = { id: number; title: string; description: string; type: string; image: string; date: string };
+type PostInput = { id?: number; title: string; description: string; type?: string; image?: string };
+interface PostsViewProps { posts?: unknown[]; onSave: (post: PostInput) => Promise<void>; onDelete: (id: number) => Promise<void> }
+const types = ['Tin tức', 'Khuyến mãi', 'Sự kiện'];
+const blank = { title: '', description: '', type: 'Tin tức', image: '' };
 
-export default function PostsView({ posts, onSave, onDelete }: PostsViewProps) {
-  const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState('all');
-  const [showModal, setShowModal] = useState(false);
-  const [editPost, setEditPost] = useState<any>(null);
-
-  const [formData, setFormData] = useState({
-    title: '', description: '', type: 'Tin tức', image: ''
-  });
-
-  const filtered = posts.filter(p => {
-    const matchSearch = (p.title || p.TieuDe || '').toLowerCase().includes(search.toLowerCase());
-    const matchType = filterType === 'all' || (p.type || p.TheLoai) === filterType;
-    return matchSearch && matchType;
-  });
-
-  const openModal = (post?: any) => {
-    if (post) {
-      setEditPost(post);
-      setFormData({
-        title: post.title || post.TieuDe || '',
-        description: post.description || post.MoTa || '',
-        type: post.type || post.TheLoai || 'Tin tức',
-        image: post.image || post.Anh || ''
-      });
-    } else {
-      setEditPost(null);
-      setFormData({ title: '', description: '', type: 'Tin tức', image: '' });
-    }
-    setShowModal(true);
+export default function PostsView({ onSave, onDelete }: PostsViewProps) {
+  const [search, setSearch] = useState(''), [filterType, setFilterType] = useState(''), [page, setPage] = useState(1);
+  const [items, setItems] = useState<Post[]>([]), [total, setTotal] = useState(0), [pages, setPages] = useState(1), [loading, setLoading] = useState(true);
+  const [error, setError] = useState(''), [notice, setNotice] = useState(''), [modal, setModal] = useState(false), [editing, setEditing] = useState<Post | null>(null);
+  const [form, setForm] = useState(blank), [formError, setFormError] = useState(''), [saving, setSaving] = useState(false), [uploading, setUploading] = useState(false), [deleting, setDeleting] = useState<number | null>(null);
+  const generation = useRef(0), savingRef = useRef(false);
+  const load = useCallback(async () => {
+    const current = ++generation.current; setLoading(true); setError('');
+    try {
+      const query = new URLSearchParams({ paginated: 'true', page: String(page), pageSize: '20', ...(search.trim() ? { search: search.trim() } : {}), ...(filterType ? { type: filterType } : {}) });
+      const result = await apiRequest(`/posts?${query}`);
+      if (current !== generation.current) return;
+      if (page > result.totalPages) { setPage(result.totalPages); return; }
+      setItems(result.items); setTotal(result.total); setPages(result.totalPages);
+    } catch (cause) { if (current === generation.current) setError(cause instanceof Error ? cause.message : 'Không thể tải bài viết.'); }
+    finally { if (current === generation.current) setLoading(false); }
+  }, [page, search, filterType]);
+  const invalidate = useCallback(() => { generation.current++; }, []);
+  useEffect(() => { let active = true; queueMicrotask(() => { if (active) void load(); }); return () => { active = false; invalidate(); }; }, [load, invalidate]);
+  const open = (post: Post | null = null) => { setEditing(post); setForm(post ? { title: post.title, description: post.description, type: post.type, image: post.image } : blank); setFormError(''); setModal(true); };
+  const save = async () => {
+    if (savingRef.current || uploading) return;
+    if (!form.title.trim() || !form.description.trim()) { setFormError('Nhập tiêu đề và nội dung bài viết.'); return; }
+    const imageChanged = !editing || form.image !== editing.image;
+    const invalidImage = imageChanged ? imageInputError(form.image) : '';
+    if (invalidImage || (imageChanged && /^http:/i.test(form.image))) { setFormError(invalidImage || 'Ảnh bên ngoài cần URL HTTPS.'); return; }
+    savingRef.current = true; setSaving(true); setFormError('');
+    try {
+      await onSave({ ...(editing ? { id: editing.id } : {}), title: form.title.trim(), description: form.description.trim(), ...(!editing || form.type !== editing.type ? { type: form.type } : {}), ...(imageChanged ? { image: form.image.trim() } : {}) });
+      setModal(false); setNotice(editing ? 'Đã cập nhật bài viết.' : 'Đã tạo bài viết. Nội dung đang hiển thị trong ứng dụng khách hàng.'); await load();
+    } catch (cause) { setFormError(cause instanceof Error ? cause.message : 'Không thể lưu bài viết. Dữ liệu nhập được giữ lại.'); }
+    finally { savingRef.current = false; setSaving(false); }
   };
-
-  const handleSave = () => {
-    const payload = {
-      id: editPost?.id || editPost?.MaBaiViet,
-      TieuDe: formData.title,
-      MoTa: formData.description,
-      TheLoai: formData.type,
-      Anh: formData.image
-    };
-    onSave(payload);
-    setShowModal(false);
+  const remove = async (post: Post) => {
+    if (deleting !== null || !window.confirm(`Gỡ bài viết “${post.title}” khỏi ứng dụng?`)) return;
+    setDeleting(post.id); setError('');
+    try { await onDelete(post.id); setNotice('Đã gỡ bài viết.'); await load(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Không thể gỡ bài viết.'); }
+    finally { setDeleting(null); }
   };
-
-  return (
-    <div className="flex flex-col w-full pb-10">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-800 font-serif mb-1">Bài viết & Nội dung</h1>
-          <p className="text-sm text-gray-500">Quản lý bài viết, tin tức và nội dung truyền thông.</p>
-        </div>
-        <button onClick={() => openModal()} className="flex items-center gap-2 px-5 py-2.5 bg-red-700 text-white rounded-xl text-sm font-bold shadow-md hover:bg-red-800 transition-all">
-          <Icon name="add" className="text-base" />
-          Thêm Bài viết
-        </button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {[
-          { label: 'Tổng bài viết', value: posts.length, icon: 'article', color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'Tin tức', value: posts.filter(p => (p.type || p.TheLoai) === 'Tin tức').length, icon: 'newspaper', color: 'text-green-600', bg: 'bg-green-50' },
-          { label: 'Khuyến mãi', value: posts.filter(p => (p.type || p.TheLoai) === 'Khuyến mãi').length, icon: 'local_offer', color: 'text-orange-600', bg: 'bg-orange-50' },
-          { label: 'Sự kiện', value: posts.filter(p => (p.type || p.TheLoai) === 'Sự kiện').length, icon: 'event', color: 'text-purple-600', bg: 'bg-purple-50' },
-        ].map((c, i) => (
-          <div key={i} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-            <div className="flex items-start justify-between mb-3">
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{c.label}</span>
-              <div className={`w-9 h-9 rounded-xl ${c.bg} flex items-center justify-center ${c.color}`}>
-                <Icon name={c.icon} className="text-xl" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold text-gray-800">{c.value}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4 mb-4 flex flex-col md:flex-row gap-3 items-center">
-        <div className="relative w-full md:w-96">
-          <Icon name="search" className="absolute left-3.5 top-2.5 text-gray-400 text-xl" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full pl-11 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-red-400"
-            placeholder="Tìm theo tiêu đề bài viết..." />
-        </div>
-        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="px-3 py-1.5 bg-gray-100 rounded-full text-gray-600 text-xs font-semibold focus:outline-none cursor-pointer">
-          <option value="all">Tất cả Thể loại</option>
-          <option value="Tin tức">Tin tức</option>
-          <option value="Khuyến mãi">Khuyến mãi</option>
-          <option value="Sự kiện">Sự kiện</option>
-        </select>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-gray-50 text-gray-400 text-xs font-bold uppercase tracking-wider border-b border-gray-100">
-              <tr>
-                <th className="py-4 px-5">Bài viết</th>
-                <th className="py-4 px-5">Thể loại</th>
-                <th className="py-4 px-5">Ngày đăng</th>
-                <th className="py-4 px-5 text-right">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="text-gray-800 divide-y divide-gray-50">
-              {filtered.map((p, idx) => (
-                <tr key={idx} className="hover:bg-red-50/20 transition-colors group">
-                  <td className="py-4 px-5">
-                    <div className="flex items-center gap-3">
-                      <div className="w-20 h-14 rounded-xl bg-gray-100 overflow-hidden border border-gray-200">
-                        <img src={"http://localhost:4000" + (p.image || p.Anh || '')} onError={e => { e.currentTarget.src = 'https://placehold.co/200x140/f3f4f6/9ca3af?text=Post'; }} alt={p.title || p.TieuDe} className="w-full h-full object-cover" />
-                      </div>
-                      <div className="max-w-md">
-                        <div className="font-bold text-gray-800">{p.title || p.TieuDe}</div>
-                        <div className="text-xs text-gray-500 mt-1 line-clamp-2">{p.description || p.MoTa}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-5">
-                    <span className="text-xs font-semibold text-gray-600 bg-gray-100 px-2.5 py-1 rounded-full">{p.type || p.TheLoai}</span>
-                  </td>
-                  <td className="py-4 px-5 text-gray-500 text-sm">
-                    {p.date ? new Date(p.date).toLocaleDateString('vi-VN') : new Date(p.NgayTao).toLocaleDateString('vi-VN')}
-                  </td>
-                  <td className="py-4 px-5 text-right">
-                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => openModal(p)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
-                        <Icon name="edit_square" className="text-xl" />
-                      </button>
-                      <button onClick={() => onDelete(p.id || p.MaBaiViet)} className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600">
-                        <Icon name="delete" className="text-xl" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan={4} className="py-12 text-center text-gray-400">
-                  <Icon name="article" className="text-5xl block mb-2 opacity-30" />
-                  Không tìm thấy bài viết nào.
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-800">{editPost ? 'Chỉnh sửa Bài viết' : 'Thêm Bài viết mới'}</h2>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-gray-100 rounded-lg">
-                <Icon name="close" className="text-gray-400" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">Tiêu đề</label>
-                <input value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-red-400" />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">Mô tả</label>
-                <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}
-                  rows={4} className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-red-400"></textarea>
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">Thể loại</label>
-                <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-red-400">
-                  <option value="Tin tức">Tin tức</option>
-                  <option value="Khuyến mãi">Khuyến mãi</option>
-                  <option value="Sự kiện">Sự kiện</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">URL Ảnh</label>
-                <input value={formData.image} onChange={e => setFormData({...formData, image: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-red-400"
-                  placeholder="/images/post.jpg" />
-              </div>
-            </div>
-            <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex gap-3 justify-end border-t border-gray-100">
-              <button onClick={() => setShowModal(false)} className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                Hủy
-              </button>
-              <button onClick={handleSave} className="px-4 py-2 bg-red-700 text-white rounded-lg text-sm font-bold hover:bg-red-800">
-                {editPost ? 'Cập nhật' : 'Thêm mới'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+  return <section className="space-y-5 pb-8">
+    <header className="flex flex-wrap justify-between items-start gap-4"><div><h1 className="text-3xl font-bold font-serif">Bài viết & nội dung</h1><p className="mt-2 text-sm text-gray-500">Tin tức, cảm hứng thời trang và thông tin khuyến mãi trong ứng dụng.</p></div><button onClick={() => open()} className="bg-red-700 text-white rounded-xl px-5 py-3 font-semibold flex gap-2 items-center"><Icon name="add" />Thêm bài viết</button></header>
+    {notice && <p role="status" className="p-3 border border-green-200 bg-green-50 text-green-800 rounded-xl text-sm">{notice}</p>}
+    <div className="p-4 rounded-xl bg-white border flex flex-col sm:flex-row gap-3"><label className="flex-1 text-sm font-semibold">Tìm bài viết<input aria-label="Tìm bài viết" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Tiêu đề bài viết" className="block w-full border rounded-lg p-2 mt-1 font-normal" /></label><label className="text-sm font-semibold">Thể loại<select value={filterType} onChange={event => { setFilterType(event.target.value); setPage(1); }} className="block border rounded-lg p-2 mt-1 bg-white min-w-40"><option value="">Tất cả thể loại</option>{types.map(type => <option key={type}>{type}</option>)}</select></label></div>
+    {error && <div role="alert" className="p-4 bg-red-50 text-red-700 rounded-xl">{error}<button onClick={() => void load()} className="ml-3 underline">Thử lại</button></div>}
+    <div className="bg-white border rounded-2xl overflow-hidden"><p className="p-4 border-b text-sm text-gray-500">{loading ? 'Đang tải bài viết…' : `${total} bài viết phù hợp · Trang ${page}/${pages}`}</p>
+      {!loading && !error && !items.length ? <p className="p-10 text-center text-gray-500">Chưa có bài viết phù hợp. Thêm nội dung mới hoặc đổi bộ lọc.</p> : <div className="divide-y">{items.map(post => <article key={post.id} className="p-4 flex flex-col sm:flex-row gap-4">
+        <MediaPreview image={post.image} alt={post.title} className="h-24 w-32 shrink-0" /><div className="flex-1 min-w-0"><p className="text-xs text-red-700 font-semibold">{post.type} · {new Date(post.date).toLocaleDateString('vi-VN')}</p><h2 className="font-bold text-lg mt-1 break-words">{post.title}</h2><p className="text-sm text-gray-500 mt-1 line-clamp-2 whitespace-pre-wrap break-words">{post.description}</p></div>
+        <div className="flex gap-2 self-start"><button aria-label={`Sửa ${post.title}`} onClick={() => open(post)} className="border rounded-lg px-3 py-2 text-sm font-semibold">Sửa</button><button disabled={deleting !== null} aria-label={`Gỡ ${post.title}`} onClick={() => void remove(post)} className="border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm disabled:opacity-50">{deleting === post.id ? 'Đang gỡ…' : 'Gỡ'}</button></div>
+      </article>)}</div>}
+      <footer className="p-4 border-t flex justify-between items-center gap-3"><button disabled={loading || page === 1} onClick={() => setPage(page - 1)} className="border rounded-lg p-2 text-sm disabled:opacity-40">← Trước</button><span className="text-sm">Trang {page}/{pages}</span><button disabled={loading || page >= pages} onClick={() => setPage(page + 1)} className="border rounded-lg p-2 text-sm disabled:opacity-40">Tiếp →</button></footer>
     </div>
-  );
+    {modal && <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-center p-4"><div role="dialog" aria-modal="true" aria-labelledby="post-editor-title" className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5 sm:p-7 space-y-4">
+      <h2 id="post-editor-title" className="font-bold text-2xl">{editing ? 'Chỉnh sửa bài viết' : 'Thêm bài viết'}</h2>
+      <p className="text-sm text-gray-500">Bài viết đã lưu được công khai ngay. Chỉ lưu nội dung đã sẵn sàng xuất bản.</p>
+      {formError && <p role="alert" className="text-sm text-red-700 bg-red-50 p-3 rounded-lg">{formError}</p>}
+      <label className="block font-semibold text-sm">Tiêu đề<input disabled={saving} maxLength={255} value={form.title} onChange={event => setForm({ ...form, title: event.target.value })} className="block mt-1 border rounded-lg p-3 w-full font-normal" /></label>
+      <label className="block font-semibold text-sm">Nội dung<textarea disabled={saving} rows={9} maxLength={12000} value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} className="block mt-1 border rounded-lg p-3 w-full font-normal" /></label>
+      <label className="block font-semibold text-sm">Thể loại<select disabled={saving} value={form.type} onChange={event => setForm({ ...form, type: event.target.value })} className="block mt-1 border rounded-lg p-3 w-full bg-white font-normal">{!types.includes(form.type) && <option>{form.type}</option>}{types.map(type => <option key={type}>{type}</option>)}</select></label>
+      <MediaGalleryEditor value={form.image ? [{ url: form.image }] : []} max={1} showAlt={false} primaryLabel="Ảnh bài viết" onBusyChange={setUploading} onChange={images => setForm(current => ({ ...current, image: images[0]?.url || '' }))} />
+      <footer className="flex justify-end gap-3 pt-3 border-t"><button disabled={saving || uploading} onClick={() => setModal(false)} className="border rounded-lg px-4 py-3 disabled:opacity-40">Hủy</button><button disabled={saving || uploading} onClick={() => void save()} className="bg-red-700 text-white font-semibold rounded-lg px-5 py-3 disabled:opacity-40">{saving ? 'Đang lưu…' : uploading ? 'Đang tải ảnh…' : 'Lưu bài viết'}</button></footer>
+    </div></div>}
+  </section>;
 }
-

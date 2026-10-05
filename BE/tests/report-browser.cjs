@@ -1,0 +1,31 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+
+exports.runReportBrowser = async ({ admin, directory }) => {
+  console.log('Browser: report date filters, real CSV and mobile layout');
+  await admin.setViewportSize({ width: 1440, height: 1000 });
+  await admin.getByRole('button', { name: /Báo cáo/, exact: false }).click();
+  await admin.getByRole('heading', { name: 'Báo cáo bán hàng & tồn kho', exact: true }).waitFor();
+  await admin.getByText('Định nghĩa chỉ số & giới hạn báo cáo', { exact: true }).waitFor();
+  await admin.getByLabel('Từ ngày', { exact: true }).fill('2020-01-01');
+  await admin.getByLabel('Đến ngày', { exact: true }).fill('2020-01-01');
+  await admin.getByRole('button', { name: 'Xem báo cáo', exact: true }).click();
+  await admin.getByText('Chưa có đơn tạo trong khoảng này. Tồn kho bên dưới vẫn phản ánh dữ liệu hiện tại.', { exact: true }).waitFor();
+  const downloaded = admin.waitForEvent('download');
+  await admin.getByRole('button', { name: 'Xuất CSV', exact: true }).click();
+  const download = await downloaded;
+  assert.equal(download.suggestedFilename(), 'fashion-haven-report-2020-01-01-2020-01-01.csv');
+  const csv = await fs.readFile(await download.path(), 'utf8');
+  assert.match(csv, /Giá trị đơn đã giao/); assert.match(csv, /Tiền đã đối soát/); assert.match(csv, /Chưa khả dụng/); assert.match(csv, /UTC\+7/); assert.match(csv, /Tồn khả dụng hiện tại/);
+  await admin.getByLabel('Từ ngày', { exact: true }).fill('2020-01-02');
+  await admin.getByRole('button', { name: 'Xem báo cáo', exact: true }).click();
+  await admin.getByText('Ngày bắt đầu không được sau ngày kết thúc.', { exact: true }).waitFor();
+  assert.equal(await admin.getByRole('button', { name: 'Xuất CSV', exact: true }).isDisabled(), true);
+  await admin.getByLabel('Từ ngày', { exact: true }).fill('2020-01-01');
+  await admin.getByRole('button', { name: 'Xem báo cáo', exact: true }).click();
+  await admin.getByText('Định nghĩa chỉ số & giới hạn báo cáo', { exact: true }).waitFor();
+  await admin.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await admin.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), true);
+  await admin.screenshot({ path: path.join(directory, 'admin-report-mobile.png'), fullPage: true });
+};

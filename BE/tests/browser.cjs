@@ -9,7 +9,7 @@ async function serveBuild(directory, expo = false) {
   const app = express();
   app.use(express.static(root, { extensions: ['html'] }));
   app.use((req, res) => {
-    const filename = expo && /^\/product\/[^/]+$/.test(req.path) ? 'product/[id].html' : expo ? '+not-found.html' : 'index.html';
+    const filename = expo && /^\/article\/[^/]+$/.test(req.path) ? 'article/[id].html' : expo && /^\/product\/[^/]+$/.test(req.path) ? 'product/[id].html' : expo ? '+not-found.html' : 'index.html';
     res.sendFile(path.join(root, filename));
   });
   const server = await new Promise(resolve => { const server = app.listen(0, '127.0.0.1', () => resolve(server)); });
@@ -48,19 +48,39 @@ exports.runBrowser = async ({ base, productId, customerId, prisma }) => {
     await page.getByText('ĐĂNG NHẬP', { exact: true }).click();
     await page.waitForURL(/\/cart$/);
     await page.getByText('Giỏ hàng đang trống', { exact: true }).waitFor();
+    // Add a second real product through FE and leave its row unselected at checkout.
+    const original = await prisma.sanPham.findUniqueOrThrow({ where: { MaSanPham: productId } });
+    const retained = await prisma.sanPham.create({ data: { TenSanPham: 'Browser retained cart item', MaLoaiHang: original.MaLoaiHang, MaKho: original.MaKho, MaNCC: original.MaNCC, DonGiaNhap: 0, DonGiaBan: 70000, SoLuong: 3 } });
+    await page.goto(`${customerWeb.url}/product/${retained.MaSanPham}`, { waitUntil: 'domcontentloaded' });
+    await page.getByText('Thêm vào giỏ', { exact: true }).click();
+    await page.getByText('Đã thêm sản phẩm vào giỏ hàng.', { exact: true }).waitFor();
     await page.goto(`${customerWeb.url}/product/${productId}`, { waitUntil: 'domcontentloaded' });
     await page.getByText('Synthetic garment', { exact: true }).first().waitFor();
     console.log('Browser: customer checkout');
     await page.getByText('Mua ngay', { exact: true }).click();
+    const unselected = page.getByRole('checkbox', { name: /^Thanh toán Browser retained cart item/ });
+    assert.equal(await unselected.isChecked(), true, 'New cart rows must expose their checked state');
+    await unselected.uncheck();
     await page.getByLabel('Họ tên người nhận').fill('Browser synthetic customer');
     await page.getByLabel('Số điện thoại nhận hàng').fill('0900000000');
     await page.getByLabel('Địa chỉ nhận hàng').fill('Synthetic browser test address');
+    assert.equal(await unselected.isChecked(), false, 'Unselected cart row must stay unchecked while entering shipping');
+    const checkoutRequest = page.waitForRequest(request => request.url().includes('/api/orders/checkout') && request.method() === 'POST');
     await page.getByText('Đặt hàng COD', { exact: true }).click();
+    const checkoutPayload = (await checkoutRequest).postDataJSON();
+    assert.equal(checkoutPayload.items.length, 1, 'Checkout must send only the selected row');
     await page.waitForURL(/\/orders$/);
     const created = await prisma.phieuXuat.findFirstOrThrow({ where: { MaKhachHang: customerId, TenNguoiNhan: 'Browser synthetic customer' }, orderBy: { MaPhieuXuat: 'desc' } });
     assert.equal(created.TongTien, 120000);
+    assert.equal(await prisma.cTDonHang.count({ where: { MaPhieuXuat: created.MaPhieuXuat, MaSanPham: retained.MaSanPham } }), 0);
+    assert.equal((await prisma.sanPham.findUniqueOrThrow({ where: { MaSanPham: retained.MaSanPham } })).SoLuong, 3);
     await page.getByText('Synthetic garment × 1', { exact: true }).first().waitFor();
     await page.screenshot({ path: path.join(directory, 'customer-orders-mobile.png'), fullPage: true });
+    await page.goto(`${customerWeb.url}/cart`, { waitUntil: 'domcontentloaded' });
+    await page.getByText('Browser retained cart item', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('checkbox', { name: /^Thanh toán Browser retained cart item/ }).isChecked(), false);
+    assert.equal(await page.getByRole('checkbox', { name: /^Thanh toán Synthetic garment/ }).count(), 0);
+    await page.screenshot({ path: path.join(directory, 'customer-unselected-cart-mobile.png'), fullPage: true });
 
     console.log('Browser: admin fulfillment');
     const admin = await context.newPage();
@@ -155,7 +175,7 @@ exports.runBrowser = async ({ base, productId, customerId, prisma }) => {
     await admin.screenshot({ path: path.join(directory, 'admin-new-product-variants.png'), fullPage: true });
     console.log('Browser: customer tracks delivery and courier details');
     activePage = page;
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.goto(`${customerWeb.url}/orders`, { waitUntil: 'domcontentloaded' });
     const customerCard = page.getByText(`Đơn #${String(created.MaPhieuXuat).padStart(5, '0')}`, { exact: true }).locator('../..');
     await customerCard.getByText('Đã giao', { exact: true }).waitFor();
     await customerCard.getByText('Xem chi tiết', { exact: true }).click();
@@ -181,6 +201,12 @@ exports.runBrowser = async ({ base, productId, customerId, prisma }) => {
     assert.equal(await staff.getByRole('button', { name: /^Sửa sản phẩm/ }).count(), 0);
     await staff.screenshot({ path: path.join(directory, 'staff-catalog-mobile.png'), fullPage: true });
     await staffContext.close();
+    activePage = admin;
+    await require('./media-browser.cjs').runMediaBrowser({ admin, page, customerUrl: customerWeb.url, prisma, directory, base });
+    await require('./cms-browser.cjs').checkCmsBrowser({ admin, page, customerUrl: customerWeb.url, prisma, directory });
+    await require('./customer-browser.cjs').runCustomerBrowser({ admin, page, customerUrl: customerWeb.url, prisma, directory });
+    await require('./settings-browser.cjs').checkSettingsBrowser({ admin, page, customerUrl: customerWeb.url, prisma, directory });
+    await require('./report-browser.cjs').runReportBrowser({ admin, directory });
     assert.deepEqual(errors, []);
   } catch (error) {
     await activePage.screenshot({ path: path.join(directory, 'browser-failure.png'), fullPage: true }).catch(() => {});

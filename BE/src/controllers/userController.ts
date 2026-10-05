@@ -5,8 +5,8 @@ import { hashPassword, isPasswordHash, newPassword, verifyPassword } from '../se
 import { internalRole } from '../services/access';
 import { issueToken } from '../services/sessions';
 import { lockLoginNamespace } from '../services/loginNamespace';
+import { accountAudit, customerSelect, lockCustomer, revokeResetTokens } from '../services/customers';
 
-const customerSelect = { MaKhachHang: true, TenKhach: true, Email: true, DiaChi: true, DienThoai: true, HangThanhVien: true } as const;
 const emailValue = (value: unknown) => {
   const email = textValue(value, 'Email', 255).toLocaleLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ApiError(400, 'VALIDATION_ERROR', 'Email không hợp lệ.');
@@ -33,7 +33,7 @@ export async function registerUser(req: Request, res: Response) {
       return tx.khachHang.create({ data: { TenKhach: name, Email: email, MatKhau: passwordHash } });
     });
     const user = { id: customer.MaKhachHang, name: customer.TenKhach, email: customer.Email, role: 'user' as const };
-    res.status(201).json({ user, token: issueToken(user, customer.MatKhau) });
+    res.status(201).json({ user, token: issueToken(user, customer.MatKhau, customer.SessionEpoch) });
   } catch (error) { sendApiError(res, error); }
 }
 
@@ -52,9 +52,10 @@ export async function loginUser(req: Request, res: Response) {
     }
     const customer = await prisma.khachHang.findUnique({ where: { Email: login.toLocaleLowerCase() } });
     if (!customer || !await verifyPassword(customer.MatKhau, body.password)) throw new ApiError(401, 'LOGIN_FAILED', 'Sai tài khoản hoặc mật khẩu.');
+    if (customer.Status !== 'ACTIVE') throw new ApiError(403, 'ACCOUNT_DISABLED', 'Tài khoản đã ngưng đăng nhập. Liên hệ cửa hàng.');
     const passwordHash = await upgradePassword(customer.MaKhachHang, customer.MatKhau, body.password, false);
     const user = { id: customer.MaKhachHang, name: customer.TenKhach, email: customer.Email, role: 'user' as const };
-    res.json({ user, token: issueToken(user, passwordHash) });
+    res.json({ user, token: issueToken(user, passwordHash, customer.SessionEpoch) });
   } catch (error) { sendApiError(res, error); }
 }
 
@@ -94,8 +95,10 @@ export async function createUser(req: Request, res: Response) {
     const customer = await prisma.$transaction(async tx => {
       await lockLoginNamespace(tx);
       if (await tx.account.findUnique({ where: { UserName: email } })) throw new ApiError(409, 'USERNAME_EXISTS', 'Tên đăng nhập đã được sử dụng.');
-      return tx.khachHang.create({ data: { TenKhach: name, Email: email, DienThoai: phone,
+      const created = await tx.khachHang.create({ data: { TenKhach: name, Email: email, DienThoai: phone,
         MatKhau: passwordHash, HangThanhVien: 'Thành viên mới' }, select: customerSelect });
+      await accountAudit(tx, created.MaKhachHang, (req as any).user, 'CREATE', 'Cấp tài khoản khách hàng qua trang quản trị.');
+      return created;
     });
     res.status(201).json(customer);
   } catch (error) { sendApiError(res, error); }
@@ -105,17 +108,23 @@ export async function updateUser(req: Request, res: Response) {
   try {
     const id = positiveId(req.params.id, 'Mã khách hàng'), body = req.body ?? {};
     const email = body.email === undefined ? undefined : emailValue(body.email);
-    const passwordHash = body.password ? await hashPassword(newPassword(body.password)) : undefined;
+    if (body.password !== undefined) throw new ApiError(400, 'USE_PASSWORD_RESET', 'Vui lòng dùng thao tác cấp mật khẩu riêng có lý do và nhật ký.');
+    const reason = textValue(body.reason, 'Lý do', 500);
     const fields = {
       ...(body.name !== undefined ? { TenKhach: textValue(body.name, 'Họ tên', 255) } : {}),
       ...(body.phone !== undefined ? { DienThoai: textValue(body.phone, 'Điện thoại', 50, false) } : {}),
       ...(email !== undefined ? { Email: email } : {}),
-      ...(passwordHash !== undefined ? { MatKhau: passwordHash } : {})
+      ...(body.address !== undefined ? { DiaChi: textValue(body.address, 'Địa chỉ', 4000, false) } : {}),
+      ...(body.tier !== undefined ? { HangThanhVien: textValue(body.tier, 'Hạng khách', 100, false) } : {})
     };
     const customer = await prisma.$transaction(async tx => {
       await lockLoginNamespace(tx);
       if (email && await tx.account.findUnique({ where: { UserName: email } })) throw new ApiError(409, 'USERNAME_EXISTS', 'Tên đăng nhập đã được sử dụng.');
-      return tx.khachHang.update({ where: { MaKhachHang: id }, data: fields, select: customerSelect });
+      await lockCustomer(tx, id);
+      const updated = await tx.khachHang.update({ where: { MaKhachHang: id }, data: { ...fields, ...(email !== undefined ? { SessionEpoch: { increment: 1 } } : {}) }, select: customerSelect });
+      if (email !== undefined) await revokeResetTokens(tx, id);
+      await accountAudit(tx, id, (req as any).user, 'EDIT_PROFILE', reason);
+      return updated;
     });
     res.json(customer);
   } catch (error) { sendApiError(res, error); }
@@ -124,12 +133,9 @@ export async function updateUser(req: Request, res: Response) {
 export async function deleteUser(req: Request, res: Response) {
   try {
     const id = positiveId(req.params.id, 'Mã khách hàng');
-    await prisma.$transaction(async tx => {
-      await tx.$queryRaw`SELECT MaKhachHang FROM khachhang WHERE MaKhachHang = ${id} FOR UPDATE`;
-      if (await tx.phieuXuat.count({ where: { MaKhachHang: id } })) throw new ApiError(409, 'CUSTOMER_HAS_HISTORY', 'Khách hàng đã có đơn hàng; phải giữ tài khoản và lịch sử giao dịch.');
-      await tx.khachHang.delete({ where: { MaKhachHang: id } });
-    });
-    res.json({ message: 'Đã xóa tài khoản chưa có giao dịch.' });
+    const customer = await prisma.khachHang.findUniqueOrThrow({ where: { MaKhachHang: id }, select: { MaKhachHang: true } });
+    if (await prisma.phieuXuat.count({ where: { MaKhachHang: customer.MaKhachHang } })) throw new ApiError(409, 'CUSTOMER_HAS_HISTORY', 'Khách hàng có lịch sử giao dịch; hãy ngưng tài khoản bằng thao tác có lý do.');
+    throw new ApiError(409, 'USE_ACCOUNT_STATUS', 'Không xóa cứng tài khoản. Hãy ngưng tài khoản bằng thao tác có lý do.');
   } catch (error) { sendApiError(res, error); }
 }
 
@@ -144,8 +150,14 @@ export async function changePassword(req: Request, res: Response) {
     } else {
       const customer = await prisma.khachHang.findUnique({ where: { MaKhachHang: principal.id } });
       if (!customer || !await verifyPassword(customer.MatKhau, body.oldPassword)) throw new ApiError(400, 'PASSWORD_MISMATCH', 'Mật khẩu cũ không đúng.');
-      const result = await prisma.khachHang.updateMany({ where: { MaKhachHang: principal.id, MatKhau: customer.MatKhau }, data: { MatKhau: await hashPassword(password) } });
-      if (!result.count) throw new ApiError(409, 'CREDENTIAL_CHANGED', 'Mật khẩu vừa được cập nhật. Vui lòng đăng nhập lại.');
+      const hash = await hashPassword(password);
+      await prisma.$transaction(async tx => {
+        const current = await lockCustomer(tx, principal.id);
+        if (current.MatKhau !== customer.MatKhau || current.SessionEpoch !== customer.SessionEpoch) throw new ApiError(409, 'CREDENTIAL_CHANGED', 'Mật khẩu vừa được cập nhật. Vui lòng đăng nhập lại.');
+        await tx.khachHang.update({ where: { MaKhachHang: principal.id }, data: { MatKhau: hash, SessionEpoch: { increment: 1 } } });
+        await revokeResetTokens(tx, principal.id);
+        await accountAudit(tx, principal.id, principal, 'CHANGE_PASSWORD', 'Khách tự đổi mật khẩu.');
+      });
     }
     res.json({ message: 'Đã đổi mật khẩu. Vui lòng đăng nhập lại trên các thiết bị.' });
   } catch (error) { sendApiError(res, error); }

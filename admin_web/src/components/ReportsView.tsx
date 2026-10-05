@@ -1,20 +1,55 @@
-import Icon from './Icon';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ApiError, apiRequest, clearSession } from '../api';
+
+type Report = {
+  generatedAt: string;
+  period: { from: string; to: string; days: number; timeZone: string; basis: string };
+  summary: { orderCount: number; deliveredRevenue: number; collectedTotal: number; cancelledCount: number; awaitingFulfillmentCount: number; discountTotal: number | null; refundTotal: number | null; returnCount: number | null };
+  statuses: { status: string; count: number; value: number }[];
+  topProducts: { id: number; name: string; units: number; lineValue: number }[];
+  inventory: { productCount: number; variantCount: number; availableUnits: number; lowStockThreshold: number; lowStockCount: number; lowStockItems: { id: string; productId: number; variantId: number | null; sku: string; name: string; size: string; color: string; quantity: number; warehouse: string }[] };
+  limitations: string[];
+};
+const money = (value: number) => `${value.toLocaleString('vi-VN')} đ`;
+const labels: Record<string, string> = { PENDING: 'Chờ xác nhận', PROCESSING: 'Đang đóng gói', SHIPPING: 'Đang giao', DELIVERED: 'Đã giao', CANCELLED: 'Đã hủy' };
+const localDay = (date: Date) => new Date(date.getTime() + 7 * 3600000).toISOString().slice(0, 10);
+const defaultRange = () => { const now = new Date(); return { from: localDay(new Date(now.getTime() - 29 * 86400000)), to: localDay(now) }; };
+const message = (cause: unknown) => { if (cause instanceof ApiError && cause.status === 401) { clearSession(); window.location.href = '/login'; } return cause instanceof Error ? cause.message : 'Không tải được báo cáo. Vui lòng thử lại.'; };
+const csvValue = (value: string | number) => { const text = String(value); return `"${(typeof value === 'string' && (/^[=+\-@]/.test(text.trimStart()) || /^[\t\r]/.test(text)) ? `'${text}` : text).replace(/"/g, '""')}"`; };
+function exportReport(report: Report) {
+  const rows: (string | number)[][] = [['Fashion Haven — Báo cáo bán hàng'], ['Ngày tạo đơn từ', report.period.from, 'đến', report.period.to, 'UTC+7'], ['Thời điểm lấy dữ liệu', report.generatedAt], [], ['Chỉ số', 'Giá trị', 'Đơn vị'],
+    ['Giá trị đơn đã giao', report.summary.deliveredRevenue, 'VND'], ['Tiền đã đối soát (đơn đã giao)', report.summary.collectedTotal, 'VND'], ['Số đơn tạo trong kỳ', report.summary.orderCount, 'đơn'], ['Đơn đã hủy', report.summary.cancelledCount, 'đơn'], ['Đơn chờ/đang xử lý/giao', report.summary.awaitingFulfillmentCount, 'đơn'], ['Giảm giá', report.summary.discountTotal ?? 'Chưa khả dụng', 'VND'], ['Hoàn tiền', report.summary.refundTotal ?? 'Chưa khả dụng', 'VND'], ['Đổi trả', report.summary.returnCount ?? 'Chưa khả dụng', 'yêu cầu'], [], ['Trạng thái', 'Số đơn', 'Giá trị đơn (VND)'], ...report.statuses.map(group => [labels[group.status] ?? group.status, group.count, group.value]), [], ['Top 20 sản phẩm theo lượng đã giao', 'Mã sản phẩm', 'Số lượng', 'Giá trị dòng (VND)'], ...report.topProducts.map(product => [product.name, product.id, product.units, product.lineValue]), [], ['Tồn khả dụng hiện tại', report.inventory.availableUnits, 'đơn vị'], ['Sản phẩm đang bán', report.inventory.productCount], ['Biến thể đang bán', report.inventory.variantCount], ['Số SKU/sản phẩm có tồn <= 5', report.inventory.lowStockCount], [], ['Tối đa 20 cảnh báo tồn hiện tại', 'SKU', 'Size', 'Màu', 'Kho', 'Số lượng'], ...report.inventory.lowStockItems.map(item => [item.name, item.sku, item.size, item.color, item.warehouse, item.quantity]), [], ['Định nghĩa & giới hạn'], ...report.limitations.map(note => [note])];
+  const blob = new Blob(['\uFEFF' + rows.map(row => row.map(csvValue).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = `fashion-haven-report-${report.period.from}-${report.period.to}.csv`; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export default function ReportsView() {
-  return <section className="space-y-6 pb-10">
-    <div>
-      <h1 className="text-3xl font-bold text-gray-800 font-serif">Báo cáo & Thống kê</h1>
-      <p className="mt-2 text-sm text-gray-500">Báo cáo theo kỳ và phân tích chi tiết chưa được hỗ trợ.</p>
-    </div>
-    <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-6 sm:p-8">
-      <div className="flex items-start gap-4">
-        <Icon name="assessment" aria-hidden="true" className="text-3xl text-[#b6152b] bg-red-50 rounded-xl p-3" />
-        <div className="space-y-3">
-          <span className="inline-block rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">Chưa hỗ trợ</span>
-          <h2 className="text-xl font-semibold text-gray-800">Chưa có báo cáo để xuất hoặc đối soát tại đây</h2>
-          <p className="text-sm text-gray-600 leading-relaxed">Hiện trang Tổng quan hiển thị tổng đơn hàng, doanh thu của đơn đã giao và tiền đã đối soát. Các chỉ số này được phân biệt để tránh nhầm doanh thu với tiền đã thu.</p>
-          <p className="text-sm text-gray-600 leading-relaxed">Để kiểm tra từng giao dịch, mở Quản lý đơn hàng và xem trạng thái, thanh toán cùng lịch sử xử lý. Báo cáo theo kỳ, lợi nhuận và báo cáo tồn kho chưa có trên màn hình này.</p>
-        </div>
-      </div>
-    </div>
+  const [range, setRange] = useState(defaultRange), [applied, setApplied] = useState(defaultRange), [report, setReport] = useState<Report | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState('');
+  const requestId = useRef(0);
+  const load = useCallback(async (signal?: AbortSignal) => {
+    const request = ++requestId.current;
+    setLoading(true); setError('');
+    try { const data = await apiRequest(`/reports?from=${encodeURIComponent(applied.from)}&to=${encodeURIComponent(applied.to)}`, { signal }); if (!signal?.aborted && request === requestId.current) setReport(data); }
+    catch (cause) { if (!signal?.aborted && request === requestId.current) setError(message(cause)); }
+    finally { if (!signal?.aborted && request === requestId.current) setLoading(false); }
+  }, [applied]);
+  useEffect(() => { const controller = new AbortController(), timer = window.setTimeout(() => { void load(controller.signal); }, 0); return () => { window.clearTimeout(timer); controller.abort(); }; }, [load]);
+  return <section className="space-y-5 pb-10">
+    <header className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="font-serif text-3xl font-bold text-gray-900">Báo cáo bán hàng & tồn kho</h1><p className="text-sm text-gray-500 mt-2 max-w-2xl">Đọc kết quả kinh doanh theo ngày tạo đơn. Số liệu lấy từ toàn bộ giao dịch phù hợp, kể cả các đơn ngoài trang danh sách hiện tại.</p></div><button onClick={() => report && exportReport(report)} disabled={!report || loading || !!error} className="bg-red-700 text-white rounded-xl px-4 py-2.5 font-semibold disabled:opacity-40">Xuất CSV</button></header>
+    <form className="bg-white border rounded-xl p-4 flex flex-wrap gap-4 items-end" onSubmit={event => { event.preventDefault(); if (range.from > range.to) { setError('Ngày bắt đầu không được sau ngày kết thúc.'); return; } setApplied({ ...range }); }}><label className="text-sm font-medium text-gray-600">Từ ngày<input type="date" required className="block mt-1 border rounded-lg p-2.5 bg-white" value={range.from} onChange={event => setRange(previous => ({ ...previous, from: event.target.value }))} /></label><label className="text-sm font-medium text-gray-600">Đến ngày<input type="date" required className="block mt-1 border rounded-lg p-2.5 bg-white" value={range.to} onChange={event => setRange(previous => ({ ...previous, to: event.target.value }))} /></label><button disabled={loading} className="bg-gray-900 text-white px-4 py-2.5 rounded-lg font-semibold disabled:opacity-40">Xem báo cáo</button><button type="button" disabled={loading} onClick={() => void load()} className="border rounded-lg px-4 py-2.5 disabled:opacity-40">Cập nhật</button><p className="text-xs text-gray-500 py-3">Gồm cả hai ngày · UTC+7 · Tối đa 366 ngày</p></form>
+    {error && <p role="alert" className="bg-red-50 text-red-700 p-4 rounded-xl">{error}</p>}
+    {loading && <p role="status" className="bg-white border rounded-xl p-10 text-center text-gray-500">Đang tổng hợp báo cáo…</p>}
+    {!loading && !error && report && <>
+      <div className="flex flex-wrap justify-between gap-2 text-sm text-gray-500"><p>Kỳ đơn tạo: <strong>{report.period.from} → {report.period.to}</strong></p><p>Cập nhật: {new Date(report.generatedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Bangkok' })}</p></div>
+      {report.summary.orderCount === 0 && <p className="bg-gray-50 border rounded-xl p-4 text-gray-600">Chưa có đơn tạo trong khoảng này. Tồn kho bên dưới vẫn phản ánh dữ liệu hiện tại.</p>}
+      <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">{[
+        ['Giá trị đơn đã giao', money(report.summary.deliveredRevenue), 'Đơn đã giao trong kỳ tạo đơn, chưa trừ hoàn trả'], ['Tiền đã đối soát', money(report.summary.collectedTotal), 'Đơn đã giao được ghi nhận đã thanh toán'], ['Số đơn tạo trong kỳ', report.summary.orderCount.toLocaleString('vi-VN'), `${report.summary.cancelledCount} đã hủy · ${report.summary.awaitingFulfillmentCount} chờ/đang xử lý/giao`], ['Cảnh báo tồn hiện tại', report.inventory.lowStockCount.toLocaleString('vi-VN'), 'SKU đang bán hoặc hàng không có biến thể, tồn từ 5 trở xuống']
+      ].map(([title, value, hint]) => <article key={title} className="bg-white border rounded-2xl p-5"><h2 className="text-sm font-semibold text-gray-500">{title}</h2><p className="text-2xl font-bold text-gray-900 mt-4 break-words">{value}</p><p className="text-xs text-gray-500 mt-3 leading-relaxed">{hint}</p></article>)}</div>
+      <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-900"><strong>Giảm giá, hoàn tiền và đổi trả: chưa khả dụng.</strong><p className="mt-1">Chưa có dữ liệu đối soát đủ tin cậy cho các chỉ số này. Giá trị đã giao chưa được hiểu là doanh thu thuần hay lợi nhuận.</p></div>
+      <div className="grid xl:grid-cols-2 gap-5"><article className="bg-white border rounded-2xl overflow-hidden"><h2 className="font-bold p-5 border-b">Đơn theo trạng thái hiện tại</h2><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-gray-500 bg-gray-50"><tr><th className="p-4">Trạng thái</th><th className="p-4 text-right">Số đơn</th><th className="p-4 text-right">Giá trị đơn</th></tr></thead><tbody className="divide-y">{report.statuses.map(group => <tr key={group.status}><td className="p-4">{labels[group.status] ?? group.status}</td><td className="p-4 text-right">{group.count}</td><td className="p-4 text-right whitespace-nowrap">{money(group.value)}</td></tr>)}{report.statuses.length === 0 && <tr><td colSpan={3} className="p-8 text-gray-500 text-center">Không có đơn trong kỳ.</td></tr>}</tbody></table></div></article>
+      <article className="bg-white border rounded-2xl overflow-hidden"><h2 className="font-bold p-5 border-b">Top 20 sản phẩm đã giao</h2><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-gray-500 bg-gray-50"><tr><th className="p-4">Sản phẩm</th><th className="p-4 text-right">Số lượng</th><th className="p-4 text-right">Giá trị dòng</th></tr></thead><tbody className="divide-y">{report.topProducts.map(product => <tr key={product.id}><td className="p-4 font-medium">{product.name}<p className="font-normal text-xs text-gray-500 mt-1">SP #{product.id}</p></td><td className="p-4 text-right">{product.units}</td><td className="p-4 text-right whitespace-nowrap">{money(product.lineValue)}</td></tr>)}{report.topProducts.length === 0 && <tr><td colSpan={3} className="p-8 text-gray-500 text-center">Chưa có dòng hàng đã giao trong kỳ.</td></tr>}</tbody></table></div></article></div>
+      <article className="bg-white border rounded-2xl overflow-hidden"><header className="p-5 border-b"><h2 className="font-bold">Tồn khả dụng hiện tại</h2><p className="text-sm text-gray-500 mt-2">{report.inventory.productCount} sản phẩm · {report.inventory.variantCount} biến thể đang bán · {report.inventory.availableUnits.toLocaleString('vi-VN')} đơn vị khả dụng</p><p className="text-xs text-gray-500 mt-1">Tối đa 20 cảnh báo ưu tiên theo lượng tồn thấp nhất. Phần này không theo bộ lọc ngày.</p></header><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-gray-50 text-gray-500"><tr>{['Sản phẩm', 'Biến thể / SKU', 'Kho', 'Tồn khả dụng'].map(label => <th key={label} className="p-4 whitespace-nowrap">{label}</th>)}</tr></thead><tbody className="divide-y">{report.inventory.lowStockItems.map(item => <tr key={item.id}><td className="p-4 font-medium min-w-40">{item.name}</td><td className="p-4 min-w-40"><p>{[item.size, item.color].filter(Boolean).join(' · ') || 'Không có biến thể'}</p><p className="text-xs text-gray-500 mt-1">{item.sku || `SP #${item.productId}`}</p></td><td className="p-4">{item.warehouse}</td><td className="p-4 font-bold text-red-700">{item.quantity}</td></tr>)}{report.inventory.lowStockItems.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-gray-500">Không có cảnh báo tồn trong catalog đang bán.</td></tr>}</tbody></table></div></article>
+      <details className="bg-white border rounded-xl p-5"><summary className="font-semibold cursor-pointer">Định nghĩa chỉ số & giới hạn báo cáo</summary><ul className="mt-3 space-y-2 text-sm text-gray-600 list-disc pl-5">{report.limitations.map(note => <li key={note}>{note}</li>)}</ul></details>
+    </>}
   </section>;
 }

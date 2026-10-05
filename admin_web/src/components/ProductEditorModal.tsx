@@ -1,8 +1,11 @@
-import { API_URL, SERVER_URL } from '../api';
-import { useEffect, useState } from 'react';
+import { API_URL } from '../api';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import ProductVariantEditor from './ProductVariantEditor';
 import type { AttributeDefinition, EditableVariant } from './ProductVariantEditor';
+import MediaGalleryEditor from './MediaGalleryEditor';
+import { imageInputError } from '../catalogMedia';
+import type { GalleryImage } from '../catalogMedia';
 
 type Props = {
   product: any;
@@ -22,6 +25,10 @@ const moneyValue = (value: string | number) => value !== '' && Number.isSafeInte
 const makeDraft = (product: any) => ({
   id: product?.id as number | undefined,
   name: product?.name ?? '', image: product?.image ?? '',
+  gallery: (product?.gallery?.length ? product.gallery.map((image: GalleryImage) => ({ ...image })) : product?.image ? [{ url: product.image }] : []) as GalleryImage[],
+  description: product?.description ?? '', material: product?.material ?? '', brand: product?.brand ?? '',
+  originalMetadata: { description: product?.description ?? '', material: product?.material ?? '', brand: product?.brand ?? '' },
+  originalVariantImages: Object.fromEntries((product?.variants ?? []).map((variant: any) => [String(variant.id), variant.image ?? ''])) as Record<string, string>,
   price: String(product?.price ?? ''), originalPrice: String(product?.originalPrice ?? product?.GiaGoc ?? '0'),
   quantity: String(product?.quantity ?? 0), expectedStock: Number(product?.quantity ?? 0),
   hasPendingOrders: Boolean(product?.hasPendingOrders),
@@ -39,7 +46,11 @@ const makeDraft = (product: any) => ({
 export default function ProductEditorModal({ product, categories, warehouses, suppliers, onClose, onSaved }: Props) {
   const [draft, setDraft] = useState(() => makeDraft(product));
   const [saving, setSaving] = useState(false);
+  const saveLock = useRef(false);
   const [uploading, setUploading] = useState(false);
+  const [mediaChanged, setMediaChanged] = useState(false);
+  const activeUploads = useRef(0);
+  const handleUploadBusy = useCallback((busy: boolean) => { activeUploads.current = Math.max(0, activeUploads.current + (busy ? 1 : -1)); setUploading(activeUploads.current > 0); }, []);
   const [error, setError] = useState('');
   const [history, setHistory] = useState<any[]>([]);
   const [historyError, setHistoryError] = useState('');
@@ -80,7 +91,7 @@ export default function ProductEditorModal({ product, categories, warehouses, su
       if (!response.ok) throw new Error(data.error ?? 'Không thể tải lại sản phẩm.');
       const latest = data;
       if (!latest) throw new Error('Sản phẩm không còn tồn tại.');
-      setDraft(makeDraft(latest));
+      setDraft(makeDraft(latest)); setMediaChanged(false);
       setError('');
       setReloadCount(count => count + 1);
     } catch (cause) {
@@ -90,13 +101,13 @@ export default function ProductEditorModal({ product, categories, warehouses, su
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (saving || uploading) return;
+    if (saveLock.current || saving || uploading) return;
     setError('');
     if (!draft.name.trim() || !draft.categoryId || !draft.khoId || !draft.nccId) {
       setError('Vui lòng nhập tên và chọn danh mục, kho, nhà cung cấp.'); return;
     }
     if (!moneyValue(draft.price) || !moneyValue(draft.originalPrice) || draft.variants.some(variant => !moneyValue(variant.price))) {
-      setError('Giá nhập và giá bán phải là số không âm, không được để trống.'); return;
+      setError('Giá nhập và giá bán phải là số nguyên đồng, không âm và không được để trống.'); return;
     }
     if ((!hasVariants && !stockValue(draft.quantity)) || !stockValue(total) || draft.variants.some(variant => !stockValue(variant.quantity))) {
       setError('Tồn kho phải là số nguyên không âm, không được để trống.'); return;
@@ -104,16 +115,30 @@ export default function ProductEditorModal({ product, categories, warehouses, su
     if (stockChanged && draft.inventoryReason.trim().length < 3) {
       setError('Vui lòng ghi lý do điều chỉnh tồn kho, tối thiểu 3 ký tự.'); return;
     }
-    setSaving(true);
+    const gallery = draft.gallery.filter(image => image.url.trim()).map(image => ({ url: image.url.trim(), ...(image.alt?.trim() ? { alt: image.alt.trim() } : {}) }));
+    const imageProblem = mediaChanged || !isEditing ? gallery.map(image => imageInputError(image.url)).find(Boolean) : undefined;
+    if (imageProblem || gallery.length > 8 || new Set(gallery.map(image => image.url)).size !== gallery.length) { setError(imageProblem || 'Tối đa 8 ảnh khác nhau trong bộ ảnh sản phẩm.'); return; }
+    const variants = draft.variants.map(variant => {
+      const { image, ...rest } = variant;
+      const originalImage = variant.id ? draft.originalVariantImages[String(variant.id)] || '' : '';
+      return { ...rest, quantity: Number(variant.quantity), price: Number(variant.price), ...((image || '') !== originalImage ? { image: image?.trim() || null } : {}) };
+    });
+    const variantImageProblem = variants.map(variant => variant.image ? imageInputError(variant.image) : '').find(Boolean);
+    if (variantImageProblem) { setError(variantImageProblem); return; }
+    saveLock.current = true; setSaving(true);
     try {
       const response = await fetch(`${API}/products${draft.id ? `/${draft.id}` : ''}`, {
         method: isEditing ? 'PUT' : 'POST', headers: { ...headers(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: draft.name.trim(), price: Number(draft.price), originalPrice: Number(draft.originalPrice),
           stock: total, expectedStock: draft.expectedStock, expectedVariantIds: draft.originalVariantIds,
-          inventoryReason: draft.inventoryReason.trim(), image: draft.image.trim(),
+          inventoryReason: draft.inventoryReason.trim(),
+          ...((mediaChanged || !isEditing) ? { gallery, image: gallery[0]?.url || '' } : {}),
+          ...((!isEditing || draft.description !== draft.originalMetadata.description) ? { description: draft.description.trim() } : {}),
+          ...((!isEditing || draft.material !== draft.originalMetadata.material) ? { material: draft.material.trim() } : {}),
+          ...((!isEditing || draft.brand !== draft.originalMetadata.brand) ? { brand: draft.brand.trim() } : {}),
           categoryId: Number(draft.categoryId), khoId: Number(draft.khoId), nccId: Number(draft.nccId), status: draft.status,
-          variants: draft.variants.map(variant => ({ ...variant, quantity: Number(variant.quantity), price: Number(variant.price) }))
+          variants
         })
       });
       const data = await response.json().catch(() => ({}));
@@ -121,22 +146,9 @@ export default function ProductEditorModal({ product, categories, warehouses, su
       onSaved();
     } catch (cause) {
       setError(cause instanceof Error && cause.message !== 'Failed to fetch' ? cause.message : 'Không kết nối được máy chủ. Vui lòng thử lại.');
-    } finally { setSaving(false); }
+    } finally { saveLock.current = false; setSaving(false); }
   };
 
-  const uploadImage = async (file: File) => {
-    setUploading(true);
-    setError('');
-    try {
-      const body = new FormData();
-      body.append('image', file);
-      const response = await fetch(`${API}/upload`, { method: 'POST', headers: headers(), body });
-      const data = await response.json();
-      if (!response.ok || !data.imageUrl) throw new Error(data.error ?? 'Không thể tải ảnh lên.');
-      setDraft(current => ({ ...current, image: data.imageUrl }));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Không thể tải ảnh lên.'); }
-    finally { setUploading(false); }
-  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-3 sm:p-6">
@@ -169,12 +181,12 @@ export default function ProductEditorModal({ product, categories, warehouses, su
               </label>
               <label className="text-sm font-semibold text-gray-700 space-y-1">
                 <span>Giá bán mặc định (đ) *</span>
-                <input className={fieldClass} type="number" min="0" step="any" required value={draft.price} onChange={event => setDraft(current => ({ ...current, price: event.target.value }))} />
+                <input className={fieldClass} type="number" min="0" step="1" required value={draft.price} onChange={event => setDraft(current => ({ ...current, price: event.target.value }))} />
                 {hasVariants && <span className="block text-xs font-normal text-gray-500">Giá mặc định cho biến thể mới; giá từng biến thể được nhập bên dưới.</span>}
               </label>
               <label className="text-sm font-semibold text-gray-700 space-y-1">
                 <span>Giá nhập tham chiếu (đ) *</span>
-                <input className={fieldClass} type="number" min="0" step="any" required value={draft.originalPrice} onChange={event => setDraft(current => ({ ...current, originalPrice: event.target.value }))} />
+                <input className={fieldClass} type="number" min="0" step="1" required value={draft.originalPrice} onChange={event => setDraft(current => ({ ...current, originalPrice: event.target.value }))} />
               </label>
               <label className="text-sm font-semibold text-gray-700 space-y-1">
                 <span>Kho quản lý *</span>
@@ -206,24 +218,13 @@ export default function ProductEditorModal({ product, categories, warehouses, su
                   value={hasVariants ? total : draft.quantity} onChange={event => setDraft(current => ({ ...current, quantity: event.target.value }))} />
                 <span className="block text-xs font-normal text-gray-500">{hasVariants ? 'Cộng từ tất cả biến thể, kể cả biến thể tạm ngừng bán.' : 'Sản phẩm không có biến thể được quản lý theo số lượng này.'}</span>
               </label>
-              <div className="md:col-span-2 space-y-2">
-                <label className="text-sm font-semibold text-gray-700 block">Ảnh sản phẩm
-                  <input className={`${fieldClass} mt-1 font-normal`} value={draft.image} onChange={event => setDraft(current => ({ ...current, image: event.target.value }))} placeholder="URL ảnh hoặc đường dẫn ảnh" />
-                </label>
-                <div className="flex gap-3 items-center">
-                  {draft.image && <img src={/^https?:/.test(draft.image) ? draft.image : `${SERVER_URL}${draft.image}`} alt="Ảnh sản phẩm" className="h-20 w-20 rounded-lg object-cover border" />}
-                  <label className="text-sm text-gray-600">{uploading ? 'Đang tải ảnh…' : 'Chọn ảnh từ thiết bị'}
-                    <input type="file" accept="image/png,image/jpeg,image/webp" className="block mt-1 text-xs" onChange={event => {
-                      const file = event.target.files?.[0];
-                      if (file) void uploadImage(file);
-                      event.target.value = '';
-                    }} />
-                  </label>
-                </div>
-              </div>
+              <label className="text-sm font-semibold text-gray-700 space-y-1"><span>Thương hiệu</span><input maxLength={255} className={fieldClass} value={draft.brand} onChange={event => setDraft(current => ({ ...current, brand: event.target.value }))} placeholder="Chỉ nhập thương hiệu thực tế của sản phẩm" /></label>
+              <label className="text-sm font-semibold text-gray-700 space-y-1"><span>Chất liệu</span><input maxLength={255} className={fieldClass} value={draft.material} onChange={event => setDraft(current => ({ ...current, material: event.target.value }))} placeholder="Ví dụ: Cotton 100%" /></label>
+              <label className="text-sm font-semibold text-gray-700 space-y-1 md:col-span-2"><span>Mô tả sản phẩm</span><textarea maxLength={8000} rows={4} className={fieldClass} value={draft.description} onChange={event => setDraft(current => ({ ...current, description: event.target.value }))} placeholder="Mô tả kiểu dáng, cách sử dụng và thông tin khách hàng cần biết." /></label>
+              <div className="md:col-span-2"><MediaGalleryEditor value={draft.gallery} onBusyChange={handleUploadBusy} onChange={gallery => { setMediaChanged(true); setDraft(current => ({ ...current, gallery, image: gallery[0]?.url || '' })); }} /></div>
             </div>
             {draft.categoryId ? <ProductVariantEditor definitions={definitions} productPrice={draft.price} initialQuantity={draft.quantity} variants={draft.variants} isEditing={isEditing}
-              onChange={variants => setDraft(current => ({ ...current, variants }))} /> : <p className="text-sm text-gray-500">Chọn danh mục trước khi thêm biến thể.</p>}
+              onBusyChange={handleUploadBusy} onChange={variants => setDraft(current => ({ ...current, variants }))} /> : <p className="text-sm text-gray-500">Chọn danh mục trước khi thêm biến thể.</p>}
             {isEditing && <section className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
               <div className="flex flex-wrap gap-4 text-sm text-blue-900">
                 <span>Tổng tồn khi mở form: <b>{draft.expectedStock}</b></span>

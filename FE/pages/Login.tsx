@@ -96,6 +96,8 @@ export default function LoginScreen() {
               </Pressable>
             </View>
 
+            <Link href={'/forgot-password' as never} style={styles.forgotText}>Quên mật khẩu?</Link>
+
             <Pressable style={[styles.button, loading && styles.buttonDisabled]} onPress={submit} disabled={loading}>
               <LinearGradient colors={['#e63946', '#d62828']} style={styles.gradientButton}>
                 <Text style={styles.buttonText}>{loading ? 'Đang xử lý...' : 'ĐĂNG NHẬP'}</Text>
@@ -129,7 +131,7 @@ const styles = StyleSheet.create({
   input: { flex: 1, paddingVertical: 15, paddingRight: 15, color: '#fff', fontSize: 16 },
   eyeIcon: { padding: 15 },
   forgotPassword: { alignItems: 'flex-end', marginBottom: 20 },
-  forgotText: { color: '#ccc', fontSize: 14 },
+  forgotText: { color: '#eee', fontSize: 14, textAlign: 'right', paddingVertical: 8 },
   button: { borderRadius: 12, overflow: 'hidden', marginTop: 10, elevation: 5 },
   buttonDisabled: { opacity: 0.7 },
   gradientButton: { padding: 16, alignItems: 'center' },

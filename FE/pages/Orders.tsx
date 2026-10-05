@@ -21,6 +21,7 @@ type Order = {
   MaPhieuXuat: number;
   NgayXuat: string;
   TongTien: number;
+  TienHang?: number | null; GiamGiaDon?: number | null; PhiGiaoHang?: number | null; ShippingLabel?: string | null; GhiChuDonHang?: string | null;
   TrangThai: string;
   PhuongThucThanhToan?: string | null;
   TenNguoiNhan?: string | null;
@@ -209,6 +210,9 @@ export default function OrdersScreen() {
                     ))}
                     <View style={styles.detailPayment}>
                       {!!order.DiaChiNhan && <Text style={styles.detailPaymentValue}>{order.TenNguoiNhan} · {order.DienThoaiNhan}{'\n'}{order.DiaChiNhan}</Text>}
+                      {order.TienHang != null && <Text style={styles.detailPaymentValue}>Tiền hàng {formatPrice(order.TienHang)} + giao hàng {formatPrice(order.PhiGiaoHang ?? 0)} − giảm giá {formatPrice(order.GiamGiaDon ?? 0)} = {formatPrice(order.TongTien)}</Text>}
+                      {!!order.ShippingLabel && <Text style={styles.detailPaymentValue}>Phương thức: {order.ShippingLabel}</Text>}
+                      {!!order.GhiChuDonHang && <Text style={styles.detailPaymentValue}>Ghi chú: {order.GhiChuDonHang}</Text>}
                       <Text style={styles.detailPaymentLabel}>Thanh toán</Text>
                       <Text style={styles.detailPaymentValue}>{order.PhuongThucThanhToan === 'COD' ? 'Thanh toán khi nhận hàng' : order.PhuongThucThanhToan || 'Chưa ghi nhận'} · {order.TrangThaiThanhToan === 'PAID' ? 'Đã đối soát tiền' : order.TrangThaiThanhToan === 'UNPAID' ? 'Chưa đối soát tiền' : order.TrangThaiThanhToan}</Text>
                       {!!order.MaVanDon && <Text style={styles.detailPaymentValue}>Vận chuyển: {order.DonViVanChuyen} · {order.MaVanDon}</Text>}

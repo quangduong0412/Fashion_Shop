@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { ApiError, positiveId, textValue } from './apiErrors';
 import { normalizeSaleStatus } from './productVariants';
 import { money } from './orderRules';
+import { readSettings } from './storeSettings';
 
 export type CartInput = { id: number; variantId: number | null; quantity: number; size: string; color: string };
 export function cartInput(value: unknown): CartInput[] {
@@ -22,12 +23,12 @@ export function shippingInput(value: any) {
 }
 export function hash(value: unknown) { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
 export async function priceCart(tx: Prisma.TransactionClient, items: CartInput[]) {
-  const products = await tx.sanPham.findMany({ where: { MaSanPham: { in: [...new Set(items.map(item => item.id))] } }, include: { bienThes: true } });
+  const products = await tx.sanPham.findMany({ where: { MaSanPham: { in: [...new Set(items.map(item => item.id))] } }, include: { bienThes: true, loaiHang: true } });
   type Line = { product: typeof products[number]; variant: typeof products[number]['bienThes'][number] | undefined; quantity: number; price: number; total: number };
   const merged = new Map<string, Line>();
   for (const item of items) {
     const product = products.find(row => row.MaSanPham === item.id);
-    if (!product || normalizeSaleStatus(product.TrangThai) !== 'Đang mở bán') throw new ApiError(409, 'PRODUCT_UNAVAILABLE', 'Một sản phẩm trong giỏ đã ngừng bán. Hãy cập nhật giỏ.');
+    if (!product || !product.loaiHang.IsActive || normalizeSaleStatus(product.TrangThai) !== 'Đang mở bán') throw new ApiError(409, 'PRODUCT_UNAVAILABLE', 'Một sản phẩm trong giỏ đã ngừng bán. Hãy cập nhật giỏ.');
     let variant = item.variantId ? product.bienThes.find(row => row.MaBienThe === item.variantId) : undefined;
     if (item.variantId && !variant) throw new ApiError(409, 'VARIANT_CHANGED', `Biến thể của “${product.TenSanPham}” đã thay đổi. Hãy chọn lại.`);
     if (!variant && product.bienThes.length) {
@@ -55,4 +56,23 @@ export async function priceCart(tx: Prisma.TransactionClient, items: CartInput[]
     items: lines.map(line => ({ id: line.product.MaSanPham, name: line.product.TenSanPham, variantId: line.variant?.MaBienThe ?? null,
       size: line.variant?.KichCo ?? '', color: line.variant?.MauSac ?? '', price: line.price, quantity: line.quantity,
       availableQuantity: line.variant?.SoLuong ?? line.product.SoLuong, total: line.total })) } };
+}
+
+export function checkoutContext(body: any) {
+  if (!['COD', 'Thanh toán khi nhận hàng', undefined].includes(body?.paymentMethod)) throw new ApiError(400, 'UNSUPPORTED_PAYMENT', 'Cửa hàng hiện hỗ trợ COD.');
+  const shipping = shippingInput(body?.shipping);
+  const shippingMethod = body?.shippingMethod ?? 'STANDARD';
+  if (shippingMethod !== 'STANDARD') throw new ApiError(400, 'INVALID_SHIPPING_METHOD', 'Phương thức giao hàng không khả dụng.');
+  if (body?.voucherCode) throw new ApiError(400, 'VOUCHER_UNAVAILABLE', 'Voucher chưa được cấu hình tại cửa hàng.');
+  return { shipping, shippingMethod, paymentMethod: 'COD', note: textValue(body?.note, 'Ghi chú', 500, false) };
+}
+export async function quoteCheckout(tx: Prisma.TransactionClient, items: CartInput[], context: ReturnType<typeof checkoutContext>) {
+  const quote = await priceCart(tx, items);
+  const config = await readSettings(tx);
+  if (!config.settings.shipping.enabled) throw new ApiError(409, 'SHIPPING_UNAVAILABLE', 'Cửa hàng đang tạm ngưng tiếp nhận đơn giao hàng.');
+  const method = config.settings.shipping;
+  const shippingFee = method.freeFrom !== null && quote.subtotal >= method.freeFrom ? 0 : method.fee;
+  const total = money(quote.subtotal + shippingFee);
+  const quoteHash = hash({ prices: quote.quoteHash, context, settingsVersion: config.version, shippingFee, shippingLabel: method.label });
+  return { ...quote, quoteHash, shippingFee, total, shippingLabel: method.label, publicQuote: { ...quote.publicQuote, quoteHash, shippingFee, total, shippingLabel: method.label, shippingMethod: context.shippingMethod, settingsVersion: config.version } };
 }

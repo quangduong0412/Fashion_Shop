@@ -1,91 +1,73 @@
 # Fashion Haven — tiến độ có bằng chứng
 
-Cập nhật **02/10/2026**. Trạng thái dưới đây phân biệt luồng đã kiểm chứng và việc còn thiếu. Tài liệu thay các khẳng định cũ “toàn bộ admin hoàn thành”, SQL Server và đồng bộ realtime tức thì. Hệ thống chưa được kết luận hoàn chỉnh hoặc sẵn sàng production.
+Checkpoint **05/10/2026**. Đây là các luồng đã triển khai và phạm vi kiểm tra, không phải tuyên bố toàn hệ thống hoàn chỉnh hay sẵn sàng production. Bảng yêu cầu → màn hình → API → dữ liệu → nghiệp vụ → nghiệm thu → trạng thái ở [PLAN.md](PLAN.md); cách chạy từ clone ở [README.md](README.md), API/cấu hình ở [BE/README.md](BE/README.md).
 
-## Nguồn chính và dữ liệu
+## Nguồn và dữ liệu thực
 
-| Khu vực | Nguồn thực tế |
+- Khách: `FE`, Expo SDK 57 / React Native / Expo Router. Admin: `admin_web`, React/Vite. Backend: `BE`, Express/TypeScript/Prisma/**MySQL**.
+- `fashion_ui1`/`fashion_ui2` chỉ tham khảo; `fashionheaven` giữ nguồn ảnh fallback, không phát triển song song hoặc xóa assets cũ.
+- Prisma là schema chạy; FashionHeaven.sql có DROP DATABASE nên không dùng cập nhật database hiện tại. Không reset/seed database cửa hàng.
+- Đối chiếu gần nhất: **16 sản phẩm, 134 biến thể, 6 đơn, 6 dòng đơn**. Test tạo dữ liệu tổng hợp trong schema riêng.
+- Migration additive tài khoản/media và settings đã áp dụng trên local và chạy lại idempotent thành công. Không đổi mật khẩu/đặt lại tồn/tính lại đơn cũ. Model `PhieuXuat`/`CTDonHang` map tới `donhang`/`ctdonhang`; snapshot tiền mới Decimal(18,0) nullable, cột Float cũ giữ nguyên.
+
+## Các lát cắt có mã và kiểm tra thực
+
+| Phân hệ | Luồng / bằng chứng | Giới hạn |
+| --- | --- | --- |
+| Cleanup test DB | Runner finally đóng child/kết nối trước DROP đúng schema nó tạo; manifest/marker/lease, KEEP_TEST_DB opt-in. Unit success/setupfail/testfail/cleanupfail/childclose/KEEP; probe thực setup/test lỗi và KEEP/dry-run. 14 schema legacy xác minh đầy đủ đã xóa, 2 rỗng chưa xác minh giữ lại. | Không dọn bằng wildcard/tên test; không đủ provenance giữ lại. Danh sách cụ thể ở báo cáo cleanup. |
+| Tài khoản / quyền | Bcrypt; API không password/hash; namespace chung customer/staff transaction; ADMIN/STAFF check DB mỗi request; SessionEpoch revoke không hồi sinh khi bật lại. Customer list/detail/order history/statistics thật, disable/reactivate/profile/reset có lý do/audit. | Chưa role kho riêng/scoping chi nhánh; admin không xem mật khẩu gốc. |
+| Khôi phục mật khẩu | FE forgot/reset forms + API, token hash 15 phút dùng một lần, customer lock chống race, expiry/one-use/session/audit test thật; thiếu cấu hình 503 generic. Outbox riêng local, adapter Resend có timeout/idempotency theo token hash để tránh trùng receipt ID giữa database; ca provider failure/revoke đã kiểm tra bằng stub, chưa email thật. | Email nhà cung cấp chưa nghiệm thu vì thiếu key/sender/URL HTTPS; file mode không phải email thật. |
+| Khách demo | Explicit CLI, NODE_ENV=development + opt-in, local MySQL không DB hệ thống/test; bcrypt/audit/no existing reset. Unit cấu hình và ca MySQL đồng thời tạo một tài khoản/domain operation, login và retry giữ profile/status/password. | **Chưa cấp tài khoản mới trong DB cửa hàng**: chưa có mật khẩu operator. Cách cấp dưới đây. |
+| Catalog / ảnh | Gallery 8 ảnh có thứ tự, ảnh đầu chính; SKU có ảnh riêng; metadata description/material/brand; danh mục ảnh/icon/active/position, ẩn chặn public và checkout mới; preserve omitted ảnh/legacy ảnh khi sửa giá/tồn, validation media và fallback trung tính. | Brand hiện text, chưa brand CRUD; hướng dẫn size chưa theo danh mục; URL ảnh ngoài timeout chưa đủ chứng minh ảnh đã hỏng. |
+| Tồn / nhập | Tồn SKU độc lập, tổng server; adjustment reason/expectedStock/journal/transaction; DRAFT không cộng, RECEIVED một lần đúng kho/NCC/SKU, snapshot dòng nhập. HTTP race và browser sửa +2, tạo 5+3=8, nhận +3/tổng 153000 đã có. | Chưa transfer/request nhập→duyệt; chưa role kho riêng. |
+| Giỏ / COD | Persist selected rows, quote chỉ dòng chọn, giữ dòng chưa chọn; pending receipt retry sau lỗi, 5 unit cart. Quote server giá/tồn/address/method/note/settings; fee một lần checkout phân bổ exact VND nhiều kho. Transaction reserve chống tranh món cuối; receipt cũ vẫn replay không reserve lần hai. | Một địa chỉ profile; giỏ local chưa multi-device, đổi SKU trực tiếp còn thiếu; voucher bị từ chối rõ, discount 0. |
+| Xử lý / theo dõi / hủy | PENDING→PROCESSING→SHIPPING→DELIVERED, vận đơn bắt buộc; STAFF xử lý, ADMIN đối soát COD có căn cứ. Khách ownership chỉ hủy PENDING; nội bộ PENDING/PROCESSING hợp lệ. Journal/event/history, rollback/race/retry hoàn stock một lần; không revive/hard delete/chạy exports cũ. | Chưa return/refund/timeout giữ tồn; không tự hủy đơn xử lý/giao. |
+| CMS / liên hệ | Canonical payload validation, paged/search/type/detail posts; omitted ảnh giữ; admin save await lỗi. FE News/article thật; Contact validation/loading/success, inbox paged/search/read/mailto thật, bỏ fake pending/CLV/buttons. | Bài viết hiện public, chưa draft/schedule; inbox chưa handled/reply audit. Banner có lịch riêng ở settings. |
+| Cài đặt / banner | Public/internal APIs; ADMIN CAS version/audit/reason, store contact/policies, STANDARD fee/freeFrom/enabled, tối đa 5 banners upload/order/active/schedule/internal CTA. FE Home/Contact/Policies và checkout dùng DB. Snapshot đơn cũ không đổi. | Live DB chưa có settings row: default fee 0/contact/policies rỗng, không tự seed. Chưa nhiều phương thức giao/gateway/provider. |
+| Báo cáo | RepeatableRead aggregate **toàn bộ** đơn kỳ ngày tạo UTC+7 tối đa 366 ngày, trạng thái hiện tại; delivered value khác collected COD; >50 orders test, top20 lines, current selling SKU stock/low<=5, CSV UTF-8 chống công thức. | Không phải ledger tiền theo ngày thu/lợi nhuận/doanh thu thuần. Discount/refund/return = null chưa khả dụng, không giả 0; không inventory lịch sử/all hidden warehouse stock. |
+
+## Kết quả kiểm tra mới nhất
+
+**71/71 mục Node test đạt, 0 fail, 0 skip** trên mã mới nhất: **44 ca tích hợp API/MySQL + 25 unit + 1 browser + nhóm cha** (70 ca lá). Trong 44 ca tích hợp có một ca domain cấp demo chạy MySQL thật; adapter Resend chỉ mô phỏng lỗi dịch vụ ngoài để kiểm tra hợp đồng/revocation, không gửi email thật. Browser dùng build FE mới có aria-checked và lưu dòng giỏ chưa chọn.
+
+Database lượt đạt `fashionhaven_test_1791178742560_adf830d0` đã được DROP trong finally; TAP lưu riêng tại ignored BE/test-artifacts/acceptance-2026-10-05.tap. Các lượt lỗi trước đã sửa và cũng được dọn; không dùng các lượt đó hoặc đầu ra cuối bị mất để tuyên bố đạt.
+| Kiểm tra | Kết quả được ghi nhận |
 | --- | --- |
-| Khách hàng | `FE`: React Native + Expo SDK 57, route trong `app`, màn hình trong `pages`. |
-| Quản trị | `admin_web`: React + TypeScript + Vite. |
-| API/database | `BE`: Express + Prisma, provider MySQL; `src/app.ts` lắp routes; nguồn ảnh chính tại `BE/public/images`. |
-| Tham khảo | `fashion_ui1`/`fashion_ui2`: thiết kế; `fashionheaven`: ứng dụng cũ, ảnh legacy dùng fallback. Giữ các thư mục này. |
+| BE `npm.cmd run typecheck` | Đạt sau sửa typing ca demo; không lỗi. |
+| Admin typecheck / lint / build | Đạt; lint 0 warning, build mới sau nhãn media form. |
+| FE `npx.cmd tsc --noEmit`, `npm.cmd run lint`, `npx.cmd expo export --platform web` | Đạt sau patch aria-checked giỏ; lint 0 warning, export 22 routes/2,7 MB; warning NO_COLOR/FORCE_COLOR không làm build lỗi. Chưa native. |
+| HTTP + units + browser | **71/71 PASS**, 44 integration API/MySQL + 25 unit + 1 browser + nhóm cha. Browser dùng bản export/build thật, không API giả. |
+| Cleanup lỗi thực | Setup fail và test fail: đúng DB bị dọn, code test 2 giữ nguyên; KEEP giữ DB rồi dry-run không xóa, DROP riêng xóa đúng tên. |
+| Audit dữ liệu ứng dụng | 16/134/6/6 giữ nguyên; không đơn thử vào store. 0 settings row; demo credentials chưa được cấu hình. |
+| `git diff --check` | Đạt; CRLF notices của Git không phải lỗi whitespace. Stage 89 file đã rà, không env/secrets/artifacts/build/dependency/upload/outbox; report_work riêng giữ nguyên ngoài commit. |
 
-Schema chạy là `BE/prisma/schema.prisma`; cấu hình ở `.env` local. `FashionHeaven.sql` và danh sách procedure là thiết kế tham khảo, không chứng minh toàn bộ chức năng đã triển khai. **Không chạy SQL khởi tạo trên database thật vì có `DROP DATABASE`.**
+Browser dùng Edge/Chromium headless, bản build thật và Express/MySQL thật trong database riêng. Chỉ đổi địa chỉ request sang API cổng test, không fabricate payload. Viewports 390×844 và 1440×1000. Luồng core đã chạy: login→SKU→cart→COD→orders; admin fulfillment→courier→delivered→COD reconcile; inventory/import/product variants/staff menu. Đã qua media upload/gallery/order/primary/SKU/fallback và category admin/FE; CMS tạo bài→đọc chi tiết, contact→inbox; customer create/reset/disable/reactivate/profile/audit→FE recover/reuse/login; settings→contact/policies/banner CTA; report filters/empty/CSV/390px. Giỏ hai dòng bỏ chọn một dòng: request chỉ một dòng, tổng 120000 VND, không reserve dòng chưa chọn, quay lại giỏ vẫn unchecked; đã bổ sung aria-checked vì RN Web không tự ánh xạ accessibilityState.checked. Đã xem ảnh sản phẩm/SKU, categories, reports và policies mobile: typography tiếng Việt rõ, không tràn chiều ngang; hình Expo icon là fixture upload tổng hợp, không dùng làm ảnh hàng thật.
 
-Dữ liệu cửa hàng đối chiếu và giữ nguyên: **16 sản phẩm, 134 biến thể, 6 đơn, 6 dòng đơn**. DDL bổ sung cho request chống trùng, lịch sử đơn, snapshot tên/ảnh dòng đơn, tên/biến thể dòng nhập và metadata xử lý phiếu đã sẵn sàng; `appmutex` cùng `Account.SessionEpoch` hỗ trợ namespace đăng nhập/thu hồi session. Không reset database, đặt lại tồn hoặc chạy seed. Model `PhieuXuat` vẫn map vào bảng `donhang` để tương thích tên nội bộ cũ.
+**Chưa kiểm tra Android/iOS thiết bị thật**, mọi CRUD/nhánh validation ít dùng, production storage/email/provider, hiệu năng dữ liệu lớn. Export web/lint/typecheck không thay cho native runtime.
 
-## Checkpoint đã chạy
+## Database test đã dọn và dữ liệu ảnh
 
-Lượt gần nhất đã ghi nhận **43/43 mục Node test đạt**: **32 ca HTTP + 4 ca giỏ hàng + 5 ca limiter + 1 ca trình duyệt** (42 ca lá), cộng nhóm test cha. HTTP dùng Express thật và MySQL trong schema `fashionhaven_test_*` mới; fixtures không nằm trong database cửa hàng.
+Danh sách từng DB: [BE/TEST_DATABASE_CLEANUP.md](BE/TEST_DATABASE_CLEANUP.md). 14 database cũ đã xóa; hai tên giữ vì thiếu nguồn sở hữu:
 
-Test trình duyệt phục vụ **bản build thật** trong `FE/dist` và `admin_web/dist`; request API đi tới Express/schema kiểm tra, không trả dữ liệu giả. Đã chạy được luồng **khách đăng nhập → chọn biến thể → giỏ → quote → COD → theo dõi đơn → admin đóng gói → vận đơn → giao thành công → đối soát COD**. Khách tải lại thấy đơn đã giao, mở chi tiết thấy mã vận đơn `BROWSER-TEST-001` của fixtures. Đây là nghiệm thu luồng web này, không thay cho mọi CRUD hoặc thiết bị Android/iOS.
+- `fashionhaven_test_1790947556855_6730d9c6`
+- `fashionhaven_test_1790947607214_dfda8761`
 
-| Luồng đã kiểm tra | Thay đổi và bằng chứng chính |
-| --- | --- |
-| Cấp tài khoản → đăng nhập → phân quyền | `employees.ts`, `credentials.ts`, `sessions.ts`, `authMiddleware.ts`: bcrypt, transaction hồ sơ/tài khoản, mặc định STAFF, quyền database trên mỗi request. Test cấp trùng rollback, namespace chung giữa khách/nhân viên, đổi quyền/thu hồi và bật lại không hồi sinh token cũ. Browser STAFF tại viewport điện thoại chỉ có hai menu products/orders, không có nút tạo/sửa sản phẩm. |
-| Bảo vệ hồ sơ/lịch sử | API không trả mật khẩu/hash; ngưng nhân viên giữ hồ sơ; chặn tự ngưng/admin cuối; khách có đơn không bị xóa cứng. Test supplier có tham chiếu không bị gán lại sản phẩm hoặc phá chứng từ. |
-| Catalog → quote → checkout | Server tính giá/tổng/tồn, kiểm tra biến thể/ngừng bán; quote hash và request key lưu database. Test giá client sửa, giá đổi, retry đồng thời và payment không hỗ trợ. |
-| Giữ tồn và tranh mua | Transaction khóa sản phẩm, cập nhật tổng/biến thể và nhật ký. Test tranh món cuối không vượt tồn; nhiều kho nguyên tử, tổng đơn bằng quote. |
-| Xử lý đơn/giao/tiền | `PENDING → PROCESSING → SHIPPING → DELIVERED`; vận đơn bắt buộc khi giao. Staff không đổi payment; admin đối soát COD sau giao có căn cứ. Test bỏ bước/chuyển sai và quyền tiền; luồng admin trên browser cũng đạt. |
-| Hủy và hoàn tồn | Khách chỉ hủy đơn của mình khi PENDING; nội bộ hủy theo trạng thái/điều kiện. Retry đồng thời hoàn tồn một lần; giữ lịch sử, không revive/hard delete; exports cũ bị chặn. Ca overflow/số lượng cũ không hợp lệ từ chối toàn transaction, không cập nhật dở dang. |
-| Catalog/tồn đồng thời | HTTP xác minh lý do/snapshot, từ chối snapshot cũ và nhật ký chênh lệch; các patch catalog độc lập không ghi đè nhau, thêm biến thể đồng thời giữ dòng/giá. Browser sửa tồn biến thể +2, giữ size M/ảnh sản phẩm và kiểm chứng tồn cha/biến thể cùng tăng đúng. Không tự gán ảnh mẫu khi không thay ảnh. |
-| Tạo sản phẩm có biến thể | Browser tạo sản phẩm mới với hai biến thể tồn 5 và 3; backend lưu tổng tồn đúng 8. Ca này nằm trong cùng browser test, tổng suite vẫn 43 mục Node. |
-| Nhập hàng | HTTP tạo DRAFT tính lại tổng/chưa cộng tồn; nhận đồng thời cộng một lần và nhật ký; sai kho/NCC/biến thể bị từ chối, không hủy/xóa phiếu đã nhận. Browser lập DRAFT không cộng tồn, RECEIVED cộng +3 cả cha/biến thể, tổng phiếu đúng 153.000 VND. |
-| Phân trang/thống kê | HTTP kiểm tra pageSize, ownership, danh sách catalog/đơn và giá nhập chỉ admin. Dashboard aggregate toàn database; bootstrap tối đa 100 dòng/danh sách, 50 đơn gần nhất, không suy tổng từ trang hiện tại. |
-| Giỏ hàng cũ | 4 ca chuẩn hóa/khóa dòng và thao tác giỏ đạt; tránh key trùng khi cùng sản phẩm có biến thể hoặc dữ liệu lưu từ phiên bản cũ. |
-| Parser/upload | HTTP kiểm tra JSON sai/quá lớn, API không tồn tại và upload HTML/ảnh quá lớn trả JSON có giới hạn. Upload chỉ admin, kiểm chữ ký PNG/JPEG/WebP tối đa 5 MB, tên file server chọn. |
-| Giới hạn request | 5 ca limiter đạt: policy login/đăng ký/liên hệ, 429/Retry-After và cửa sổ/bucket có giới hạn. Bộ nhớ từng process vẫn cần kho chung khi triển khai nhiều replica. |
+Lượt cleanup:list gần nhất chỉ còn hai schema legacy này; schema của từng lượt mới được dọn sau khi kết thúc. Active/keep database không tự được coi là rác.
 
-## Phạm vi kiểm chứng và phần chưa xác minh
+12 ảnh catalog/bài viết (~7,75 MB) ở BE/public/images; legacy giữ fallback. Product #1 URL Bing search sai kiểu ảnh đã đổi có compare-and-set sang ảnh local đồng hồ phù hợp loại sản phẩm; bản gốc backup private ignored, không ghi đè các ảnh khác. Các URL Unsplash timeout giữ/fallback, không suy tất cả đã lỗi. Upload dùng UUID/chữ ký PNG/JPEG/WebP <=5MB, ADMIN; không nhận HTML/SVG. Runtime BE/uploads cần backup riêng, không vào Git.
 
-- Browser đã mở rộng và đạt tạo hai biến thể, sửa tồn/giữ ảnh, ghi lý do, nhật ký, lập/nhận phiếu nhập và giao diện STAFF trên viewport điện thoại. Chưa dùng kết quả đó để kết luận sản phẩm đơn giản, mọi CRUD cũ hoặc thiết bị native đạt.
-- 5 ca limiter và 1 ca bảo vệ overflow tồn khi hủy đã được tính trong lượt 43/43 mới nhất.
-- Limiter đăng nhập 60 request/IP/15 phút, đăng ký và liên hệ mỗi endpoint 30 request/IP/15 phút; bộ nhớ mỗi process có giới hạn 5.000 bucket, quá hạn trả 429/Retry-After. Triển khai nhiều replica cần kho giới hạn dùng chung.
-- Lượt kiểm tra mới nhất BE typecheck, admin typecheck/lint/build, FE typecheck/lint/export đạt; lint FE/admin không cảnh báo. Suite 43/43 trên mã mới nhất gồm giữ ảnh khi sửa tồn và phục vụ assets đã đạt. Chưa nghiệm thu native SDK/thiết bị Android/iOS, mọi CRUD hoặc cấu hình production.
+## Cách dùng khách thử nghiệm
 
-## Giao diện đã nối và giới hạn được hiển thị
+1. Trong **BE/.env local**, operator đặt NODE_ENV=development, ALLOW_DEMO_CUSTOMER=true, DEMO_CUSTOMER_EMAIL, DEMO_CUSTOMER_PASSWORD, tùy chọn DEMO_CUSTOMER_NAME. Mật khẩu 8 ký tự trở lên, tối đa 72 byte UTF-8; không commit/gửi chat.
+2. Chạy `cd BE` rồi `npm.cmd run demo:customer`. Database phải là DB phát triển local FE đang gọi, không schema integration test. Lệnh không khởi chạy tự động; email tồn tại không đổi password/profile/status.
+3. FE đăng nhập bằng đúng email/mật khẩu đã đặt. Để reset existing account dùng luồng ADMIN có reason/audit hoặc forgot-password, không chạy seed/reset database.
 
-Giao diện khách/admin có session/loading/empty/error/success; request checkout đang chờ được lưu để retry không tạo đơn mới. Product editor nhập tồn tổng cho sản phẩm đơn giản, tồn mỗi biến thể cho sản phẩm có biến thể; tổng server tính và form giữ lỗi khi lưu thất bại.
+Thiếu cấu hình email thật có thể nghiệm thu recovery độc lập với development file outbox; tài khoản demo thực vẫn cần operator cung cấp mật khẩu. Không tự công bố mật khẩu cố định.
 
-News của FE đã lấy bài viết thật từ `/api/posts`, bỏ dữ liệu `news`/`trends` tĩnh; còn cần nghiệm thu CMS/liên hệ đầy đủ. Mục **Giao hàng** là preview chỉ đọc các đơn SHIPPING/DELIVERED trong tối đa 100 đơn gần nhất, dùng mã đơn/ngày tạo thực tế; xử lý tại Quản lý đơn hàng. Không tạo một phiếu xuất giả hoặc trừ tồn lần nữa.
+## Việc kế tiếp và giới hạn còn mở
 
-**Reports/Settings ghi rõ chưa hỗ trợ**, không có số liệu/nút cấu hình giả hoặc lời hứa phiên bản chưa xác định. Các màn hình CRUD cũ còn phải audit từng luồng; việc có 14 menu không nghĩa là 14 nghiệp vụ đã hoàn thành. Hiện REST/refetch, không có push realtime.
+Ưu tiên **voucher thật → quote/checkout/hủy → yêu cầu trả dòng/qty → nhận/kiểm tra/restock → hoàn tiền có ledger**. Cần model/audit/state/discount allocation/redemption transactional, không vượt tiền đã thu hoặc qty đã mua. Chưa có module nên không bật mã giảm giả, không refund COD tự động hay dùng cancel đơn đã giao để hoàn stock.
 
-Icons admin dùng SVG tại ứng dụng, không phụ thuộc font icon ngoài mạng; kiểm tra browser dùng bản build mới có thay đổi này.
+Sau đó: wishlist, đánh giá sau mua, notification/read marker, brand/price/size/color/sort filters, CMS bài draft/schedule, FAQ/support workflow, brand CRUD và các quản trị legacy chưa nghiệm thu. Reports bổ sung ledger discount/refund/cash timing khi dữ liệu có căn cứ. Role kho/scope, transfers/request nhập, native testing, deployment/backup/restore còn mở; xem từng hàng PLAN.
 
-12 ảnh catalog/bài viết được tham chiếu đã sao chép sang `BE/public/images` (khoảng 7,75 MB) để đủ assets trong bản clone; `/images` ưu tiên thư mục này, giữ fallback legacy. `BE/uploads` được ignore vì chứa ảnh người dùng phát sinh, cần backup ngoài Git. Smoke test ảnh tĩnh 200/`nosniff` đã đạt trong ca HTTP hiện có, không tăng số ca.
-
-## An toàn và giả định đang áp dụng
-
-- `.env` đã loại khỏi theo dõi Git; JWT secret local đủ dài và không còn khóa cố định. **Credential từng commit vẫn có thể nằm trong lịch sử Git và cần chủ database thay mới** trước khi dùng ngoài local; chưa rewrite lịch sử/đổi mật khẩu database dùng chung.
-- Đã nâng cấp **19 mật khẩu lưu rõ cũ** sang bcrypt bằng compare-and-set; không thay mật khẩu đăng nhập/in giá trị. `update_passwords.ts` dùng lại implementation an toàn này.
-- Seed `prisma/seed.ts`/`add_sample_data.ts` yêu cầu opt-in và mật khẩu admin/staff/customer do người vận hành cấp, hash trước khi ghi; bị chặn trong production, không có mật khẩu cố định. **Không chạy seed** trong đợt sửa; thay đổi guard được đối chiếu mã nguồn, không coi là nghiệm thu seed đầy đủ.
-- STAFF đọc catalog/tồn và xử lý đơn; ADMIN sửa giá/tồn/nhập/nhân sự, đối soát. Chức danh nhân sự không tự cấp quyền admin. Chưa phân phạm vi kho/chi nhánh vì schema thiếu quan hệ.
-- Chỉ COD, giảm giá/phí giao hiện 0 theo API; không tự thêm VAT, miễn phí theo ngưỡng giả, thanh toán online hoặc hoàn tiền tự động.
-- Tiền tính bằng số nguyên VND an toàn; cột còn Float, chuyển Decimal cần đợt đối soát/migration riêng. Snapshot chứng từ giữ dữ liệu lịch sử khi catalog thay đổi.
-- Tồn hiển thị là **khả dụng**: giữ khi đặt, hoàn một lần khi hủy hợp lệ. Chưa có timeout tự hủy chờ, quy trình đổi/trả hoặc chuyển kho đầy đủ.
-
-## Phát hiện còn mở theo ưu tiên
-
-| Mức | Vấn đề, bằng chứng và phụ thuộc |
-| --- | --- |
-| P0 trước triển khai ngoài local | Credential cũ trong lịch sử Git; cần chủ database thay thông tin xác thực. HTTPS, CORS/proxy/storage, sao lưu/phục hồi và vận hành production chưa nghiệm thu. Chống upload cơ bản đã kiểm tra; không đồng nghĩa storage production đã sẵn sàng. |
-| P1 | Hoàn/đổi, hoàn tiền, POS/xuất kho riêng, chuyển kho, phiếu/đơn cũ không rõ trạng thái chưa có luồng. Cần quyết định nghiệp vụ; không suy đoán để sửa tồn/thu tiền dữ liệu cũ. |
-| P1 | Khách/NCC/nhân sự/CMS còn dùng bootstrap giới hạn 100; một số form/actions cũ chưa nghiệm thu đầu cuối, validation/lỗi/phân trang chưa đồng nhất. Hạng VIP/CMS/liên hệ cần audit riêng. |
-| P1 | Chưa có cổng thanh toán, webhook xác minh, hãng giao hoặc email; cần dịch vụ/cấu hình và căn cứ đối soát từ người vận hành. |
-| P1 | Limiter bộ nhớ chỉ từng process; cấu hình proxy và kho giới hạn chung là phụ thuộc khi triển khai nhiều replica. |
-| P2 | Reports/Settings chưa hỗ trợ; báo cáo theo kỳ, export chuẩn, quan sát hệ thống và tối ưu truy vấn còn mở. |
-| P2 | Chưa nghiệm thu Android/iOS thật, mọi màn hình/kích thước và push realtime. |
-
-## Sổ kiểm tra
-
-| Lệnh/khu vực | Kết quả checkpoint đã ghi nhận |
-| --- | --- |
-| `BE`: `npm.cmd test` có cấu hình browser | **43/43** mục Node đạt trên mã mới nhất: 32 HTTP + 4 cart + 5 limiter + 1 browser + nhóm cha. Browser có tạo hai biến thể/tồn/nhập/giữ ảnh/STAFF/khách xem vận đơn; HTTP có overflow và ảnh chính. |
-| `BE`: `npm.cmd run typecheck` | Đạt lượt mới nhất. |
-| `admin_web`: `npm.cmd run typecheck`, `npm.cmd run lint`, `npm.cmd run build` | Đạt; typecheck/lint đã chạy lại sau patch giữ ảnh, lint không cảnh báo. |
-| `FE`: `npx.cmd tsc --noEmit`, `npm.cmd run lint`, `npx.cmd expo export --platform web` | Đạt; lint không cảnh báo, export tạo bản web cho kiểm tra trình duyệt. |
-| Dữ liệu cửa hàng | 16 sản phẩm/134 biến thể/6 đơn/6 dòng đơn giữ nguyên; fixtures chỉ trong schema kiểm tra riêng. |
-
-Khi mở rộng suite/diff tiếp theo, cập nhật số ca/lệnh thực chạy và phần chưa xác minh; không kết luận hệ thống hoàn chỉnh chỉ vì đã thêm mã hoặc build thành công.
+Credential từng nằm trong lịch sử Git cần chủ DB thay trước dùng ngoài local; chưa rewrite history hoặc đổi credential shared DB. Đã hash 19 mật khẩu legacy cũ bằng CAS ở checkpoint trước, không đổi mật khẩu đăng nhập. Không log secrets/PII, không công bố upload/outbox private. Rate limiter hiện in-memory process, multi-replica cần store chung; JWT/CORS/proxy/HTTPS/storage production chưa nghiệm thu.

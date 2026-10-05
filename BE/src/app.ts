@@ -40,12 +40,21 @@ app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.post('/api/users/login', loginThrottle);
 app.post('/api/users/register', registerThrottle);
+app.post('/api/users/forgot-password', loginThrottle);
+app.post('/api/users/reset-password', loginThrottle);
 app.use('/api/users', userRoutes);
 app.use('/api/orders', orderRoutes);
 
+import { getPublicSettings, getInternalSettings, saveSettings } from './controllers/settingsController';
+import { getRetailReport } from './controllers/reportController';
+app.get('/api/settings', getPublicSettings);
+app.get('/api/settings/internal', authenticateToken, requireAdmin, getInternalSettings);
+app.put('/api/settings', authenticateToken, requireAdmin, saveSettings);
+app.get('/api/reports', authenticateToken, requireAdmin, getRetailReport);
+
 // New unified routes
 import {
-  getAdminData, getPostsData, createContact, createPost, updatePost, deletePost,
+  getAdminData, getPostsData, getPostById, getContacts, createContact, createPost, updatePost, deletePost,
   createSupplier, updateSupplier, deleteSupplier, deleteContact,
   createBranch, updateBranch, deleteBranch,
   createRole, updateRole, deleteRole,
@@ -56,10 +65,12 @@ import {
 app.get('/api/admin', authenticateToken, requireStaff, getAdminData);
 
 app.get('/api/posts', getPostsData);
+app.get('/api/posts/:id', getPostById);
 app.post('/api/posts', authenticateToken, requireAdmin, createPost);
 app.put('/api/posts/:id', authenticateToken, requireAdmin, updatePost);
 app.delete('/api/posts/:id', authenticateToken, requireAdmin, deletePost);
 
+app.get('/api/contacts', authenticateToken, requireAdmin, getContacts);
 app.post('/api/contacts', contactThrottle, createContact);
 app.delete('/api/contacts/:id', authenticateToken, requireAdmin, deleteContact);
 

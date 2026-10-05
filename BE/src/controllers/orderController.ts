@@ -4,8 +4,10 @@ import prisma from '../db';
 import { adjustOrderInventory } from '../services/orderInventory';
 import { ApiError, positiveId, sendApiError, textValue } from '../services/apiErrors';
 import { assertTransition, nextStatuses, orderStatus, paymentStatus } from '../services/orderRules';
-import { cartInput, hash, priceCart, shippingInput } from '../services/checkout';
+import { cartInput, hash, checkoutContext, quoteCheckout } from '../services/checkout';
 import { Principal } from '../services/sessions';
+import { allocateMoney, lockSettings } from '../services/storeSettings';
+import { money } from '../services/orderRules';
 
 const detailInclude = { ctDonHangs: { include: { sanPham: { select: { TenSanPham: true, Anh: true } } } } } as const;
 const transactionOptions = { timeout: 20000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted };
@@ -15,7 +17,7 @@ function dto(order: any, internal = false, events: any[] = []) {
   let allowed: string[] = [];
   try { canonical = orderStatus(order.TrangThai); allowed = nextStatuses(canonical as any); } catch { /* Legacy states require manual reconciliation. */ }
   const details = order.ctDonHangs.map((line: any) => ({ ...line, sanPham: { TenSanPham: line.TenSanPham ?? line.sanPham?.TenSanPham, Anh: line.AnhSanPham ?? line.sanPham?.Anh } }));
-  return { ...order, TrangThai: canonical, ctDonHangs: details, history: events.map(event => ({ id: event.Id, from: event.FromStatus, to: event.ToStatus,
+  return { ...order, TienHang: order.TienHang === null ? null : Number(order.TienHang), GiamGiaDon: order.GiamGiaDon === null ? null : Number(order.GiamGiaDon), PhiGiaoHang: order.PhiGiaoHang === null ? null : Number(order.PhiGiaoHang), TrangThai: canonical, ctDonHangs: details, history: events.map(event => ({ id: event.Id, from: event.FromStatus, to: event.ToStatus,
     paymentFrom: event.FromPayment, paymentTo: event.ToPayment, at: event.CreatedAt, note: event.Note, shipping: event.Shipping, actorRole: event.ActorRole })),
     ...(internal ? { id: order.MaPhieuXuat, customer: order.TenNguoiNhan ?? 'Chưa lưu người nhận', phone: order.DienThoaiNhan,
       address: order.DiaChiNhan, date: order.NgayXuat, total: order.TongTien, status: canonical, paymentMethod: order.PhuongThucThanhToan,
@@ -30,7 +32,7 @@ async function readOrders(tx: Prisma.TransactionClient, ids: number[]) {
 export const quoteOrder = async (req: Request, res: Response) => {
   try {
     if (actor(req).role !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Hãy đăng nhập tài khoản khách hàng để đặt hàng.');
-    res.json((await priceCart(prisma, cartInput(req.body?.items))).publicQuote);
+    res.json((await quoteCheckout(prisma, cartInput(req.body?.items), checkoutContext(req.body))).publicQuote);
   } catch (error) { sendApiError(res, error); }
 };
 
@@ -39,38 +41,47 @@ export const createOrder = async (req: Request, res: Response) => {
     const user = actor(req);
     if (user.role !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Chỉ khách hàng được đặt hàng.');
     const items = cartInput(req.body?.items);
-    const shipping = shippingInput(req.body?.shipping);
+    const context = checkoutContext(req.body);
+    const shipping = context.shipping;
     if (!['COD', 'Thanh toán khi nhận hàng', undefined].includes(req.body?.paymentMethod)) throw new ApiError(400, 'UNSUPPORTED_PAYMENT', 'Cửa hàng hiện hỗ trợ thanh toán khi nhận hàng (COD).');
     const key = req.get('Idempotency-Key') ?? req.body?.requestKey;
     if (typeof key !== 'string' || !/^[a-zA-Z0-9_-]{16,64}$/.test(key)) throw new ApiError(400, 'REQUEST_KEY_REQUIRED', 'Cần mã yêu cầu đặt hàng để tránh tạo đơn trùng. Hãy cập nhật ứng dụng.');
-    const fingerprint = hash({ items, shipping, paymentMethod: 'COD' });
+    const fingerprint = hash({ items, ...context });
+    // Receipts created before shipping settings existed used this narrower, equivalent default context.
+    const legacyFingerprint = context.shippingMethod === 'STANDARD' && !context.note ? hash({ items, shipping, paymentMethod: 'COD' }) : null;
     const result = await prisma.$transaction(async tx => {
       // Lock customer first: concurrent retries serialize before taking any product locks.
       await tx.$queryRaw`SELECT MaKhachHang FROM khachhang WHERE MaKhachHang = ${user.id} FOR UPDATE`;
+      const customer = await tx.khachHang.findUnique({ where: { MaKhachHang: user.id }, select: { Status: true } });
+      if (!customer || customer.Status !== 'ACTIVE') throw new ApiError(403, 'ACCOUNT_DISABLED', 'Tài khoản đã ngưng đăng nhập.');
       const previous = await tx.checkoutRequest.findUnique({ where: { CustomerId_Key: { CustomerId: user.id, Key: key } } });
       if (previous) {
-        if (previous.Fingerprint !== fingerprint) throw new ApiError(409, 'REQUEST_KEY_REUSED', 'Mã yêu cầu đã được dùng cho giỏ/địa chỉ khác.');
+        if (previous.Fingerprint !== fingerprint && previous.Fingerprint !== legacyFingerprint) throw new ApiError(409, 'REQUEST_KEY_REUSED', 'Mã yêu cầu đã được dùng cho giỏ/địa chỉ khác.');
         return { replayed: true, orders: await readOrders(tx, previous.OrderIds as number[]) };
       }
       for (const id of [...new Set(items.map(item => item.id))].sort((a, b) => a - b)) await tx.$queryRaw`SELECT MaSanPham FROM sanpham WHERE MaSanPham = ${id} FOR UPDATE`;
-      const quote = await priceCart(tx, items);
-      if (req.body?.quoteHash !== quote.quoteHash) throw new ApiError(409, 'PRICE_CHANGED', 'Giá hoặc giỏ hàng đã thay đổi. Hãy xem lại tổng tiền trước khi xác nhận.');
+      await lockSettings(tx);
+      const quote = await quoteCheckout(tx, items, context);
+      if (req.body?.quoteHash !== quote.quoteHash) throw new ApiError(409, 'PRICE_CHANGED', 'Giá hoặc thông tin đặt hàng đã thay đổi. Hãy xem lại tổng tiền trước khi xác nhận.');
       const employee = await tx.nhanVien.findFirst({ where: { account: { Role: { in: ['ADMIN', 'STAFF', 'USER'] } } }, orderBy: { MaNhanVien: 'asc' } });
       if (!employee) throw new ApiError(409, 'STORE_NOT_READY', 'Cửa hàng chưa có nhân viên xử lý đơn.');
       const byWarehouse = new Map<number, typeof quote.lines>();
       for (const line of quote.lines) byWarehouse.set(line.product.MaKho, [...(byWarehouse.get(line.product.MaKho) ?? []), line]);
       const ids: number[] = [];
-      for (const [warehouseId, lines] of byWarehouse) {
+      const groups = [...byWarehouse.entries()];
+      const subtotals = groups.map(([_warehouseId, lines]) => money(lines.reduce((n, line) => n + line.total, 0)));
+      const fees = allocateMoney(quote.shippingFee, subtotals);
+      for (const [index, [warehouseId, lines]] of groups.entries()) {
         const order = await tx.phieuXuat.create({ data: { MaNhanVien: employee.MaNhanVien, MaKhachHang: user.id, MaKho: warehouseId,
-          TongTien: lines.reduce((sum, line) => sum + line.total, 0), TrangThai: 'PENDING', PhuongThucThanhToan: 'COD', TrangThaiThanhToan: 'UNPAID',
+          TongTien: money(subtotals[index]! + fees[index]!), TienHang: subtotals[index]!, GiamGiaDon: 0, PhiGiaoHang: fees[index]!, ShippingMethod: context.shippingMethod, ShippingLabel: quote.shippingLabel, GhiChuDonHang: context.note || null, TrangThai: 'PENDING', PhuongThucThanhToan: 'COD', TrangThaiThanhToan: 'UNPAID',
           TenNguoiNhan: shipping.name, DienThoaiNhan: shipping.phone, DiaChiNhan: shipping.address,
           ctDonHangs: { create: lines.map(line => ({ MaSanPham: line.product.MaSanPham, MaBienThe: line.variant?.MaBienThe ?? null,
             SKU: line.variant?.SKU ?? null, KichCo: line.variant?.KichCo ?? null, MauSac: line.variant?.MauSac ?? null,
             ...(line.variant?.ThuocTinh ? { ThuocTinh: line.variant.ThuocTinh as Prisma.InputJsonValue } : {}),
-            TenSanPham: line.product.TenSanPham, AnhSanPham: line.product.Anh, SoLuong: line.quantity, DonGiaBan: line.price, ThanhTien: line.total })) } } });
+            TenSanPham: line.product.TenSanPham, AnhSanPham: line.variant?.Anh || line.product.Anh, SoLuong: line.quantity, DonGiaBan: line.price, ThanhTien: line.total })) } } });
         ids.push(order.MaPhieuXuat);
         await adjustOrderInventory(tx, lines.map(line => ({ MaSanPham: line.product.MaSanPham, MaBienThe: line.variant?.MaBienThe, SoLuong: line.quantity })), false, `user:${user.id}`, order.MaPhieuXuat);
-        await tx.orderEvent.create({ data: { OrderId: order.MaPhieuXuat, ToStatus: 'PENDING', ToPayment: 'UNPAID', ActorRole: user.role, ActorId: user.id, Note: 'Đặt hàng COD; tồn khả dụng đã được giữ.' } });
+        await tx.orderEvent.create({ data: { OrderId: order.MaPhieuXuat, ToStatus: 'PENDING', ToPayment: 'UNPAID', ActorRole: user.role, ActorId: user.id, Note: context.note || 'Đặt hàng COD; tồn khả dụng đã được giữ.' } });
       }
       await tx.checkoutRequest.create({ data: { CustomerId: user.id, Key: key, Fingerprint: fingerprint, OrderIds: ids } });
       return { replayed: false, orders: await readOrders(tx, ids) };

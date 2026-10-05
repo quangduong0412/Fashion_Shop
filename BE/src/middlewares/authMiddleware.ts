@@ -22,8 +22,8 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
   }
   try {
     if (claims.role === 'user') {
-      const customer = await prisma.khachHang.findUnique({ where: { MaKhachHang: claims.id }, select: { MaKhachHang: true, Email: true, MatKhau: true } });
-      if (!customer || sessionVersion(customer.MatKhau) !== claims.sessionVersion) throw new ApiError(401, 'SESSION_REVOKED', 'Phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại.');
+      const customer = await prisma.khachHang.findUnique({ where: { MaKhachHang: claims.id }, select: { MaKhachHang: true, Email: true, MatKhau: true, Status: true, SessionEpoch: true } });
+      if (!customer || customer.Status !== 'ACTIVE' || sessionVersion(customer.MatKhau, customer.SessionEpoch) !== claims.sessionVersion) throw new ApiError(401, 'SESSION_REVOKED', 'Phiên đăng nhập đã bị thu hồi. Vui lòng đăng nhập lại.');
       req.user = { id: customer.MaKhachHang, email: customer.Email, role: 'user' };
     } else {
       const account = await prisma.account.findUnique({ where: { MaNhanVien: claims.id }, select: { MaNhanVien: true, UserName: true, PassWord: true, Role: true, SessionEpoch: true } });

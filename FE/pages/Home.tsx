@@ -1,241 +1,94 @@
-import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, ScrollView } from 'react-native';
-import { Colors } from '../constants/theme';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import ProductCard from '../components/ProductCard';
-import { apiRequest, fetchProducts, Product, readCart } from '../components/fashion-data';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Colors } from '../constants/theme';
+import ProductCard from '../components/ProductCard';
+import CatalogImage from '../components/CatalogImage';
+import { categoryIcon } from '../components/catalog-media';
+import type { CatalogCategory } from '../components/catalog-media';
+import { apiRequest, fetchProducts, Product, readCart } from '../components/fashion-data';
+import { loadStoreSettings } from '../components/store-settings';
+import type { StoreSettings } from '../components/store-settings';
 
-const collections = [
-  { id: '1', title: 'Cảm hứng mùa mới', subtitle: 'Những thiết kế tươi mới cho mùa hè rực rỡ và tràn đầy sức sống', tag: 'Xu hướng', image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuABUUYqvhewoqtS9G61Zd_fbJOJqCz5qlO2BKXl0FDpdqxog1gazKVflDR65_GiU4KlFqdwN-PF6or05zqQNdtn8fAut1EMQal3v7IbMbdfWkplxfGQwxElBnFWTqemWdAfT232JkjUYSIjtytXeXqksDjBkZss279bpH9nZtlHHz9C2QygTUGvyvXAnysxjVYrIjjaztZr1zAngWe1Mu1QwqrJvOnmUDn5xJs65G6AKUtYx1wuSeCugQ' },
-  { id: '2', title: 'Thời trang công sở', subtitle: 'Thanh lịch và chuyên nghiệp cho không gian làm việc đẳng cấp', tag: 'Phong cách', tagColor: Colors.light.secondary, image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAVbBmPpZxJIAUJWeynHPttJbDlwdH-xo3PL49-b76rjlXOEqbQjOz78VqRhvnAQPdz_BJnI8I7CZDQr_2PyAhtTI_5YN7jpJdE30-d3pEvSK183zkBYIMB_I0j9zkpwWXdGAPkbT4TKs-tHZbFQycbohAtFdCxOhvmKqHWLeRB9WMdAh8fXex7QoqgWNgKYhbpZhDh8ZN3WCO85sQ434Fmm618FWu7Yei72sThdlzsqyzX_6Wr1ufYfA' },
-];
+type Post = { id: number; title: string; description?: string; image?: string | null; type?: string; date?: string };
 
 export default function HomeScreen() {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const [trendingProducts, setTrendingProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
-  const [cartCount, setCartCount] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const router = useRouter(), insets = useSafeAreaInsets(), { width } = useWindowDimensions();
+  const [products, setProducts] = useState<Product[]>([]), [categories, setCategories] = useState<CatalogCategory[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]), [postError, setPostError] = useState('');
+  const [settings, setSettings] = useState<StoreSettings | null>(null), [settingsError, setSettingsError] = useState(''), [bannerIndex, setBannerIndex] = useState(0);
+  const [cartCount, setCartCount] = useState<number | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState('');
   const generation = useRef(0);
-
   const loadCatalog = useCallback(async () => {
     const request = ++generation.current;
-    setLoading(true); setError(''); setCartCount(null);
-    void readCart().then(items => {
-      if (request === generation.current) setCartCount(items.reduce((sum, item) => sum + item.quantity, 0));
-    }).catch(() => { if (request === generation.current) setCartCount(null); });
-    try {
-      const [items, categoryList] = await Promise.all([fetchProducts(), apiRequest('/categories')]);
-      if (request === generation.current) { setTrendingProducts(items); setCategories(categoryList); }
-    } catch (cause) {
-      if (request === generation.current) setError(cause instanceof Error ? cause.message : 'Không thể tải danh mục và sản phẩm.');
-    } finally { if (request === generation.current) setLoading(false); }
+    setLoading(true); setError(''); setPostError(''); setSettingsError(''); setCartCount(null);
+    void readCart().then(items => { if (request === generation.current) setCartCount(items.reduce((sum, item) => sum + item.quantity, 0)); }).catch(() => { if (request === generation.current) setCartCount(null); });
+    const results = await Promise.allSettled([fetchProducts(), apiRequest('/categories'), apiRequest('/posts?paginated=true&page=1&pageSize=3'), loadStoreSettings()]);
+    if (request !== generation.current) return;
+    const [productResult, categoryResult, postResult, settingsResult] = results;
+    if (productResult.status === 'fulfilled') setProducts(productResult.value);
+    if (categoryResult.status === 'fulfilled') setCategories(categoryResult.value);
+    if (productResult.status === 'rejected' || categoryResult.status === 'rejected') {
+      const cause = productResult.status === 'rejected' ? productResult.reason : categoryResult.status === 'rejected' ? categoryResult.reason : null;
+      setError(cause instanceof Error ? cause.message : 'Không thể tải danh mục và sản phẩm.');
+    }
+    if (postResult.status === 'fulfilled') setPosts(postResult.value.items);
+    else setPostError('Chưa tải được bài viết. Mở mục Bài viết để thử lại.');
+    if (settingsResult.status === 'fulfilled') { setSettings(settingsResult.value); setBannerIndex(0); }
+    else { setSettings(null); setSettingsError('Chưa tải được nội dung banner của cửa hàng.'); }
+    setLoading(false);
   }, []);
-  useFocusEffect(useCallback(() => {
-    void loadCatalog();
-    return () => { generation.current++; };
-  }, [loadCatalog]));
-
-  return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>FashionHeaven</Text>
+  useFocusEffect(useCallback(() => { void loadCatalog(); return () => { generation.current++; }; }, [loadCatalog]));
+  const columns = width >= 1050 ? 4 : width >= 700 ? 3 : 2;
+  const heroProduct = products.find(product => !!product.image);
+  const banner = settings?.banners?.[bannerIndex];
+  const openBanner = () => {
+    const link = banner?.link?.replace(/^\/products(?=\?|$)/, '/explore') || '/explore';
+    router.push((/^\/(explore|news|policies)(\?|$)/.test(link) || /^\/(product|article)\/\d+(\?|$)/.test(link) ? link : '/explore') as never);
+  };
+  return <View style={[styles.root, { paddingTop: insets.top }]}>
+    <View style={styles.header}><View style={styles.brandBlock}><Text style={styles.brand}>{settings?.storeName || 'FashionHeaven'}</Text><Text style={styles.brandCaption}>PHONG CÁCH MỖI NGÀY</Text></View><View style={styles.headerActions}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Tìm sản phẩm" style={styles.iconButton} onPress={() => router.push('/explore' as never)}><MaterialIcons name="search" size={24} color={Colors.light.secondary} /></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={cartCount === null ? 'Mở giỏ hàng' : `Giỏ hàng, ${cartCount} sản phẩm`} style={styles.iconButton} onPress={() => router.push('/cart' as never)}><MaterialIcons name="shopping-bag" size={24} color={Colors.light.secondary} />{cartCount !== null && cartCount > 0 && <View style={styles.cartBadge}><Text style={styles.cartBadgeText}>{cartCount > 99 ? '99+' : cartCount}</Text></View>}</Pressable>
+    </View></View>
+    <ScrollView showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void loadCatalog()} />} contentContainerStyle={styles.scroll}>
+      <View style={styles.container}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Mở tìm kiếm sản phẩm" style={styles.search} onPress={() => router.push('/explore' as never)}><MaterialIcons name="search" size={21} color={Colors.light.secondary} /><Text style={styles.searchText}>Tìm sản phẩm phù hợp với bạn</Text><MaterialIcons name="east" size={19} color={Colors.light.secondary} /></Pressable>
+        <View style={[styles.hero, width >= 700 && styles.heroWide]}>
+          <CatalogImage source={banner ? banner.image : heroProduct?.image} label={banner?.title || heroProduct?.name || 'Bộ sưu tập FashionHeaven'} style={StyleSheet.absoluteFill} fallbackLabel="" />
+          <View style={styles.heroOverlay}><Text style={styles.eyebrowLight}>FASHIONHEAVEN · BỘ SƯU TẬP</Text><Text style={styles.heroTitle}>{banner?.title || 'Phong cách của bạn,\ncâu chuyện của bạn.'}</Text><Text style={styles.heroSubtitle}>{banner?.subtitle || 'Khám phá những thiết kế đang có tại cửa hàng.'}</Text><Pressable accessibilityRole="button" style={styles.heroButton} onPress={openBanner}><Text style={styles.heroButtonText}>{banner?.buttonText || 'Khám phá sản phẩm'}</Text><MaterialIcons name="east" size={18} color={Colors.light.onPrimary} /></Pressable></View>
+          {banner && (settings?.banners.length || 0) > 1 ? <View style={styles.bannerControls}><Pressable accessibilityRole="button" accessibilityLabel="Banner trước" style={styles.bannerControl} onPress={() => setBannerIndex(index => (index - 1 + settings!.banners.length) % settings!.banners.length)}><MaterialIcons name="chevron-left" size={24} color="#fff" /></Pressable><Text style={styles.bannerPosition}>{bannerIndex + 1}/{settings!.banners.length}</Text><Pressable accessibilityRole="button" accessibilityLabel="Banner sau" style={styles.bannerControl} onPress={() => setBannerIndex(index => (index + 1) % settings!.banners.length)}><MaterialIcons name="chevron-right" size={24} color="#fff" /></Pressable></View> : !banner && !!heroProduct && <Pressable accessibilityRole="button" accessibilityLabel={`Xem sản phẩm trong ảnh: ${heroProduct.name}`} style={styles.heroCredit} onPress={() => router.push(`/product/${heroProduct.id}` as never)}><Text style={styles.heroCreditText} numberOfLines={2}>{heroProduct.name} →</Text></Pressable>}
         </View>
-        <View style={styles.headerRight}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Tìm sản phẩm" onPress={() => router.push('/explore' as never)} style={styles.headerAction}>
-            <MaterialIcons name="search" size={24} color={Colors.light.secondary} />
-          </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel={cartCount === null ? 'Mở giỏ hàng' : `Giỏ hàng, ${cartCount} sản phẩm`} onPress={() => router.push('/cart' as never)} style={[styles.cartIconWrapper, styles.headerAction]}>
-            <MaterialIcons name="shopping-bag" size={24} color={Colors.light.secondary} />
-            {cartCount !== null && cartCount > 0 && <View style={styles.cartBadge}><Text style={styles.cartBadgeText}>{cartCount > 99 ? '99+' : cartCount}</Text></View>}
-          </Pressable>
-        </View>
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-        {/* Catalog search */}
-        <Pressable accessibilityRole="button" accessibilityLabel="Mở tìm kiếm sản phẩm" style={styles.searchContainer} onPress={() => router.push('/explore' as never)}>
-          <View style={styles.searchBox}>
-            <MaterialIcons name="search" size={20} color={Colors.light.secondary} style={{ marginRight: 8 }} />
-            <Text style={styles.searchText}>Tìm kiếm váy đầm, áo dài...</Text>
-          </View>
-        </Pressable>
-
-        {/* Hero Banner */}
-        <View style={styles.heroWrapper}>
-          <View style={styles.hero}>
-            <Image 
-              source="https://lh3.googleusercontent.com/aida-public/AB6AXuDsVNqbKAu1CGAJyxlpN9lEblwTcu69I5QkYPqiwHz8TSdU1EDGowlh7wZBYuC5Ig8-pHCO1gdQOsLEK_CZR0wEyElp8qoAxhEwXelyPjGrucNN4OHVCFnSPA-0gDjwDOV5gWjDqNLC9_E3ZJBrZLQeaKhN8aMfnxD_EJqKQz2nh7PWIw4FQpOAB4z5s4RNvZWDr3XZcZVHgFC0qS4y3nccm1Nomq27HuUIYRGpFofp2cXoKZmk2TdpNg" 
-              style={styles.heroImage} 
-              contentFit="cover" 
-            />
-            <View style={styles.heroOverlay}>
-              <View style={styles.heroTag}>
-                <MaterialIcons name="auto-awesome" size={12} color={Colors.light.onPrimary} style={{ marginRight: 4 }} />
-                <Text style={styles.heroTagText}>Cảm hứng thời trang</Text>
-              </View>
-              <Text style={styles.heroTitle}>Phong cách của bạn,{'\n'}Câu chuyện của bạn</Text>
-              <Text style={styles.heroSubtitle}>Tìm thiết kế phù hợp với phong cách của bạn.</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Khám phá sản phẩm" style={styles.heroBtn} onPress={() => router.push('/explore' as never)}>
-                <Text style={styles.heroBtnText}>Mua sắm ngay</Text>
-                <MaterialIcons name="east" size={16} color={Colors.light.onPrimary} style={{ marginLeft: 4 }} />
-              </Pressable>
-            </View>
-          </View>
-        </View>
-
-        {/* Categories */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Khám phá theo danh mục</Text>
-          <Pressable accessibilityRole="button" onPress={() => router.push('/explore' as never)}><Text style={styles.sectionLink}>Xem tất cả</Text></Pressable>
-        </View>
-        {loading ? <ActivityIndicator color={Colors.light.primary} style={styles.catalogState} /> : error ? <View style={styles.catalogState}><Text accessibilityRole="alert" style={styles.errorText}>{error}</Text><Pressable accessibilityRole="button" style={styles.retryButton} onPress={() => void loadCatalog()}><Text style={styles.retryText}>Thử lại</Text></Pressable></View> : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroll}>
-            {categories.map(category => (
-              <Pressable key={category.id} accessibilityRole="button" accessibilityLabel={`Xem danh mục ${category.name}`} style={styles.categoryItem} onPress={() => router.push({ pathname: '/explore', params: { categoryId: String(category.id) } } as never)}>
-                <View style={[styles.categoryCircleBorder, styles.categoryIcon]}><MaterialIcons name="checkroom" size={27} color={Colors.light.primary} /></View>
-                <Text style={styles.categoryText} numberOfLines={2}>{category.name}</Text>
-              </Pressable>
-            ))}
-            {!categories.length && <Text style={styles.stateText}>Danh mục đang được cập nhật.</Text>}
-          </ScrollView>
-        )}
-
-        {/* New Collections */}
-        <View style={styles.collectionSection}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={styles.sectionTitle}>Cảm hứng phối đồ</Text>
-              <Text style={styles.sectionDesc}>Lựa chọn cảm hứng theo phong cách</Text>
-            </View>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.collectionScroll}>
-            {collections.map(col => (
-              <Pressable key={col.id} accessibilityRole="button" accessibilityLabel={`Khám phá sản phẩm theo cảm hứng ${col.title}`} style={styles.collectionCard} onPress={() => router.push('/explore' as never)}>
-                <View style={styles.collectionImageWrapper}>
-                  <Image source={col.image} style={styles.collectionImage} contentFit="cover" />
-                  <View style={[styles.collectionTag, col.tagColor ? { backgroundColor: col.tagColor } : null]}>
-                    <Text style={styles.collectionTagText}>{col.tag}</Text>
-                  </View>
-                </View>
-                <View style={styles.collectionInfo}>
-                  <Text style={styles.collectionTitle}>{col.title}</Text>
-                  <Text style={styles.collectionSubtitle} numberOfLines={2}>{col.subtitle}</Text>
-                  <View style={styles.collectionLink}>
-                    <Text style={styles.collectionLinkText}>Khám phá ngay</Text>
-                    <MaterialIcons name="arrow-right-alt" size={16} color={Colors.light.primary} />
-                  </View>
-                </View>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Public catalog preview */}
-        {!error && <>
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.eyebrow}>Gợi ý hôm nay</Text>
-            <Text style={styles.sectionTitle}>Khám phá sản phẩm</Text>
-          </View>
-          <Pressable accessibilityRole="button" onPress={() => router.push('/explore' as never)}><Text style={styles.sectionLink}>Xem tất cả <MaterialIcons name="chevron-right" size={14} /></Text></Pressable>
-        </View>
-        {loading ? <View style={styles.catalogState}><ActivityIndicator color={Colors.light.primary} /><Text style={styles.stateText}>Đang tải sản phẩm…</Text></View> : !trendingProducts.length ? <Text style={[styles.stateText, styles.catalogState]}>Cửa hàng chưa có sản phẩm đang mở bán.</Text> : <View style={styles.productGrid}>
-          {trendingProducts.map(p => (
-            <View style={styles.productCol} key={p.id}>
-              <ProductCard 
-                product={p}
-                onAdd={() => router.push(`/product/${p.id}` as never)}
-                onPress={() => router.push(`/product/${p.id}` as never)} 
-              />
-            </View>
-          ))}
-        </View>}
+        {!!settingsError && <Text accessibilityRole="alert" style={styles.muted}>{settingsError}</Text>}
+        {error ? <View style={styles.state}><Text accessibilityRole="alert" style={styles.error}>{error}</Text><Pressable accessibilityRole="button" style={styles.button} onPress={() => void loadCatalog()}><Text style={styles.buttonText}>Thử lại</Text></Pressable></View> : <>
+          <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Khám phá theo danh mục</Text><Pressable accessibilityRole="button" style={styles.textButton} onPress={() => router.push('/explore' as never)}><Text style={styles.link}>Xem tất cả →</Text></Pressable></View>
+          {loading ? <View style={styles.state}><ActivityIndicator color={Colors.light.primary} /><Text style={styles.muted}>Đang tải danh mục…</Text></View> : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categories}>{categories.map(category => <Pressable key={category.id} accessibilityRole="button" accessibilityLabel={`Xem danh mục ${category.name}`} style={styles.category} onPress={() => router.push({ pathname: '/explore', params: { categoryId: String(category.id) } } as never)}><CatalogImage source={category.image} label={category.name} fallbackIcon={categoryIcon(category)} fallbackLabel="" style={styles.categoryImage} /><Text style={styles.categoryName} numberOfLines={2}>{category.name}</Text></Pressable>)}{!categories.length && <Text style={styles.muted}>Danh mục đang được cập nhật.</Text>}</ScrollView>}
+          <View style={styles.sectionHeader}><View><Text style={styles.eyebrow}>TỪ CỬA HÀNG</Text><Text style={styles.sectionTitle}>Khám phá sản phẩm</Text></View><Pressable accessibilityRole="button" style={styles.textButton} onPress={() => router.push('/explore' as never)}><Text style={styles.link}>Xem tất cả →</Text></Pressable></View>
+          {loading ? <View style={styles.state}><ActivityIndicator color={Colors.light.primary} /><Text style={styles.muted}>Đang tải sản phẩm…</Text></View> : !products.length ? <View style={styles.state}><Text style={styles.muted}>Cửa hàng chưa có sản phẩm đang mở bán.</Text></View> : <View style={styles.grid}>{products.map(product => <View key={product.id} style={[styles.productCol, { width: `${100 / columns}%` }]}><ProductCard product={product} onAdd={() => router.push(`/product/${product.id}` as never)} onPress={() => router.push(`/product/${product.id}` as never)} /></View>)}</View>}
         </>}
-
-        {/* Brand editorial */}
-        <View style={styles.voucherBanner}>
-          <MaterialIcons name="loyalty" size={32} color={Colors.light.onPrimary} style={{ marginBottom: 8 }} />
-          <Text style={styles.voucherTitle}>Câu chuyện FashionHeaven</Text>
-          <Text style={styles.voucherDesc}>Theo dõi bài viết từ cửa hàng để tìm thêm cảm hứng cho phong cách của bạn.</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Xem bài viết của cửa hàng" style={styles.voucherCodeBox} onPress={() => router.push('/news' as never)}><Text style={styles.voucherCode}>Xem bài viết →</Text></Pressable>
-        </View>
-      </ScrollView>
-    </View>
-  );
+        <View style={styles.sectionHeader}><View><Text style={styles.eyebrow}>CẢM HỨNG & TIN TỨC</Text><Text style={styles.sectionTitle}>Câu chuyện từ cửa hàng</Text></View><Pressable accessibilityRole="button" style={styles.textButton} onPress={() => router.push('/news' as never)}><Text style={styles.link}>Bài viết →</Text></Pressable></View>
+        {loading ? <View style={styles.state}><ActivityIndicator color={Colors.light.primary} /></View> : postError ? <Text style={styles.muted}>{postError}</Text> : !posts.length ? <Text style={styles.muted}>Cửa hàng sẽ cập nhật bài viết tại đây.</Text> : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.posts}>{posts.map(post => <Pressable key={post.id} accessibilityRole="button" accessibilityLabel={`Đọc ${post.title}`} style={styles.post} onPress={() => router.push(`/article/${post.id}` as never)}><CatalogImage source={post.image} label={post.title} style={styles.postImage} /><View style={styles.postBody}><Text style={styles.eyebrow}>{post.type || 'BÀI VIẾT'}</Text><Text style={styles.postTitle} numberOfLines={2}>{post.title}</Text><Text style={styles.muted} numberOfLines={2}>{post.description || 'Đọc nội dung từ cửa hàng.'}</Text><Text style={styles.postLink}>Đọc bài viết →</Text></View></Pressable>)}</ScrollView>}
+        <View style={styles.support}><MaterialIcons name="support-agent" size={30} color={Colors.light.primary} /><View style={styles.supportBody}><Text style={styles.supportTitle}>Bạn cần tư vấn?</Text><Text style={styles.muted}>Liên hệ cửa hàng để chọn kiểu dáng, size và màu phù hợp.</Text></View><Pressable accessibilityRole="button" style={styles.textButton} onPress={() => router.push('/contact' as never)}><Text style={styles.link}>Liên hệ →</Text></Pressable></View>
+      </View>
+    </ScrollView>
+  </View>;
 }
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.light.background },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, height: 56, backgroundColor: 'rgba(251, 248, 255, 0.9)' },
-  headerLeft: { flexDirection: 'row', alignItems: 'center' },
-  headerTitle: { fontFamily: 'Playfair Display', fontSize: 22, fontWeight: '600', color: Colors.light.onSurface },
-  headerAction: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  catalogState: { padding: 24, alignItems: 'center', gap: 12 },
-  stateText: { fontFamily: 'Inter', color: Colors.light.onSurfaceVariant, fontSize: 13, textAlign: 'center' },
-  errorText: { fontFamily: 'Inter', color: Colors.light.error, textAlign: 'center' },
-  retryButton: { backgroundColor: Colors.light.primary, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 12 },
-  retryText: { fontFamily: 'Inter', color: Colors.light.onPrimary, fontWeight: '600' },
-  categoryIcon: { alignItems: 'center', justifyContent: 'center' },
-  headerRight: { flexDirection: 'row', alignItems: 'center' },
-  cartIconWrapper: { position: 'relative' },
-  cartBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: Colors.light.primary, minWidth: 20, height: 20, paddingHorizontal: 3, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  cartBadgeText: { color: Colors.light.onPrimary, fontSize: 10, fontWeight: 'bold' },
-  
-  searchContainer: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 },
-  searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.light.surfaceContainerLowest, borderRadius: 999, paddingHorizontal: 16, height: 44, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
-  searchText: { fontFamily: 'Inter', fontSize: 14, color: Colors.light.outline },
-  
-  heroWrapper: { paddingHorizontal: 16, marginBottom: 24 },
-  hero: { height: 320, borderRadius: 16, overflow: 'hidden', backgroundColor: Colors.light.surfaceContainer },
-  heroImage: { ...StyleSheet.absoluteFill },
-  heroOverlay: { flex: 1, justifyContent: 'flex-end', padding: 20, backgroundColor: 'rgba(45, 47, 68, 0.4)' },
-  heroTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.light.primary, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, marginBottom: 8 },
-  heroTagText: { color: Colors.light.onPrimary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase' },
-  heroTitle: { fontFamily: 'Playfair Display', fontSize: 28, fontWeight: '600', color: Colors.light.onPrimary, lineHeight: 34, marginBottom: 4 },
-  heroSubtitle: { fontFamily: 'Inter', fontSize: 13, color: 'rgba(255,255,255,0.85)', marginBottom: 16 },
-  heroBtn: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: Colors.light.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999 },
-  heroBtnText: { color: Colors.light.onPrimary, fontFamily: 'Inter', fontSize: 14, fontWeight: '600' },
-
-  sectionHeader: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'flex-end', paddingHorizontal: 16, marginBottom: 12 },
-  sectionTitle: { fontFamily: 'Playfair Display', fontSize: 22, fontWeight: '600', color: Colors.light.onSurface },
-  sectionLink: { fontFamily: 'Inter', fontSize: 12, fontWeight: '600', color: Colors.light.primary, textTransform: 'uppercase' },
-  sectionDesc: { fontFamily: 'Inter', fontSize: 12, color: Colors.light.onSurfaceVariant, marginTop: 2 },
-  eyebrow: { fontFamily: 'Inter', fontSize: 11, fontWeight: '700', color: Colors.light.primary, textTransform: 'uppercase', letterSpacing: 1 },
-  
-  categoryScroll: { paddingHorizontal: 16, gap: 16, paddingBottom: 16 },
-  categoryItem: { alignItems: 'center', width: 94 },
-  categoryCircleBorder: { width: 64, height: 64, borderRadius: 32, padding: 2, backgroundColor: Colors.light.surfaceContainerHigh, marginBottom: 6 },
-  categoryCircle: { width: '100%', height: '100%', borderRadius: 32, borderWidth: 2, borderColor: Colors.light.surfaceContainerLowest },
-  categoryText: { fontFamily: 'Inter', fontSize: 11, fontWeight: '500', color: Colors.light.onSurface, textAlign: 'center' },
-
-  collectionSection: { backgroundColor: 'rgba(244, 242, 255, 0.6)', paddingVertical: 24, marginBottom: 24 },
-  collectionScroll: { paddingHorizontal: 16, gap: 16 },
-  collectionCard: { width: 260, backgroundColor: Colors.light.surfaceContainerLowest, borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
-  collectionImageWrapper: { height: 280, position: 'relative' },
-  collectionImage: { width: '100%', height: '100%' },
-  collectionTag: { position: 'absolute', top: 12, left: 12, backgroundColor: 'rgba(251, 248, 255, 0.9)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  collectionTagText: { fontSize: 11, fontWeight: '600', color: Colors.light.onSurface },
-  collectionInfo: { padding: 16 },
-  collectionTitle: { fontFamily: 'Inter', fontSize: 16, fontWeight: '600', color: Colors.light.onSurface, marginBottom: 4 },
-  collectionSubtitle: { fontFamily: 'Inter', fontSize: 12, color: Colors.light.onSurfaceVariant, marginBottom: 12 },
-  collectionLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  collectionLinkText: { fontFamily: 'Inter', fontSize: 12, fontWeight: '600', color: Colors.light.primary },
-
-  productGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12 },
-  productCol: { width: '50%', paddingHorizontal: 4 },
-
-  voucherBanner: { margin: 16, padding: 20, borderRadius: 16, backgroundColor: Colors.light.secondary, alignItems: 'flex-start' },
-  voucherTitle: { fontFamily: 'Inter', fontSize: 18, fontWeight: '600', color: Colors.light.onSecondary, marginBottom: 4 },
-  voucherDesc: { fontFamily: 'Inter', fontSize: 13, color: 'rgba(255,255,255,0.8)', marginBottom: 12 },
-  voucherCodeBox: { backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
-  voucherCode: { fontFamily: 'Inter', fontSize: 14, fontWeight: '700', color: Colors.light.onSecondary, letterSpacing: 1 },
+  header: { width: '100%', maxWidth: 1200, alignSelf: 'center', paddingHorizontal: 20, minHeight: 72, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  brand: { fontFamily: 'Playfair Display', fontSize: 24, fontWeight: '600', color: Colors.light.onSurface }, brandCaption: { fontFamily: 'Inter', fontSize: 9, letterSpacing: 1.6, marginTop: 3, color: Colors.light.secondary },
+  brandBlock: { flex: 1, minWidth: 0 },
+  bannerControls: { position: 'absolute', bottom: 12, right: 16, flexDirection: 'row', alignItems: 'center', gap: 8 }, bannerControl: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center' }, bannerPosition: { color: '#fff', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' },
+  headerActions: { flexDirection: 'row', gap: 4 }, iconButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }, cartBadge: { position: 'absolute', top: 0, right: 0, backgroundColor: Colors.light.primary, minWidth: 18, paddingHorizontal: 4, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' }, cartBadgeText: { color: Colors.light.onPrimary, fontSize: 10, fontWeight: '700' },
+  scroll: { paddingBottom: 100 }, container: { width: '100%', maxWidth: 1200, alignSelf: 'center', paddingHorizontal: 16 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.light.surfaceContainerLowest, borderWidth: 1, borderColor: Colors.light.surfaceContainer, padding: 14, borderRadius: 14, marginBottom: 20 }, searchText: { fontFamily: 'Inter', flex: 1, fontSize: 13, color: Colors.light.secondary },
+  hero: { minHeight: 370, borderRadius: 22, overflow: 'hidden', backgroundColor: Colors.light.secondary, marginBottom: 28 }, heroWide: { minHeight: 430 }, heroOverlay: { flex: 1, padding: 24, paddingBottom: 64, justifyContent: 'center', backgroundColor: 'rgba(24,33,47,0.60)' }, heroTitle: { fontFamily: 'Playfair Display', fontSize: 30, lineHeight: 39, fontWeight: '600', color: Colors.light.onPrimary, maxWidth: 500, marginVertical: 12 }, heroSubtitle: { fontFamily: 'Inter', fontSize: 13, lineHeight: 21, color: '#f5f2ef', maxWidth: 320, marginBottom: 22 }, eyebrowLight: { fontFamily: 'Inter', fontSize: 10, fontWeight: '700', letterSpacing: 1.4, color: '#fff' }, heroButton: { flexDirection: 'row', alignItems: 'center', gap: 12, alignSelf: 'flex-start', backgroundColor: Colors.light.primary, padding: 14, borderRadius: 12 }, heroButtonText: { fontFamily: 'Inter', color: Colors.light.onPrimary, fontWeight: '600', fontSize: 13 }, heroCredit: { position: 'absolute', right: 16, bottom: 14, left: 16, alignItems: 'flex-end' }, heroCreditText: { fontFamily: 'Inter', fontSize: 10, color: '#fff', backgroundColor: 'rgba(0,0,0,0.3)', padding: 7, borderRadius: 5 },
+  sectionHeader: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginTop: 14, marginBottom: 16 }, sectionTitle: { fontFamily: 'Playfair Display', fontSize: 23, lineHeight: 31, fontWeight: '600', color: Colors.light.onSurface }, eyebrow: { fontFamily: 'Inter', fontSize: 10, fontWeight: '700', letterSpacing: 1, color: Colors.light.primary, marginBottom: 5 }, textButton: { minHeight: 44, justifyContent: 'center' }, link: { fontFamily: 'Inter', color: Colors.light.primary, fontSize: 12, fontWeight: '600' },
+  categories: { gap: 14, paddingBottom: 22 }, category: { width: 94, alignItems: 'center' }, categoryImage: { width: 76, height: 76, borderRadius: 22, marginBottom: 9, borderWidth: 1, borderColor: Colors.light.surfaceContainerHigh }, categoryName: { fontFamily: 'Inter', fontSize: 11, lineHeight: 16, fontWeight: '500', textAlign: 'center', color: Colors.light.onSurface },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }, productCol: { paddingHorizontal: 4 },
+  posts: { gap: 16, paddingBottom: 20 }, post: { width: 280, borderRadius: 16, overflow: 'hidden', backgroundColor: Colors.light.surfaceContainerLowest, borderWidth: 1, borderColor: Colors.light.surfaceContainer }, postImage: { width: '100%', height: 180 }, postBody: { padding: 16 }, postTitle: { fontFamily: 'Playfair Display', color: Colors.light.onSurface, fontSize: 21, lineHeight: 28, marginBottom: 8, fontWeight: '600' }, postLink: { fontFamily: 'Inter', color: Colors.light.primary, fontSize: 12, fontWeight: '600', marginTop: 14 },
+  support: { marginTop: 28, padding: 20, borderRadius: 16, backgroundColor: Colors.light.surfaceContainerHigh, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 16 }, supportBody: { flex: 1, minWidth: 160 }, supportTitle: { fontFamily: 'Inter', fontSize: 16, fontWeight: '600', color: Colors.light.onSurface, marginBottom: 6 }, muted: { fontFamily: 'Inter', color: Colors.light.onSurfaceVariant, fontSize: 12, lineHeight: 20 },
+  state: { padding: 28, alignItems: 'center', gap: 14 }, error: { fontFamily: 'Inter', color: Colors.light.error, textAlign: 'center' }, button: { paddingHorizontal: 20, paddingVertical: 12, backgroundColor: Colors.light.primary, borderRadius: 10 }, buttonText: { color: Colors.light.onPrimary, fontFamily: 'Inter', fontWeight: '600' },
 });
-
