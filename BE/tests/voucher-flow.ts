@@ -41,7 +41,8 @@ export async function testVoucherFlows(t:TestContext,request:Request,adminToken:
     const v=await create('MULTI');const key=randomUUID();const created=await order(v.code,a.token,key,{total:1,discount:999999,shippingFee:-1});assert.equal(created.result.status,201,JSON.stringify(created.result.body));
     const orders=created.result.body.orders;assert.equal(orders.length,2);assert.equal(orders.reduce((n:number,o:any)=>n+o.TongTien,0),created.q.total);assert.equal(orders.reduce((n:number,o:any)=>n+o.GiamGiaDon,0),1);assert.equal(orders.reduce((n:number,o:any)=>n+o.PhiGiaoHang,0),created.q.shippingFee);
     for(const o of orders){assert.equal(o.VoucherCode,v.code);assert.equal(o.TongTien,o.TienHang+o.PhiGiaoHang-o.GiamGiaDon);assert.equal(o.GiamGiaDon,o.ctDonHangs.reduce((n:number,l:any)=>n+l.GiamGiaDong,0));assert.equal(o.TongTien,o.ctDonHangs.reduce((n:number,l:any)=>n+l.ThanhTien,0)+o.PhiGiaoHang);assert.equal(o.VoucherSnapshot.value,1);}
-    assert.deepEqual(orders.map((o:any)=>o.GiamGiaDon),[0,1]);
+    // Concurrent fixture inserts need not assign IDs in price/warehouse order.
+    assert.deepEqual([...orders].sort((a:any,b:any)=>a.TienHang-b.TienHang).map((o:any)=>[o.TienHang,o.GiamGiaDon]),[[101,0],[102,1]]);
     assert.equal((await request(`/vouchers/${v.id}`,'PUT',{expectedVersion:v.version,isActive:false,value:50},adminToken)).status,200);
     const replay=await request('/orders/checkout','POST',created.payload,a.token);assert.equal(replay.status,200);assert.equal(replay.body.replayed,true);assert.deepEqual(replay.body.orders.map((o:any)=>o.MaPhieuXuat),orders.map((o:any)=>o.MaPhieuXuat));assert.equal(replay.body.orders[0].VoucherSnapshot.value,1);
     assert.equal((await request('/orders/checkout','POST',{...created.payload,voucherCode:'ROUNDING'},a.token)).body.code,'REQUEST_KEY_REUSED');

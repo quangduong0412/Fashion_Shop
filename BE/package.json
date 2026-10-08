@@ -6,10 +6,9 @@
   "scripts": {
     "prestart": "npm run db:prepare",
     "start": "ts-node src/server.ts",
-    "predev": "npm run db:prepare",
-    "dev": "nodemon src/server.ts",
+    "dev": "node scripts/run-dev.cjs",
     "db:migrate-orders": "ts-node migrate_order_tables.ts",
-    "db:prepare": "npm run db:migrate-orders && npm run db:migrate-inventory && npm run db:migrate-order-safety && npm run db:migrate-accounts-media && npm run db:migrate-store-settings && npm run db:migrate-customer-shopping && npm run db:migrate-vouchers && prisma generate",
+    "db:prepare": "npm run db:migrate-orders && npm run db:migrate-inventory && npm run db:migrate-order-safety && npm run db:migrate-accounts-media && npm run db:migrate-store-settings && npm run db:migrate-customer-shopping && npm run db:migrate-vouchers && node scripts/ensure-prisma-client.cjs",
     "db:migrate-inventory": "ts-node migrate_inventory.ts",
     "seed:catalog": "ts-node seed_catalog.ts",
     "seed:samples": "ts-node add_sample_data.ts",
@@ -30,7 +29,10 @@
     "db:migrate-vouchers": "ts-node migrate_vouchers.ts",
     "preview:customer": "node scripts/serve-customer-web.cjs",
     "catalog:images:plan": "ts-node scripts/repair-catalog-images.ts --plan",
-    "catalog:images:repair": "ts-node scripts/repair-catalog-images.ts --apply"
+    "catalog:images:repair": "ts-node scripts/repair-catalog-images.ts --apply",
+    "db:generate": "node scripts/ensure-prisma-client.cjs --force",
+    "catalog:append:plan": "ts-node scripts/append-shop-catalog.ts --plan",
+    "catalog:append": "ts-node scripts/append-shop-catalog.ts --apply"
   },
   "keywords": [],
   "author": "",

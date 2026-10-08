@@ -136,4 +136,10 @@ Khởi động lại API demo: vào `BE`, đặt `$env:NODE_ENV='development'`, 
 
 FE 8081/admin 5173 đã dùng lại API 4000 và database gốc trong `.env`; 16 sản phẩm/135 biến thể/6 đơn vẫn còn, không bị xóa bởi provisioning demo. Tài khoản admin cũ đăng nhập được bằng mật khẩu người vận hành đã đặt, không reset hoặc thêm tài khoản mặc định. Catalog công khai hiện có 14 sản phẩm theo điều kiện hiển thị; admin thấy cả các sản phẩm không công khai. Đã kiểm tra trên trình duyệt và khôi phục ảnh kính từ assets cũ vào thư mục ảnh backend chính.
 
-Yêu cầu thêm 60+ bản ghi **thật** vào database gốc chưa thực hiện: cần dữ liệu nguồn, giá/tồn, tài khoản/chứng từ thực và ảnh tương ứng từ người vận hành. Bộ demo không đáp ứng yêu cầu này, không được đổi tên/import thành chứng từ thật. Không xóa database demo trong lượt khôi phục, chỉ dừng API demo.
+Checkpoint khôi phục trước chưa thêm dữ liệu. Người vận hành sau đó xác định yêu cầu là thêm sản phẩm tương tự catalog hiện tại, có ảnh minh họa: đã bổ sung 66 sản phẩm trực tiếp vào database gốc (chi tiết bên dưới). Database demo không phục vụ FE/admin chính.
+
+## Backend và catalog mới — 08/10/2026
+
+`cd BE`, `npm.cmd run dev`: đã sửa EPERM do generate lại DLL Prisma đang được sử dụng. Client khớp schema/version được giữ nguyên; nếu backend shop đang chạy thì lệnh báo URL và không tạo process trùng. Khi đổi schema thật, dừng backend/test trước `npm.cmd run db:generate`.
+
+Database gốc hiện có **82 sản phẩm / 393 biến thể**, gồm 66 sản phẩm mới có ảnh minh họa, giá và tồn từng SKU; 16 sản phẩm cũ giữ nguyên. FE công khai 80 sản phẩm theo điều kiện hiển thị. Đơn và tài khoản cũ không đổi; đăng nhập admin cũ vẫn hoạt động. Lệnh nhập có dry-run/transaction/chống trùng và nguồn ảnh: [BE/README.md](BE/README.md), [docs/CATALOG_IMPORT.md](docs/CATALOG_IMPORT.md).

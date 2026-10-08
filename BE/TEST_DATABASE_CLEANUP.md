@@ -71,3 +71,13 @@ Không dọn database demo bằng công cụ cleanup integration. Không tạo f
 ### 08/10/2026 — khôi phục database gốc
 
 Suite 94/94; đã xóa đúng database runner tạo `fashionhaven_test_1791422488705_fccfa32a` trong finally. Không xóa database cửa hàng hoặc database demo đang được giữ riêng.
+
+### 08/10/2026 — startup và catalog
+
+Các database đúng ownership do runner tạo dưới đây đã DROP trong finally sau khi đóng kết nối:
+
+- fashionhaven_test_1791423389818_03f4ca6e — lượt phát hiện test IPv4/IPv6 và assert thứ tự voucher cần sửa.
+- fashionhaven_test_1791423545446_2c94c97e — 99/99 đạt.
+- fashionhaven_test_1791423949477_6b59e005 — bản cuối 100/100 đạt.
+
+Không xóa database cửa hàng, database demo giữ riêng, hoặc hai schema legacy chưa xác minh trước đây.

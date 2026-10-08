@@ -13,6 +13,7 @@ async function main() {
   } finally { await check.$disconnect(); }
   process.env.DATABASE_URL = config.target;
   process.env.PORT = port;
+  process.env.FASHION_RUNTIME = 'demo';
   // Transactional email is disabled in demo; .invalid accounts must never trigger a real provider.
   process.env.RESET_DELIVERY_MODE = 'file';
   console.log(`DEMO API — ${config.database}; không dùng database/cổng của cửa hàng. Port ${port}.`);

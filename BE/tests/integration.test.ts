@@ -470,6 +470,8 @@ test('Real HTTP API and isolated MySQL', async t => {
   const { runReportFlow } = await import('./report-flow');
   const { checkDemoDataset } = await import('./demo-data-flow');
   await checkDemoDataset(t);
+  const { testCatalogExpansion } = await import('./catalog-expansion-flow');
+  await testCatalogExpansion(t,{actorId:admin.MaNhanVien,staffId:legacy.MaNhanVien,warehouseId:warehouse.MaKho,supplierId:supplier.MaNCC});
   const { testShoppingFlows } = await import('./shopping-flow');
   await testShoppingFlows(t,request,staffToken,{warehouseId:warehouse.MaKho,supplierId:supplier.MaNCC});
   const { testVoucherFlows } = await import('./voucher-flow');

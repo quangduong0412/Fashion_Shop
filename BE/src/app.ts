@@ -22,6 +22,9 @@ app.use(express.json({ limit: '256kb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/images', express.static(path.join(__dirname, '../public/images')));
 app.use('/images', express.static(path.join(__dirname, '../../fashionheaven/public/images')));
+app.get('/api/health', (_req, res) => {
+  res.json({ service: 'fashion-haven-api', status: 'ok', mode: process.env.FASHION_RUNTIME === 'demo' ? 'demo' : 'shop' });
+});
 
 // Images only: bounded memory, server-selected suffix, no HTML/SVG uploads.
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 5, parts: 6 } });

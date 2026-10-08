@@ -26,7 +26,7 @@ Không có endpoint công khai để tự cấp quyền quản trị. Máy mới
 
 ## Database: chuẩn bị có kiểm soát
 
-`npm.cmd run db:prepare` (cũng chạy trước `dev`/`start`) gồm:
+`npm.cmd run db:prepare` (chạy trước khi mở backend mới qua `dev`, hoặc trước `start`) gồm:
 
 1. `db:migrate-orders`: đối chiếu tên bảng cũ và mới; nếu cần thì sao lưu riêng vào `db-backups`, đổi tên `phieuxuat` → `donhang`, `ctphieuxuat` → `ctdonhang`, thêm cột tùy chọn và đối chiếu dữ liệu cũ. Có cả hai tên bảng thì dừng để người vận hành đối soát.
 2. `db:migrate-inventory`: thêm bảng nhật ký `dieuchinhtonkho` nếu chưa có; không đặt lại tồn kho.
@@ -34,7 +34,8 @@ Không có endpoint công khai để tự cấp quyền quản trị. Máy mới
 4. `db:migrate-accounts-media`: thêm status/session epoch khách, token reset có hash/expiry, audit tài khoản; ảnh/icon/trạng thái/thứ tự danh mục, gallery/chất liệu/thương hiệu sản phẩm và ảnh biến thể. Không đặt lại mật khẩu hay thay ảnh cũ.
 5. `db:migrate-store-settings`: thêm cấu hình/audit có version và snapshot tiền hàng, giảm giá, phí giao (`Decimal(18,0)` nullable), phương thức/nhãn giao, ghi chú vào đơn. Không chuyển cột Float cũ hoặc tính lại đơn cũ.
 6. `db:migrate-customer-shopping`: thêm `customerwishlist`, `customeraddress`, `customercart`, `cartmerge`; không copy/seed khách, không thay profile/đơn/tồn cũ.
-7. `prisma generate`: tạo Prisma Client theo schema hiện tại.
+7. `db:migrate-vouchers`: thêm bảng voucher/usage/audit và snapshot nullable, không tính lại đơn cũ.
+8. `ensure-prisma-client.cjs`: so sánh schema theo token (giữ nguyên chuỗi), phiên bản CLI/client và đủ file generated/engine. Khi khớp thì giữ DLL; chỉ gọi `prisma generate` khi cần.
 
 Các bước này không thực thi `DROP DATABASE`, không seed và không viết lại giá/tồn/đơn cũ. Tuy vậy, đổi tên bảng ảnh hưởng ứng dụng khác nếu cùng dùng database: phải kiểm tra bản sao lưu và các consumer trước khi áp dụng ở môi trường mới. `db-backups` có thể chứa thông tin khách hàng, phải giữ riêng ngoài Git.
 
@@ -241,3 +242,23 @@ Nguyên nhân đăng nhập admin cũ bị từ chối: phiên vận hành trư�
 `demo:dev` nay dùng `DEMO_PORT` mặc định 4001, không được bằng PORT chính (mặc định 4000); kiểm tra trước khi mở kết nối/chuyển DATABASE_URL trong process. `npm.cmd run dev` tiếp tục dùng database gốc.
 
 Ảnh kính đã có trong `fashionheaven/public/images/kinh-mat-nu.jpg` được copy nguyên bản sang `BE/public/images/kinh-mat-nu.jpg` để bản clone cũng có ảnh. `catalog:images:plan` chỉ đọc; `catalog:images:repair` cần NODE_ENV=development/local shop, lưu backup trường ảnh trong private-maintenance rồi CAS đúng ảnh legacy với gallery SQL NULL; không ghi đè gallery đã sửa, không đổi tồn/giá/đơn. Chạy lại không thay đổi dữ liệu. Không tải ảnh minh họa ngẫu nhiên làm ảnh hàng thật.
+
+## Windows: đã sửa EPERM khi npm run dev (08/10/2026)
+
+API/test đang dùng Prisma có thể giữ `query_engine-windows.dll.node`; Windows không cho generate ghi đè DLL đang được nạp. Trước đây predev generate lại mọi lần, dù schema chỉ khác formatter. Nay `npm run dev` kiểm tra cả cổng IPv4/IPv6 trước: shop đúng đang chạy/client khớp thì báo URL và kết thúc thành công; process lạ/demo/client cũ thì yêu cầu dừng đúng phiên, không kill toàn bộ Node. Cổng rảnh mới chạy các migration tương thích, chuẩn bị client nếu cần và mở nodemon watch src.
+
+Lệnh dùng hàng ngày vẫn là `npm.cmd run dev`. Nếu thay schema thật hoặc cần generate cưỡng bức: dừng backend/test đang dùng BE, chạy `npm.cmd run db:generate`, rồi `npm.cmd run dev`. Không xóa node_modules hoặc reset database để chữa lỗi DLL. `/api/health` là liveness process, chỉ trả service/status/mode, không lộ DATABASE_URL; chưa phải kiểm tra kết nối DB.
+
+## Thêm catalog vào database gốc
+
+Ngày 08/10/2026 đã bổ sung 66 sản phẩm và 258 SKU, tổng 82 sản phẩm/393 SKU. Dùng ảnh minh họa thời trang sẵn có trong dự án theo dòng sản phẩm, không có nhãn DEMO. Giá, thuộc tính, tồn từng SKU và nhật ký OPENING được lưu tại database gốc, không tạo đơn/đối soát/nhập hàng giả. Kho 1, nhà cung cấp 1 và admin hiện có được đối chiếu trước khi nhập. 16 sản phẩm cũ được so sánh với backup và giữ nguyên.
+
+```powershell
+npm.cmd run catalog:append:plan
+$env:NODE_ENV='development'
+$env:ALLOW_CATALOG_IMPORT='true'
+# Chọn CATALOG_ADMIN_LOGIN, CATALOG_WAREHOUSE_ID, CATALOG_SUPPLIER_ID nếu cần
+npm.cmd run catalog:append
+```
+
+Script chỉ chạy có chủ đích; chặn production, database hệ thống/test/demo/remote; xác minh ảnh local, admin, kho, NCC/danh mục. Backup catalog trước khi ghi ở private-maintenance (ignored). Transaction/mutex và SKU cố định giúp chạy lại giữ nguyên dữ liệu người vận hành đã sửa; nếu SKU thiếu hoặc xung đột thì dừng thay vì seed lại. Không reset database hoặc thay tài khoản/mật khẩu. Chi tiết nguồn ảnh và phạm vi tại `../docs/CATALOG_IMPORT.md`.
