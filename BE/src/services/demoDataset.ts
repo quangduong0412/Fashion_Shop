@@ -13,6 +13,15 @@ export const demoDatabaseName = 'fashionhaven_demo_v1';
 export const demoProject = 'fashion-haven-demo-v1';
 export const demoSize = 65;
 
+// A demo must not take over the API port used by the configured shop.
+export function demoServerPort(env: NodeJS.ProcessEnv): string {
+  if (env.NODE_ENV !== 'development') throw new ApiError(400, 'DEMO_DISABLED', 'Demo server chỉ dùng NODE_ENV=development.');
+  const port = env.DEMO_PORT ?? '4001';
+  if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) throw new ApiError(400, 'DEMO_PORT_INVALID', 'DEMO_PORT cần là cổng hợp lệ.');
+  if (Number(port) === Number(env.PORT || '4000')) throw new ApiError(400, 'DEMO_PORT_CONFLICT', 'Demo phải dùng cổng khác API cửa hàng.');
+  return String(Number(port));
+}
+
 // The target is deliberately separate from DATABASE_URL. Never rewrite a shop database.
 export function demoTarget(env: NodeJS.ProcessEnv) {
   let source: URL;

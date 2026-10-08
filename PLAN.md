@@ -139,3 +139,12 @@ Nêu actor/state/money/stock/validation/errors; nối UI→API→DB thật; tran
 - [x] API demo tại 4000 dùng chung FE 8081/admin 5173; database gốc vẫn nằm trong cấu hình gốc.
 - [x] Backend typecheck và 93/93 kiểm tra API/MySQL/unit; test database đã dọn trong finally.
 - [ ] Các tính năng còn thiếu như đổi trả/hoàn tiền, đánh giá, thông báo, email thật và native giữ trong backlog; bộ demo không thay cho nghiệm thu các tính năng đó.
+
+## Khôi phục database gốc theo phản hồi người vận hành — 08/10/2026
+
+- Lỗi vận hành được xác nhận: chuyển API 4000 sang database demo làm tài khoản admin cũ bị từ chối và catalog cũ không xuất hiện. Đây không phải dữ liệu cũ bị xóa. Đã dừng đúng demo process, chạy API chính với DATABASE_URL nguyên bản, không sửa mật khẩu hoặc tạo admin thay thế.
+- Database gốc hiện có 16 sản phẩm / 135 SKU / 6 đơn / 10 khách; API catalog công khai có 14 sản phẩm theo điều kiện hiển thị. Đăng nhập admin bằng mật khẩu người vận hành đã đặt: HTTP 200; form admin 1440×1000 đăng nhập và hiển thị sản phẩm cũ đạt. FE 390×844 mở sản phẩm cũ #3 và tải được ảnh; không pageerror.
+- Kiểm tra 14 URL ảnh catalog gốc: tất cả HTTP 200. Một ảnh gán sai (kính dùng ảnh trang điểm) được sửa sang ảnh kính sẵn có trong legacy assets, copy vào assets backend để theo Git. Chỉ CAS đúng trường Anh/Gallery legacy, có backup ignored; không đổi tồn, giá hoặc chứng từ. Không khẳng định ảnh Unsplash cũ là ảnh của hàng hóa thực tế đã được xác minh.
+- `demo:dev` không được chiếm PORT của API chính nữa; mặc định DEMO_PORT=4001, validation trước kết nối. Thêm ca unit trùng cổng/khác cổng/cổng sai/production. Bộ demo vẫn được giữ riêng, không phục vụ FE/admin mặc định và không chuyển thành dữ liệu thật.
+- Kiểm tra: backend typecheck đạt; npm.cmd test **94/94**, 0 fail/skip, TAP `BE/test-artifacts/shop-restore-api-2026-10-08.tap`; runner đã dọn `fashionhaven_test_1791422488705_fccfa32a` trong finally. Browser local: `shop-original-acceptance-2026-10-08.json`, `shop-original-admin-2026-10-08.png`, `shop-original-customer-2026-10-08.png` trong test-artifacts. FE/admin source không sửa.
+- Yêu cầu 60+ bản ghi thật vào database gốc **chưa thực hiện**. Đã yêu cầu Excel/CSV/SQL/bộ ảnh hoặc nguồn dữ liệu thực; không có dữ liệu đầy đủ này trong repository. Không tạo khách, tồn hoặc giao dịch giả rồi coi là thật; không đổi tên bộ demo để đáp ứng số lượng. Khi nhận nguồn: đối chiếu/dry-run, bảo vệ dữ liệu cũ, nhập có kiểm soát và nghiệm thu số đếm/ảnh/luồng thực.

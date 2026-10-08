@@ -128,6 +128,12 @@ Migration mới: `cd BE`, `npm.cmd run db:migrate-customer-shopping`, `npx.cmd p
 
 ## Bộ dữ liệu demo local — 65 bản ghi mỗi nhóm
 
-Đã cấp database riêng `fashionhaven_demo_v1`, API dùng cổng 4000. Mở [ứng dụng khách hàng](http://localhost:8081) hoặc [trang quản trị](http://localhost:5173). Khách: `demo.customer001@example.invalid` … `demo.customer065@example.invalid`; admin: `demo.admin@example.invalid`. Mật khẩu do người vận hành cung cấp được ghi riêng tại `BE/private-maintenance/demo-login.txt`, không commit. Database giữ bcrypt; không có chức năng xem mật khẩu cũ từ hash.
+Bộ demo từng được cấp riêng tại `fashionhaven_demo_v1`; không phải dữ liệu thật và hiện không chạy trên API chính. API 4000 đã được khôi phục về database gốc trong DATABASE_URL. Mở [ứng dụng khách hàng](http://localhost:8081) hoặc [trang quản trị](http://localhost:5173). Khách: `demo.customer001@example.invalid` … `demo.customer065@example.invalid`; admin: `demo.admin@example.invalid`. Mật khẩu do người vận hành cung cấp được ghi riêng tại `BE/private-maintenance/demo-login.txt`, không commit. Database giữ bcrypt; không có chức năng xem mật khẩu cũ từ hash.
 
-Khởi động lại API demo: vào `BE`, đặt `$env:NODE_ENV='development'`, chạy `npm.cmd run demo:dev`. API này chọn database demo trong process, không sửa `DATABASE_URL` gốc. `npm.cmd run dev` chạy chế độ database cửa hàng gốc; hai API không dùng cùng port đồng thời. Hướng dẫn cấp dữ liệu có opt-in và chạy lại an toàn: [BE/README.md](BE/README.md).
+Khởi động lại API demo: vào `BE`, đặt `$env:NODE_ENV='development'`, chạy `npm.cmd run demo:dev`. API demo chọn database riêng và cổng 4001 (DEMO_PORT), từ chối cổng trùng API chính. FE/admin mặc định vẫn dùng API 4000 của database gốc. `npm.cmd run dev` chạy database cửa hàng gốc. Hướng dẫn cấp dữ liệu có opt-in và chạy lại an toàn: [BE/README.md](BE/README.md).
+
+## Trạng thái sau khi khôi phục database gốc — 08/10/2026
+
+FE 8081/admin 5173 đã dùng lại API 4000 và database gốc trong `.env`; 16 sản phẩm/135 biến thể/6 đơn vẫn còn, không bị xóa bởi provisioning demo. Tài khoản admin cũ đăng nhập được bằng mật khẩu người vận hành đã đặt, không reset hoặc thêm tài khoản mặc định. Catalog công khai hiện có 14 sản phẩm theo điều kiện hiển thị; admin thấy cả các sản phẩm không công khai. Đã kiểm tra trên trình duyệt và khôi phục ảnh kính từ assets cũ vào thư mục ảnh backend chính.
+
+Yêu cầu thêm 60+ bản ghi **thật** vào database gốc chưa thực hiện: cần dữ liệu nguồn, giá/tồn, tài khoản/chứng từ thực và ảnh tương ứng từ người vận hành. Bộ demo không đáp ứng yêu cầu này, không được đổi tên/import thành chứng từ thật. Không xóa database demo trong lượt khôi phục, chỉ dừng API demo.

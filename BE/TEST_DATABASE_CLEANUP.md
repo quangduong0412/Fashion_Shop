@@ -67,3 +67,7 @@ Không dọn database demo bằng công cụ cleanup integration. Không tạo f
 ### 08/10/2026 — bộ demo 65
 
 `npm.cmd test` đạt 93/93. Runner tạo và dọn đúng database `fashionhaven_test_1791421774802_863415f4` trong finally sau khi đóng child/kết nối. TAP ignored: `test-artifacts/demo65-api-2026-10-08.tap`. Database demo `fashionhaven_demo_v1` là dữ liệu trình diễn được giữ có chủ đích, không thuộc cleanup test. Hai schema rỗng chưa xác minh cũ vẫn được giữ nguyên.
+
+### 08/10/2026 — khôi phục database gốc
+
+Suite 94/94; đã xóa đúng database runner tạo `fashionhaven_test_1791422488705_fccfa32a` trong finally. Không xóa database cửa hàng hoặc database demo đang được giữ riêng.

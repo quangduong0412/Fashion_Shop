@@ -1,9 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { completedDemo } from '../scripts/provision-demo-data';
-import { demoDatabaseName, demoPlan, demoProject, demoSize, demoTarget, demoWriteConfig } from '../src/services/demoDataset';
+import { demoDatabaseName, demoPlan, demoProject, demoServerPort, demoSize, demoTarget, demoWriteConfig } from '../src/services/demoDataset';
 
 const input = { DATABASE_URL: 'mysql://operator:private@localhost:3306/shop_dev', NODE_ENV: 'development', ALLOW_DEMO_DATA: 'true', DEMO_DATA_PASSWORD: 'SyntheticFixture1!' };
+test('demo server cannot replace the configured shop API port', () => {
+  assert.equal(demoServerPort({ NODE_ENV: 'development' }), '4001');
+  assert.equal(demoServerPort({ NODE_ENV: 'development', DEMO_PORT: '04002' }), '4002');
+  for (const change of [{ NODE_ENV: 'production' }, { NODE_ENV: undefined }, { DEMO_PORT: '4000' }, { PORT: '4001' }, { PORT: '5000', DEMO_PORT: '5000' }, { DEMO_PORT: '' }, { DEMO_PORT: '0' }, { DEMO_PORT: '-1' }, { DEMO_PORT: '65536' }, { DEMO_PORT: 'abc' }]) assert.throws(() => demoServerPort({ NODE_ENV: 'development', ...change }));
+});
 test('bulk demo always selects a separate local database and refuses unsafe configuration', () => {
   assert.equal(new URL(demoTarget(input).target).pathname, `/${demoDatabaseName}`);
   assert.equal(new URL(demoTarget(input).source).pathname, '/shop_dev');

@@ -28,7 +28,9 @@
     "demo:data:provision": "ts-node scripts/provision-demo-data.ts --apply",
     "demo:dev": "ts-node scripts/run-demo-server.ts",
     "db:migrate-vouchers": "ts-node migrate_vouchers.ts",
-    "preview:customer": "node scripts/serve-customer-web.cjs"
+    "preview:customer": "node scripts/serve-customer-web.cjs",
+    "catalog:images:plan": "ts-node scripts/repair-catalog-images.ts --plan",
+    "catalog:images:repair": "ts-node scripts/repair-catalog-images.ts --apply"
   },
   "keywords": [],
   "author": "",
