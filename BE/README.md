@@ -211,9 +211,25 @@ npm.cmd run demo:data:provision
 npm.cmd run demo:dev
 ```
 
-Database demo riêng tên `fashionhaven_demo_v1`. Script chỉ tạo database mới hoặc dùng marker sở hữu phù hợp; không reset/ghi đè dữ liệu và không đổi mật khẩu khi chạy lại. API demo dùng port 4000 mặc định: dừng API cửa hàng ở port đó trước khi chạy demo, hoặc cấu hình port/API URL riêng cho FE/admin. Đăng nhập lại sau khi chuyển môi trường. Khách: `demo.customer001@example.invalid` đến `demo.customer060@example.invalid`. Admin demo: `demo.admin@example.invalid`; nhân viên: `demo.staff002@example.invalid` đến `demo.staff060@example.invalid`. Mật khẩu lấy từ cấu hình local, không có mật khẩu cố định trong Git. Không gửi email/thu tiền/giao hàng thật cho bộ demo; dữ liệu tiền, vận đơn và hình minh họa đều được gắn DEMO. Cài đặt là singleton, nhật ký theo sự kiện, không ép 60 bản ghi kỹ thuật/reset token. Bộ demo hiện chưa được cấp trên máy do thiếu cấu hình mật khẩu của người vận hành.
+Database demo riêng tên `fashionhaven_demo_v1`. Script chỉ tạo database mới hoặc dùng marker sở hữu phù hợp; không reset/ghi đè dữ liệu và không đổi mật khẩu khi chạy lại. API demo dùng port 4000 mặc định: dừng API cửa hàng ở port đó trước khi chạy demo, hoặc cấu hình port/API URL riêng cho FE/admin. Đăng nhập lại sau khi chuyển môi trường. Khách: `demo.customer001@example.invalid` đến `demo.customer065@example.invalid`. Admin demo: `demo.admin@example.invalid`; nhân viên: `demo.staff002@example.invalid` đến `demo.staff065@example.invalid`. Mật khẩu lấy từ cấu hình local, không có mật khẩu cố định trong Git. Không gửi email/thu tiền/giao hàng thật cho bộ demo; dữ liệu tiền, vận đơn và hình minh họa đều được gắn DEMO. Cài đặt là singleton, nhật ký theo sự kiện, không tạo thêm bản ghi kỹ thuật/reset token cho đủ số lượng. Đã cấp bộ demo 65 bản ghi mỗi nhóm trên máy ngày 08/10/2026; 260 biến thể, 195 dòng nhập và 65 dòng đơn. Chạy lại giữ nguyên dữ liệu và mật khẩu. Thông tin đăng nhập người vận hành cung cấp nằm tại `private-maintenance/demo-login.txt` (ignored, không commit).
 
 
 ### Web khách hàng đã khôi phục tại cổng 8081
 
 Expo/Metro process cũ trả `/status` nhưng request trang chủ timeout. Đã dừng đúng process Expo trong FE đã xác minh, dùng bản Expo web export vừa build thành công và phục vụ tại `http://localhost:8081`. Trang chủ, explore, cart, product trả HTTP 200; Edge headless 390×844 đã tìm và hiển thị sản phẩm thật qua API, không pageerror. Script: `cd BE; npm.cmd run preview:customer`. Sau khi sửa FE cần chạy lại `cd FE; npx.cmd expo export --platform web` để cập nhật bản preview. Native/Metro chưa được nghiệm thu trong lượt khôi phục này. Backend 4000 và admin Vite 5173 giữ process đang chạy; không tạo dữ liệu nghiệp vụ khi kiểm tra. Ảnh FE local ngoài Git: `BE/test-artifacts/customer-runtime-restored-2026-10-08.png`.
+
+## Chế độ dữ liệu demo 65 (08/10/2026)
+
+API local hiện chạy database `fashionhaven_demo_v1` tại cổng 4000; FE web 8081 và admin 5173 dùng cùng API. Database cửa hàng gốc và `DATABASE_URL` trong `.env` được giữ nguyên. Đăng xuất rồi đăng nhập bằng tài khoản demo khi chuyển môi trường.
+
+Khởi động lại demo, không cấp lại dữ liệu:
+
+```powershell
+cd BE
+$env:NODE_ENV='development'
+npm.cmd run demo:dev
+```
+
+Mật khẩu do người vận hành cấp chỉ dùng cho tài khoản demo mới; database vẫn lưu bcrypt với salt riêng. Hash không thể đổi ngược thành mật khẩu cũ. API quản trị không trả mật khẩu/hash; không đổi mật khẩu tài khoản cửa hàng. `demo:data:plan` báo mục tiêu 65; nếu database đã có receipt READY cũ 60, script giữ nguyên thay vì tự chèn thêm hoặc reset.
+
+65 bản ghi cho danh mục, chức danh, chi nhánh, kho, nhà cung cấp, nhân viên/tài khoản nhân viên, khách, sản phẩm, địa chỉ, yêu thích, giỏ, bài viết, liên hệ, yêu cầu nhập, phiếu nhập, đơn, receipt checkout, voucher/lượt dùng. Cài đặt có một bản ghi; lịch sử phát sinh theo nghiệp vụ, không tạo token giả. Đơn và đối soát DEMO là mô phỏng, không phải tiền thực thu.

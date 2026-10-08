@@ -125,3 +125,9 @@ erDiagram
 Giỏ khách vãng lai hợp nhất một lần khi đăng nhập, cộng số lượng SKU trùng và giữ lựa chọn. Phần guest được gắn với tài khoản trước khi gửi; logout/đổi khách không sao chép giỏ account sang guest. Nếu guest không đủ tồn, hệ thống giữ giỏ account và thông báo phần chưa hợp nhất để thử lại hoặc bỏ có chủ đích. Không giữ tồn chỉ vì thêm giỏ. Checkout COD kiểm tra phiên bản giỏ/địa chỉ, lưu snapshot và bỏ lượng đã mua trong transaction; retry sau mất phản hồi không tạo/trừ lần hai.
 
 Migration mới: `cd BE`, `npm.cmd run db:migrate-customer-shopping`, `npx.cmd prisma generate`; `db:prepare` đã bao gồm bước này. Trên máy hiện tại đã áp dụng và chạy lại, dữ liệu 16 SP/134 SKU/6 đơn/6 dòng giữ nguyên; bốn bảng mới chưa có dữ liệu thử. Không chạy SQL DROP/seed. Checkpoint và báo cáo: [docs/IMPLEMENTATION_PROGRESS.md](docs/IMPLEMENTATION_PROGRESS.md), [docs/REPORT_UPDATES.md](docs/REPORT_UPDATES.md).
+
+## Bộ dữ liệu demo local — 65 bản ghi mỗi nhóm
+
+Đã cấp database riêng `fashionhaven_demo_v1`, API dùng cổng 4000. Mở [ứng dụng khách hàng](http://localhost:8081) hoặc [trang quản trị](http://localhost:5173). Khách: `demo.customer001@example.invalid` … `demo.customer065@example.invalid`; admin: `demo.admin@example.invalid`. Mật khẩu do người vận hành cung cấp được ghi riêng tại `BE/private-maintenance/demo-login.txt`, không commit. Database giữ bcrypt; không có chức năng xem mật khẩu cũ từ hash.
+
+Khởi động lại API demo: vào `BE`, đặt `$env:NODE_ENV='development'`, chạy `npm.cmd run demo:dev`. API này chọn database demo trong process, không sửa `DATABASE_URL` gốc. `npm.cmd run dev` chạy chế độ database cửa hàng gốc; hai API không dùng cùng port đồng thời. Hướng dẫn cấp dữ liệu có opt-in và chạy lại an toàn: [BE/README.md](BE/README.md).

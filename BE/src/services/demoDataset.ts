@@ -11,7 +11,7 @@ import { defaultSettings, validateSettings } from './storeSettings';
 
 export const demoDatabaseName = 'fashionhaven_demo_v1';
 export const demoProject = 'fashion-haven-demo-v1';
-export const demoSize = 60;
+export const demoSize = 65;
 
 // The target is deliberately separate from DATABASE_URL. Never rewrite a shop database.
 export function demoTarget(env: NodeJS.ProcessEnv) {
@@ -31,13 +31,13 @@ export function demoWriteConfig(env: NodeJS.ProcessEnv) {
 export const demoPlan = {
   database: demoDatabaseName, recordsPerEntity: demoSize,
   entities: ['danh mục', 'chức danh', 'chi nhánh', 'kho', 'nhà cung cấp', 'nhân viên', 'tài khoản nhân viên', 'khách hàng', 'sản phẩm', 'địa chỉ', 'yêu thích', 'giỏ hàng', 'bài viết', 'liên hệ', 'yêu cầu nhập', 'phiếu nhập', 'đơn hàng', 'biên nhận checkout', 'voucher', 'lượt dùng voucher'],
-  derived: { variants: 240, importLines: 180, orderLines: 60 },
-  exceptions: ['Cài đặt chỉ có 1 bản ghi, tối đa 5 banner theo hợp đồng hiện tại.', 'Nhật ký phát sinh theo sự kiện thực thi mô phỏng; không ép số lượng 60.', 'Không tạo reset token/session, khóa kỹ thuật, sysdiagrams hoặc bảng tính năng chưa triển khai.'],
-  credentials: 'demo.admin@example.invalid; demo.staff002..060@example.invalid; demo.customer001..060@example.invalid. Mật khẩu do người vận hành đặt qua DEMO_DATA_PASSWORD local.',
+  derived: { variants: demoSize * 4, importLines: demoSize * 3, orderLines: demoSize },
+  exceptions: ['Cài đặt chỉ có 1 bản ghi, tối đa 5 banner theo hợp đồng hiện tại.', 'Nhật ký phát sinh theo sự kiện thực thi mô phỏng; không ép số lượng theo dữ liệu mẫu.', 'Không tạo reset token/session, khóa kỹ thuật, sysdiagrams hoặc bảng tính năng chưa triển khai.'],
+  credentials: `demo.admin@example.invalid; demo.staff002..${String(demoSize).padStart(3, '0')}@example.invalid; demo.customer001..${String(demoSize).padStart(3, '0')}@example.invalid. Mật khẩu do người vận hành đặt qua DEMO_DATA_PASSWORD local.`,
   safety: 'Database demo riêng, không sao chép dữ liệu cá nhân, không gửi email, không thực hiện thanh toán thật; không reset hoặc ghi đè database đã có.'
 };
 
-const categories = ['Áo thun', 'Áo sơ mi', 'Áo polo', 'Áo khoác', 'Áo len', 'Áo cardigan', 'Áo blazer', 'Áo vest', 'Áo hoodie', 'Áo sweatshirt', 'Áo sát nách', 'Áo dài', 'Áo kiểu', 'Áo croptop', 'Áo giữ nhiệt', 'Quần jeans', 'Quần tây', 'Quần kaki', 'Quần jogger', 'Quần short', 'Quần legging', 'Quần culottes', 'Quần ống rộng', 'Quần thể thao', 'Quần yếm', 'Chân váy chữ A', 'Chân váy xếp ly', 'Chân váy bút chì', 'Chân váy midi', 'Chân váy denim', 'Đầm suông', 'Đầm công sở', 'Đầm dự tiệc', 'Đầm maxi', 'Đầm sơ mi', 'Bộ mặc nhà', 'Bộ thể thao', 'Bộ công sở', 'Bộ đồ len', 'Đồ bơi', 'Giày sneaker', 'Giày loafer', 'Giày cao gót', 'Giày boots', 'Giày sandal', 'Dép thời trang', 'Túi đeo vai', 'Túi đeo chéo', 'Túi tote', 'Balo', 'Ví', 'Thắt lưng', 'Khăn choàng', 'Mũ lưỡi trai', 'Mũ bucket', 'Mũ len', 'Tất', 'Găng tay', 'Kính thời trang', 'Phụ kiện tóc'];
+const categories = ['Áo thun', 'Áo sơ mi', 'Áo polo', 'Áo khoác', 'Áo len', 'Áo cardigan', 'Áo blazer', 'Áo vest', 'Áo hoodie', 'Áo sweatshirt', 'Áo sát nách', 'Áo dài', 'Áo kiểu', 'Áo croptop', 'Áo giữ nhiệt', 'Quần jeans', 'Quần tây', 'Quần kaki', 'Quần jogger', 'Quần short', 'Quần legging', 'Quần culottes', 'Quần ống rộng', 'Quần thể thao', 'Quần yếm', 'Chân váy chữ A', 'Chân váy xếp ly', 'Chân váy bút chì', 'Chân váy midi', 'Chân váy denim', 'Đầm suông', 'Đầm công sở', 'Đầm dự tiệc', 'Đầm maxi', 'Đầm sơ mi', 'Bộ mặc nhà', 'Bộ thể thao', 'Bộ công sở', 'Bộ đồ len', 'Đồ bơi', 'Giày sneaker', 'Giày loafer', 'Giày cao gót', 'Giày boots', 'Giày sandal', 'Dép thời trang', 'Túi đeo vai', 'Túi đeo chéo', 'Túi tote', 'Balo', 'Ví', 'Thắt lưng', 'Khăn choàng', 'Mũ lưỡi trai', 'Mũ bucket', 'Mũ len', 'Tất', 'Găng tay', 'Kính thời trang', 'Phụ kiện tóc', 'Túi clutch', 'Túi du lịch', 'Vòng tay', 'Dây chuyền', 'Bông tai'];
 const suffix = (index: number) => String(index + 1).padStart(3, '0');
 export type DemoManifest = { version: 1; project: string; createdAt: string; ids: Record<string, number[]>; counts: Record<string, number> };
 

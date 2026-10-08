@@ -63,3 +63,7 @@ Dry-run sau đợt này chỉ còn hai database không xác minh nguồn ở m�
 - `fashionhaven_test_1791420805568_e2667bab`: sau sửa, 93/93 API/MySQL/unit, không bật browser; đã dọn.
 
 Không dọn database demo bằng công cụ cleanup integration. Không tạo fixture trong database ứng dụng khi khôi phục P2022.
+
+### 08/10/2026 — bộ demo 65
+
+`npm.cmd test` đạt 93/93. Runner tạo và dọn đúng database `fashionhaven_test_1791421774802_863415f4` trong finally sau khi đóng child/kết nối. TAP ignored: `test-artifacts/demo65-api-2026-10-08.tap`. Database demo `fashionhaven_demo_v1` là dữ liệu trình diễn được giữ có chủ đích, không thuộc cleanup test. Hai schema rỗng chưa xác minh cũ vẫn được giữ nguyên.

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { ApiError } from '../src/services/apiErrors';
 import { hashPassword } from '../src/services/credentials';
-import { createDemoDataset, demoDatabaseName, demoPlan, demoProject, demoTarget, demoWriteConfig, type DemoManifest } from '../src/services/demoDataset';
+import { createDemoDataset, demoDatabaseName, demoPlan, demoProject, demoSize, demoTarget, demoWriteConfig, type DemoManifest } from '../src/services/demoDataset';
 
 type Marker = { Project: string; State: string; Manifest: string | object | null };
 const tableNames = Prisma.dmmf.datamodel.models.map(model => model.dbName ?? model.name);
@@ -14,7 +14,8 @@ export function completedDemo(marker: Marker): DemoManifest | null {
   if (marker.State === 'EMPTY') return null;
   let result: DemoManifest;
   try { result = typeof marker.Manifest === 'string' ? JSON.parse(marker.Manifest) : marker.Manifest; } catch { throw new ApiError(409, 'DEMO_RECEIPT_INVALID', 'Biên nhận demo không đọc được; không ghi đè.'); }
-  if (!result || result.project !== demoProject || result.version !== 1 || result.counts?.products !== 60 || result.counts?.customers !== 60 || result.counts?.orders !== 60 || Object.entries(result.ids ?? {}).some(([, ids]) => !Array.isArray(ids) || ids.some(id => !Number.isSafeInteger(id) || id <= 0))) throw new ApiError(409, 'DEMO_RECEIPT_INVALID', 'Biên nhận demo không khớp; không tự seed lại.');
+  // Keep completed v1 datasets immutable, including the earlier 60-record size.
+  if (!result || result.project !== demoProject || result.version !== 1 || ![60, demoSize].includes(result.counts?.products ?? 0) || result.counts?.customers !== result.counts?.products || result.counts?.orders !== result.counts?.products || Object.entries(result.ids ?? {}).some(([, ids]) => !Array.isArray(ids) || ids.some(id => !Number.isSafeInteger(id) || id <= 0))) throw new ApiError(409, 'DEMO_RECEIPT_INVALID', 'Biên nhận demo không khớp; không tự seed lại.');
   return result;
 }
 async function targetExists(source: PrismaClient) {
@@ -61,9 +62,9 @@ export async function provisionDemoData(env: NodeJS.ProcessEnv, apply: boolean) 
     const marker = await targetMarker(target);
     const completed = completedDemo(marker);
     if (completed) return { database: demoDatabaseName, replayed: true, manifest: completed, message: 'Bộ demo đã được tạo. Không đổi mật khẩu, dữ liệu hay tồn kho hiện tại.' };
-    // Unique salts for all 120 accounts. Do not keep plaintext in receipts or console output.
+    // Unique salts for every account. No plaintext in receipts or console output.
     const hashes: string[] = [];
-    for (let i = 0; i < 120; i++) hashes.push(await hashPassword((config as ReturnType<typeof demoWriteConfig>).password));
+    for (let i = 0; i < demoSize * 2; i++) hashes.push(await hashPassword((config as ReturnType<typeof demoWriteConfig>).password));
     const result = await target.$transaction(async tx => {
       const [locked] = await tx.$queryRaw<Marker[]>`SELECT Project, State, Manifest FROM __fashion_demo_owner WHERE Id = 1 FOR UPDATE`;
       if (!locked) throw new ApiError(409, 'DEMO_OWNERSHIP_UNVERIFIED', 'Thiếu marker demo.');
@@ -80,10 +81,10 @@ export async function provisionDemoData(env: NodeJS.ProcessEnv, apply: boolean) 
       return { replayed: false, manifest };
     }, { timeout: 180_000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
     return { database: demoDatabaseName, ...result };
-  } finally { await target?.$disconnect(); await source.$disconnect(); }
+  } finally { try { await target?.$disconnect(); } finally { await source.$disconnect(); } }
 }
 if (require.main === module) {
   const args = process.argv.slice(2);
   if (args.length !== 1 || !['--plan', '--apply'].includes(args[0]!)) { console.error('Dùng --plan (dry-run) hoặc --apply (cần cấu hình local).'); process.exitCode = 1; }
-  else provisionDemoData(process.env, args[0] === '--apply').then(result => console.log(JSON.stringify(result, null, 2))).catch(error => { console.error(error instanceof ApiError ? `${error.code}: ${error.message}` : 'Không thể tạo bộ demo. Kiểm tra MySQL/quyền/schema local; dữ liệu gốc không bị thay thế.'); process.exitCode = 1; });
+  else provisionDemoData(process.env, args[0] === '--apply').then(result => console.log(JSON.stringify('manifest' in result ? { database: result.database, replayed: result.replayed, counts: result.manifest.counts } : result, null, 2))).catch(error => { console.error(error instanceof ApiError ? `${error.code}: ${error.message}` : 'Không thể tạo bộ demo. Kiểm tra MySQL/quyền/schema local; dữ liệu gốc không bị thay thế.'); process.exitCode = 1; });
 }

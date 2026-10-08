@@ -129,4 +129,13 @@ Nêu actor/state/money/stock/validation/errors; nối UI→API→DB thật; tran
 
 ### Chỉ đạo vận hành 08/10/2026
 
-Ưu tiên khôi phục website: đã áp dụng migration voucher thêm cột/bảng, API/admin chạy lại. Voucher: API và nghiệp vụ đạt kiểm tra, UI đã build nhưng chưa nghiệm thu browser riêng; không đánh dấu hoàn tất Đợt 2. Dữ liệu demo 60 mỗi phân hệ: script/kiểm tra sẵn, chờ mật khẩu local trước khi cấp thật vào database demo riêng. Chi tiết và lệnh chạy trong BE/README.md và docs/IMPLEMENTATION_PROGRESS.md. Dừng mở rộng tính năng trong lượt khôi phục này.
+Ưu tiên khôi phục website: đã áp dụng migration voucher thêm cột/bảng, API/admin chạy lại. Voucher: API và nghiệp vụ đạt kiểm tra, UI đã build nhưng chưa nghiệm thu browser riêng; không đánh dấu hoàn tất Đợt 2. Dữ liệu demo đã tăng lên 65 mỗi phân hệ và cấp vào database riêng `fashionhaven_demo_v1` theo mật khẩu do người vận hành cung cấp; không thay tài khoản/database cửa hàng. Chi tiết và lệnh chạy trong BE/README.md và docs/IMPLEMENTATION_PROGRESS.md. Dừng mở rộng tính năng trong lượt khôi phục này.
+
+### Checkpoint dữ liệu demo 65 — 08/10/2026
+
+- [x] Dry-run xác minh đích chưa tồn tại; tạo schema mới riêng, không chạy SQL DROP/reset.
+- [x] 65 bản ghi mỗi nhóm nghiệp vụ; 260 SKU, 195 dòng nhập, 65 dòng đơn; singleton/nhật ký theo đúng cấu trúc.
+- [x] Cấp 65 khách + 65 tài khoản nhân viên, bcrypt salt riêng; giữ nguyên mật khẩu khi chạy lại. Không trả hash qua API.
+- [x] API demo tại 4000 dùng chung FE 8081/admin 5173; database gốc vẫn nằm trong cấu hình gốc.
+- [x] Backend typecheck và 93/93 kiểm tra API/MySQL/unit; test database đã dọn trong finally.
+- [ ] Các tính năng còn thiếu như đổi trả/hoàn tiền, đánh giá, thông báo, email thật và native giữ trong backlog; bộ demo không thay cho nghiệm thu các tính năng đó.

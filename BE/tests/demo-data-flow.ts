@@ -1,32 +1,32 @@
 import assert from 'node:assert/strict';
 import bcrypt from 'bcryptjs';
 import prisma from '../src/db';
-import { createDemoDataset } from '../src/services/demoDataset';
+import { createDemoDataset, demoSize } from '../src/services/demoDataset';
 import { normalizeVariants, readVariantAttributeDefinitions } from '../src/services/productVariants';
 import { productMediaChanges } from '../src/services/catalogMedia';
 import { publicProduct } from '../src/services/publicCatalog';
 import { readSettings } from '../src/services/storeSettings';
 
 export async function checkDemoDataset(t: any) {
-  await t.test('60-record demo dataset preserves money, per-SKU inventory, history, credentials and full rollback', async () => {
+  await t.test(`${demoSize}-record demo dataset preserves money, per-SKU inventory, history, credentials and full rollback`, async () => {
     assert.equal(new URL(process.env.DATABASE_URL!).pathname.slice(1), process.env.TEST_DATABASE);
     assert.match(process.env.TEST_DATABASE!, /^fashionhaven_test_\d+_[a-f0-9]{8}$/);
     const before = { products: await prisma.sanPham.count(), customers: await prisma.khachHang.count(), orders: await prisma.phieuXuat.count(), settings: await prisma.storeSettings.findUnique({ where:{Id:1} }) };
-    const hashes = await Promise.all(Array.from({length:120}, () => bcrypt.hash('SyntheticDemo1!', 4)));
+    const hashes = await Promise.all(Array.from({length:demoSize * 2}, () => bcrypt.hash('SyntheticDemo1!', 4)));
     const rollback = new Error('intentional demo transaction rollback');
     await assert.rejects(prisma.$transaction(async tx => {
       // The CLI requires an EMPTY separate database. Test the domain operation in an isolated
       // transaction, with its own settings removed only inside this transaction; then roll it all back.
       await tx.storeSettings.deleteMany();
       const manifest = await createDemoDataset(tx, hashes);
-      for (const [entity, count] of Object.entries(manifest.counts)) assert.equal(count, ['variants','importLines'].includes(entity) ? entity === 'variants' ? 240 : 180 : 60, entity);
-      assert.equal(manifest.counts.orders, 60); assert.equal(manifest.counts.products, 60);
+      for (const [entity, count] of Object.entries(manifest.counts)) assert.equal(count, ['variants','importLines'].includes(entity) ? entity === 'variants' ? demoSize * 4 : demoSize * 3 : demoSize, entity);
+      assert.equal(manifest.counts.orders, demoSize); assert.equal(manifest.counts.products, demoSize);
       const customers = await tx.khachHang.findMany({where:{MaKhachHang:{in:manifest.ids.customers!}}});
-      assert.equal(customers.length, 60); assert.ok(await bcrypt.compare('SyntheticDemo1!', customers[0]!.MatKhau));
-      assert.equal(new Set(customers.map(c=>c.MatKhau)).size,60); assert.ok(customers.every(c=>c.Email.endsWith('@example.invalid')));
+      assert.equal(customers.length, demoSize); assert.ok(await bcrypt.compare('SyntheticDemo1!', customers[0]!.MatKhau));
+      assert.equal(new Set(customers.map(c=>c.MatKhau)).size,demoSize); assert.ok(customers.every(c=>c.Email.endsWith('@example.invalid')));
       const accounts = await tx.account.findMany({where:{MaNhanVien:{in:manifest.ids.employees!}}});
-      assert.equal(accounts.filter(a=>a.Role==='ADMIN').length,1); assert.equal(accounts.filter(a=>a.Role==='STAFF').length,59);
-      assert.equal(new Set(accounts.map(c=>c.PassWord)).size,60); assert.ok(await bcrypt.compare('SyntheticDemo1!', accounts[0]!.PassWord));
+      assert.equal(accounts.filter(a=>a.Role==='ADMIN').length,1); assert.equal(accounts.filter(a=>a.Role==='STAFF').length,demoSize - 1);
+      assert.equal(new Set(accounts.map(c=>c.PassWord)).size,demoSize); assert.ok(await bcrypt.compare('SyntheticDemo1!', accounts[0]!.PassWord));
       const config = await readSettings(tx); assert.equal(config.settings.storeName,'Fashion Haven · DEMO'); assert.equal(config.settings.banners.length,1);
       const products = await tx.sanPham.findMany({where:{MaSanPham:{in:manifest.ids.products!}},include:{bienThes:true,loaiHang:true}});
       const orders = await tx.phieuXuat.findMany({where:{MaPhieuXuat:{in:manifest.ids.orders!}},include:{ctDonHangs:true}});
@@ -56,17 +56,17 @@ export async function checkDemoDataset(t: any) {
         for(const e of history){assert.equal(e.FromStatus,status);status=e.ToStatus;assert.match(e.Note!,/DEMO/);}
         assert.equal(status,order.TrangThai);assert.ok(order.GhiChuDonHang?.includes('DEMO'));assert.ok(order.ctDonHangs[0]?.SKU?.startsWith('FHDEMO-'));
       }
-      assert.equal(await tx.voucherUsage.count({where:{CustomerId:{in:manifest.ids.customers!}}}),60);
-      assert.equal(await tx.voucherUsage.count({where:{CustomerId:{in:manifest.ids.customers!},Status:'RELEASED'}}),12);
-      assert.equal(Number((await tx.voucher.aggregate({where:{Id:{in:manifest.ids.vouchers!}},_sum:{UsedCount:true}}))._sum.UsedCount),48);
-      assert.equal(orders.filter(o=>o.TrangThai==='CANCELLED').length,12);
-      assert.equal(orders.filter(o=>o.TrangThaiThanhToan==='PAID').length,6);
-      assert.equal(await tx.customerAddress.count({where:{CustomerId:{in:manifest.ids.customers!},IsDefault:true}}),60);
-      assert.equal(await tx.customerCart.count({where:{CustomerId:{in:manifest.ids.customers!}}}),60);
-      assert.equal(await tx.customerWishlist.count({where:{CustomerId:{in:manifest.ids.customers!}}}),60);
-      assert.equal(await tx.checkoutRequest.count({where:{CustomerId:{in:manifest.ids.customers!}}}),60);
+      assert.equal(await tx.voucherUsage.count({where:{CustomerId:{in:manifest.ids.customers!}}}),demoSize);
+      assert.equal(await tx.voucherUsage.count({where:{CustomerId:{in:manifest.ids.customers!},Status:'RELEASED'}}),Math.floor(demoSize / 5));
+      assert.equal(Number((await tx.voucher.aggregate({where:{Id:{in:manifest.ids.vouchers!}},_sum:{UsedCount:true}}))._sum.UsedCount),demoSize - Math.floor(demoSize / 5));
+      assert.equal(orders.filter(o=>o.TrangThai==='CANCELLED').length,Math.floor(demoSize / 5));
+      assert.equal(orders.filter(o=>o.TrangThaiThanhToan==='PAID').length,Array.from({length:demoSize},(_,i)=>i).filter(i=>i%5===3&&i%2===1).length);
+      assert.equal(await tx.customerAddress.count({where:{CustomerId:{in:manifest.ids.customers!},IsDefault:true}}),demoSize);
+      assert.equal(await tx.customerCart.count({where:{CustomerId:{in:manifest.ids.customers!}}}),demoSize);
+      assert.equal(await tx.customerWishlist.count({where:{CustomerId:{in:manifest.ids.customers!}}}),demoSize);
+      assert.equal(await tx.checkoutRequest.count({where:{CustomerId:{in:manifest.ids.customers!}}}),demoSize);
       const receipts=await tx.phieuNhap.findMany({where:{MaPhieuNhap:{in:manifest.ids.imports!}},include:{ctPhieuNhaps:true}});
-      assert.equal(receipts.length,60);assert.ok(receipts.every(r=>r.TrangThai==='RECEIVED'&&r.TongTien===r.ctPhieuNhaps.reduce((n,l)=>n+l.ThanhTien,0)));
+      assert.equal(receipts.length,demoSize);assert.ok(receipts.every(r=>r.TrangThai==='RECEIVED'&&r.TongTien===r.ctPhieuNhaps.reduce((n,l)=>n+l.ThanhTien,0)));
       throw rollback;
     },{timeout:120000}), error=>error===rollback);
     assert.equal(await prisma.sanPham.count(),before.products);assert.equal(await prisma.khachHang.count(),before.customers);assert.equal(await prisma.phieuXuat.count(),before.orders);
