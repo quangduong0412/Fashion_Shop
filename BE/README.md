@@ -33,7 +33,8 @@ Không có endpoint công khai để tự cấp quyền quản trị. Máy mới
 3. `db:migrate-order-safety`: thêm `checkoutrequest`, `orderevent`, `appmutex`, `Account.SessionEpoch`, snapshot tên/ảnh dòng đơn, tên/biến thể dòng nhập và metadata xử lý phiếu. Snapshot bổ sung cho dữ liệu cũ cho phép null; session epoch mặc định 0.
 4. `db:migrate-accounts-media`: thêm status/session epoch khách, token reset có hash/expiry, audit tài khoản; ảnh/icon/trạng thái/thứ tự danh mục, gallery/chất liệu/thương hiệu sản phẩm và ảnh biến thể. Không đặt lại mật khẩu hay thay ảnh cũ.
 5. `db:migrate-store-settings`: thêm cấu hình/audit có version và snapshot tiền hàng, giảm giá, phí giao (`Decimal(18,0)` nullable), phương thức/nhãn giao, ghi chú vào đơn. Không chuyển cột Float cũ hoặc tính lại đơn cũ.
-6. `prisma generate`: tạo Prisma Client theo schema hiện tại.
+6. `db:migrate-customer-shopping`: thêm `customerwishlist`, `customeraddress`, `customercart`, `cartmerge`; không copy/seed khách, không thay profile/đơn/tồn cũ.
+7. `prisma generate`: tạo Prisma Client theo schema hiện tại.
 
 Các bước này không thực thi `DROP DATABASE`, không seed và không viết lại giá/tồn/đơn cũ. Tuy vậy, đổi tên bảng ảnh hưởng ứng dụng khác nếu cùng dùng database: phải kiểm tra bản sao lưu và các consumer trước khi áp dụng ở môi trường mới. `db-backups` có thể chứa thông tin khách hàng, phải giữ riêng ngoài Git.
 
@@ -169,4 +170,28 @@ Runner còn chạy unit test giỏ hàng, limiter, validation CMS/settings và l
 - GET `/settings` public chỉ banner active trong lịch; GET `/settings/internal` ADMIN thêm history; PUT `/settings` ADMIN `{expectedVersion,settings,reason}` CAS version + audit. Cấu hình gồm storeName/contact/policies, STANDARD fee/freeFrom/enabled, tối đa 5 banner image/link/title/subtitle/button/start/end/order. FE Home/Contact/Policies và quote dùng dữ liệu này. Nếu chưa có row: default read-only, phí 0, không tạo địa chỉ/hotline giả hay seed.
 - GET `/reports?from=YYYY-MM-DD&to=YYYY-MM-DD` ADMIN: hai ngày bao gồm, UTC+7, tối đa 366 ngày; mặc định 30 ngày. RepeatableRead aggregate toàn bộ đơn trong kỳ **theo ngày tạo**, trạng thái hiện tại. Giá trị đơn đã giao khác tiền đối soát; gồm phí giao, chưa trừ hoàn trả. Top 20 hàng đã giao, tồn khả dụng catalog đang bán/biến thể active và cảnh báo <=5; tồn là hiện tại, không theo kỳ. Chưa có sổ tiền theo ngày thu; giảm giá/hoàn tiền/đổi trả trả null với giới hạn rõ. CSV frontend escape công thức và UTF-8.
 
-Voucher, hoàn/đổi/hoàn tiền, wishlist/review/notifications, lọc nâng cao, phân quyền kho riêng và ledger thanh toán chưa có luồng hoàn chỉnh; xem bảng nghiệm thu [PLAN.md](../PLAN.md). Không đổi dữ liệu cũ để giả lập tính năng.
+Voucher, hoàn/đổi/hoàn tiền, review/notifications, phân quyền kho riêng và ledger thanh toán chưa có luồng hoàn chỉnh; xem bảng nghiệm thu [PLAN.md](../PLAN.md). Không đổi dữ liệu cũ để giả lập tính năng.
+
+## Mua sắm theo tài khoản — đợt 1
+
+Migration bổ sung: `npm.cmd run db:migrate-customer-shopping`, rồi `npx.cmd prisma generate`. Script đã áp dụng local, có thể chạy lại; chỉ CREATE TABLE IF NOT EXISTS, không reset/seed. Database cửa hàng không nhận fixtures. Bốn model mới tham chiếu ID nghiệp vụ được API kiểm tra; không cascade xóa wishlist/giỏ khi catalog thay đổi, snapshot tên/ảnh giữ dòng không còn hiển thị.
+
+Mọi endpoint `/api/shopping/*` yêu cầu session **customer/user**, nhân viên/admin trả 403. CustomerId lấy từ token, bỏ qua ID chủ sở hữu do client gửi.
+
+| Endpoint | Hợp đồng |
+| --- | --- |
+| GET `/shopping/wishlist?page&pageSize` | `{items:[{productId,savedAt,available,product}],total,page,pageSize,totalPages}`; snapshot thay cho nội dung công khai khi ẩn/xóa catalog. |
+| GET `/shopping/wishlist/ids` | IDs đã lưu, tối đa 1.000 sản phẩm/khách. |
+| PUT / DELETE `/shopping/wishlist/:productId` | Idempotent; PUT chỉ sản phẩm công khai, DELETE vẫn bỏ được dòng ngừng bán; unique khách–SP tại database. |
+| GET / POST `/shopping/addresses` | List tối đa 20; tạo `{label,name,phone,address,isDefault}`. Địa chỉ đầu tiên tự mặc định. |
+| PUT / DELETE `/shopping/addresses/:id` | PUT đầy đủ form + `expectedVersion`; DELETE `{expectedVersion}`. Sai chủ trả 404, stale 409 ADDRESS_CHANGED. |
+| PUT `/shopping/addresses/:id/default` | `{expectedVersion}`; khóa khách, bỏ default cũ/tăng version. Xóa default chọn ID nhỏ nhất còn lại. |
+| GET `/shopping/cart` | `{items,version}`; giá/ảnh/SKU/tồn lấy catalog thật; unavailable/problem rõ, không trả giá nhập hoặc kho/NCC. |
+| PUT `/shopping/cart` | `{expectedVersion,items:[{id,variantId,quantity,selected}]}`; CAS toàn giỏ, ≤50 SKU, qty 1–999. Không nhận giá/tên/ảnh từ client. |
+| POST `/shopping/cart/merge` | `{mergeKey,items}`; cộng qty SKU trùng, selected = OR; guest giữ receipt durable trước gửi. Transaction/unique receipt chống cộng lần hai. Cùng key khác payload trả 409. |
+
+Giỏ không giữ tồn. Thêm/tăng/đổi SKU phải còn bán, đúng sản phẩm và đủ tồn SKU/tổng; thay đổi giá phản ánh ở quote. Dòng cũ ngừng bán/vượt tồn được giữ với cảnh báo và vẫn giảm qty/bỏ chọn/xóa được. Guest merge vượt stock/giới hạn bị từ chối toàn bộ, FE giữ phần guest gắn với đúng tài khoản; người dùng có thể thử lại hoặc chủ động bỏ phần bị từ chối. Lỗi mạng chưa rõ kết quả giữ cùng key, không chuyển giỏ này sang tài khoản khác. Giỏ account không sao chép vào guest khi logout.
+
+FE mới gửi `cartVersion`, tùy chọn `addressId` vào quote/checkout. Quote hash/fingerprint xét cả hai. Checkout mới kiểm tra dòng đang chọn/qty/version và quyền/snapshot địa chỉ; trong transaction tạo đơn, giữ tồn, lưu receipt và trừ đúng lượng đã mua khỏi giỏ. Receipt replay trước kiểm tra catalog/địa chỉ/cart hiện tại, không trừ giỏ lần hai. Client cũ không có hai trường vẫn dùng snapshot shipping theo contract cũ. Địa chỉ chỉnh sửa/xóa không đổi chứng từ cũ.
+
+GET `/products` thêm `brand`, `size`, `color`, `minPrice`, `maxPrice`, `sort=id_desc|price_asc|price_desc`. SQL tham số hóa, lọc và phân trang tại DB; điều kiện size/màu/giá cùng một SKU đang bán. Simple product không khớp size/màu. Giá so sánh là giá thấp nhất trong SKU khớp (cả hai chiều sort), `priceMax` là mức cao nhất khớp; listing chỉ trả SKU khớp. Hết hàng vẫn xuất hiện để xem, ngừng bán/ẩn không xuất hiện. Chưa có timestamp tạo sản phẩm nên không cung cấp sort ngày tạo giả. GET `/products/facets` lấy brand/size/màu từ catalog công khai, tối đa 200 mỗi nhóm và trả `optionLimit`.

@@ -6,7 +6,7 @@ export const testDatabasePattern = /^fashion(?:haven|heaven)_test_[0-9]{13}_[a-f
 const systemDatabases = new Set(['mysql', 'sys', 'information_schema', 'performance_schema']);
 export const manifestDirectory = path.resolve(__dirname, '../test-artifacts/db-manifests');
 export type Manifest = { version: 1; database: string; runId: string; pid: number; state: 'running' | 'finished'; createdAt: string };
-const expectedTables = new Set('account appmutex customeraudit passwordreset storesettings settingsaudit baiviet bienthesanpham checkoutrequest chinhanh chucvu ctdonhang ctphieunhap dieuchinhtonkho donhang khachhang kho lienhe loaihang nhacungcap nhanvien orderevent phieunhap sanpham sysdiagrams yeucaunhaphang'.split(' '));
+const expectedTables = new Set('account appmutex customeraudit passwordreset storesettings settingsaudit baiviet bienthesanpham checkoutrequest chinhanh chucvu ctdonhang ctphieunhap dieuchinhtonkho donhang khachhang kho lienhe loaihang nhacungcap nhanvien orderevent phieunhap sanpham sysdiagrams yeucaunhaphang customerwishlist customeraddress customercart cartmerge'.split(' '));
 const createdHere = new Map<string, string>();
 export function recordCreatedDatabase(database: string, runId: string) { assertDisposableName(database, []); createdHere.set(database, runId); }
 export function localSource(value: string): URL {

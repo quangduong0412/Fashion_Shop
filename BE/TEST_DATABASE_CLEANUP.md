@@ -1,6 +1,6 @@
 # Dọn database integration test local
 
-Checkpoint 05/10/2026. Thực thi từng tên cụ thể sau dry-run; không dùng wildcard hoặc `FashionHeaven.sql`.
+Checkpoint 06/10/2026, đối chiếu tiếp ngày 08/10/2026. Thực thi từng tên cụ thể sau dry-run; không dùng wildcard hoặc `FashionHeaven.sql`.
 
 ## 14 database cũ đã xóa
 
@@ -41,3 +41,16 @@ Cả hai có 22 bảng rỗng, 0 connection ở lượt liệt kê gần nhất,
 Manifest/lease được lưu tại `BE/test-artifacts/db-manifests` ngoài Git. Runtime receipt giữ bằng chứng database do chính process tạo; helper legacy chỉ dọn sau fingerprint đầy đủ. Nếu lỗi giữa CREATE và schema setup, empty database vẫn chỉ dọn khi có bằng chứng sở hữu của lần chạy này. Khi không đóng được child/connection, runner giữ database và báo cleanup lỗi; không che lỗi test gốc.
 
 Cách dùng, quyền cần thiết và KEEP_TEST_DB ở [README](README.md#kiểm-tra). Database ứng dụng và hệ thống được bảo vệ; các migration mới chỉ thêm bảng/cột, không reset/seed. Đối chiếu dữ liệu ứng dụng trong đợt triển khai: 16 sản phẩm, 134 biến thể, 6 đơn, 6 dòng đơn, không tạo đơn test trong đó.
+
+## Đợt mua sắm theo tài khoản — 06/10/2026
+
+Các database do runner tạo sau đây đều đã được đóng kết nối và dọn trong finally; không có fixture trong database cửa hàng:
+
+- `fashionhaven_test_1791295835432_98afbb31`: 77/77 API/unit.
+- `fashionhaven_test_1791296061219_bb23b1c6`: lỗi đường dẫn Playwright runtime; giữ lỗi gốc, đã dọn.
+- `fashionhaven_test_1791296108026_a93a7a42`: lỗi selector checkbox bất đồng bộ; đã dọn.
+- `fashionhaven_test_1791296177968_5ac7f64f`: lỗi accessible name nút đăng xuất; đã dọn.
+- `fashionhaven_test_1791296369104_bbec3406`: 78/78, đã dọn.
+- `fashionhaven_test_1791296604382_86bca6c3`: **79/79** với browser FE/admin, đã dọn. TAP local: `BE/test-artifacts/acceptance-2026-10-06.tap` (ngoài Git).
+
+Dry-run sau đợt này chỉ còn hai database không xác minh nguồn ở mục trên; tiếp tục giữ nguyên. Database ứng dụng vẫn 16 sản phẩm / 134 SKU / 6 đơn / 6 dòng đơn; bốn bảng mua sắm mới trống. Dữ liệu demo được người dùng yêu cầu bổ sung ngày 08/10 được theo dõi riêng, không phải fixture integration.

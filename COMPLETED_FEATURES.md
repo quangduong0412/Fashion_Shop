@@ -1,6 +1,6 @@
 # Fashion Haven — tiến độ có bằng chứng
 
-Checkpoint **05/10/2026**. Đây là các luồng đã triển khai và phạm vi kiểm tra, không phải tuyên bố toàn hệ thống hoàn chỉnh hay sẵn sàng production. Bảng yêu cầu → màn hình → API → dữ liệu → nghiệp vụ → nghiệm thu → trạng thái ở [PLAN.md](PLAN.md); cách chạy từ clone ở [README.md](README.md), API/cấu hình ở [BE/README.md](BE/README.md).
+Checkpoint **06/10/2026**. Đây là các luồng đã triển khai và phạm vi kiểm tra, không phải tuyên bố toàn hệ thống hoàn chỉnh hay sẵn sàng production. Bảng yêu cầu → màn hình → API → dữ liệu → nghiệp vụ → nghiệm thu → trạng thái ở [PLAN.md](PLAN.md); cách chạy từ clone ở [README.md](README.md), API/cấu hình ở [BE/README.md](BE/README.md).
 
 ## Nguồn và dữ liệu thực
 
@@ -20,7 +20,7 @@ Checkpoint **05/10/2026**. Đây là các luồng đã triển khai và phạm v
 | Khách demo | Explicit CLI, NODE_ENV=development + opt-in, local MySQL không DB hệ thống/test; bcrypt/audit/no existing reset. Unit cấu hình và ca MySQL đồng thời tạo một tài khoản/domain operation, login và retry giữ profile/status/password. | **Chưa cấp tài khoản mới trong DB cửa hàng**: chưa có mật khẩu operator. Cách cấp dưới đây. |
 | Catalog / ảnh | Gallery 8 ảnh có thứ tự, ảnh đầu chính; SKU có ảnh riêng; metadata description/material/brand; danh mục ảnh/icon/active/position, ẩn chặn public và checkout mới; preserve omitted ảnh/legacy ảnh khi sửa giá/tồn, validation media và fallback trung tính. | Brand hiện text, chưa brand CRUD; hướng dẫn size chưa theo danh mục; URL ảnh ngoài timeout chưa đủ chứng minh ảnh đã hỏng. |
 | Tồn / nhập | Tồn SKU độc lập, tổng server; adjustment reason/expectedStock/journal/transaction; DRAFT không cộng, RECEIVED một lần đúng kho/NCC/SKU, snapshot dòng nhập. HTTP race và browser sửa +2, tạo 5+3=8, nhận +3/tổng 153000 đã có. | Chưa transfer/request nhập→duyệt; chưa role kho riêng. |
-| Giỏ / COD | Persist selected rows, quote chỉ dòng chọn, giữ dòng chưa chọn; pending receipt retry sau lỗi, 5 unit cart. Quote server giá/tồn/address/method/note/settings; fee một lần checkout phân bổ exact VND nhiều kho. Transaction reserve chống tranh món cuối; receipt cũ vẫn replay không reserve lần hai. | Một địa chỉ profile; giỏ local chưa multi-device, đổi SKU trực tiếp còn thiếu; voucher bị từ chối rõ, discount 0. |
+| Giỏ / COD | Persist selected rows, quote chỉ dòng chọn, giữ dòng chưa chọn; pending receipt retry sau lỗi, 5 unit cart. Quote server giá/tồn/address/method/note/settings; fee một lần checkout phân bổ exact VND nhiều kho. Transaction reserve chống tranh món cuối; receipt cũ vẫn replay không reserve lần hai. | Account cart API/CAS/merge, SKU change và sổ địa chỉ đã có trong đợt 1 dưới đây; voucher bị từ chối rõ, discount 0; native chưa kiểm tra. |
 | Xử lý / theo dõi / hủy | PENDING→PROCESSING→SHIPPING→DELIVERED, vận đơn bắt buộc; STAFF xử lý, ADMIN đối soát COD có căn cứ. Khách ownership chỉ hủy PENDING; nội bộ PENDING/PROCESSING hợp lệ. Journal/event/history, rollback/race/retry hoàn stock một lần; không revive/hard delete/chạy exports cũ. | Chưa return/refund/timeout giữ tồn; không tự hủy đơn xử lý/giao. |
 | CMS / liên hệ | Canonical payload validation, paged/search/type/detail posts; omitted ảnh giữ; admin save await lỗi. FE News/article thật; Contact validation/loading/success, inbox paged/search/read/mailto thật, bỏ fake pending/CLV/buttons. | Bài viết hiện public, chưa draft/schedule; inbox chưa handled/reply audit. Banner có lịch riêng ở settings. |
 | Cài đặt / banner | Public/internal APIs; ADMIN CAS version/audit/reason, store contact/policies, STANDARD fee/freeFrom/enabled, tối đa 5 banners upload/order/active/schedule/internal CTA. FE Home/Contact/Policies và checkout dùng DB. Snapshot đơn cũ không đổi. | Live DB chưa có settings row: default fee 0/contact/policies rỗng, không tự seed. Chưa nhiều phương thức giao/gateway/provider. |
@@ -28,18 +28,18 @@ Checkpoint **05/10/2026**. Đây là các luồng đã triển khai và phạm v
 
 ## Kết quả kiểm tra mới nhất
 
-**71/71 mục Node test đạt, 0 fail, 0 skip** trên mã mới nhất: **44 ca tích hợp API/MySQL + 25 unit + 1 browser + nhóm cha** (70 ca lá). Trong 44 ca tích hợp có một ca domain cấp demo chạy MySQL thật; adapter Resend chỉ mô phỏng lỗi dịch vụ ngoài để kiểm tra hợp đồng/revocation, không gửi email thật. Browser dùng build FE mới có aria-checked và lưu dòng giỏ chưa chọn.
+**79/79 mục Node test đạt, 0 fail, 0 skip** trên mã mới nhất: **52 ca tích hợp API/MySQL + 25 unit + 1 browser + nhóm cha** (78 ca lá). Trong 52 ca tích hợp có một ca domain cấp demo chạy MySQL thật; adapter Resend chỉ mô phỏng lỗi dịch vụ ngoài để kiểm tra hợp đồng/revocation, không gửi email thật. Browser dùng build FE mới, giỏ account/merge/đổi SKU/địa chỉ/yêu thích/filters; ngắt phản hồi checkout sau commit và retry thật.
 
-Database lượt đạt `fashionhaven_test_1791178742560_adf830d0` đã được DROP trong finally; TAP lưu riêng tại ignored BE/test-artifacts/acceptance-2026-10-05.tap. Các lượt lỗi trước đã sửa và cũng được dọn; không dùng các lượt đó hoặc đầu ra cuối bị mất để tuyên bố đạt.
+Database lượt đạt `fashionhaven_test_1791296604382_86bca6c3` đã được DROP trong finally; TAP lưu riêng tại ignored BE/test-artifacts/acceptance-2026-10-06.tap. Các lượt lỗi trước đã sửa và cũng được dọn; không dùng các lượt đó hoặc đầu ra cuối bị mất để tuyên bố đạt.
 | Kiểm tra | Kết quả được ghi nhận |
 | --- | --- |
 | BE `npm.cmd run typecheck` | Đạt sau sửa typing ca demo; không lỗi. |
 | Admin typecheck / lint / build | Đạt; lint 0 warning, build mới sau nhãn media form. |
-| FE `npx.cmd tsc --noEmit`, `npm.cmd run lint`, `npx.cmd expo export --platform web` | Đạt sau patch aria-checked giỏ; lint 0 warning, export 22 routes/2,7 MB; warning NO_COLOR/FORCE_COLOR không làm build lỗi. Chưa native. |
-| HTTP + units + browser | **71/71 PASS**, 44 integration API/MySQL + 25 unit + 1 browser + nhóm cha. Browser dùng bản export/build thật, không API giả. |
+| FE `npx.cmd tsc --noEmit`, `npm.cmd run lint`, `npx.cmd expo export --platform web` | Đạt sau patch aria-checked giỏ; lint 0 warning, export 24 routes/2,7 MB; warning NO_COLOR/FORCE_COLOR không làm build lỗi. Chưa native. |
+| HTTP + units + browser | **79/79 PASS**, 52 integration API/MySQL + 25 unit + 1 browser + nhóm cha. Browser dùng bản export/build thật, không API giả. |
 | Cleanup lỗi thực | Setup fail và test fail: đúng DB bị dọn, code test 2 giữ nguyên; KEEP giữ DB rồi dry-run không xóa, DROP riêng xóa đúng tên. |
 | Audit dữ liệu ứng dụng | 16/134/6/6 giữ nguyên; không đơn thử vào store. 0 settings row; demo credentials chưa được cấu hình. |
-| `git diff --check` | Đạt; CRLF notices của Git không phải lỗi whitespace. Stage 89 file đã rà, không env/secrets/artifacts/build/dependency/upload/outbox; report_work riêng giữ nguyên ngoài commit. |
+| `git diff --check` | Đạt; CRLF notices của Git không phải lỗi whitespace. Diff đã rà, không env/secrets/artifacts/build/dependency/upload/outbox; BaoCao và report_work của người dùng giữ nguyên ngoài thay đổi. |
 
 Browser dùng Edge/Chromium headless, bản build thật và Express/MySQL thật trong database riêng. Chỉ đổi địa chỉ request sang API cổng test, không fabricate payload. Viewports 390×844 và 1440×1000. Luồng core đã chạy: login→SKU→cart→COD→orders; admin fulfillment→courier→delivered→COD reconcile; inventory/import/product variants/staff menu. Đã qua media upload/gallery/order/primary/SKU/fallback và category admin/FE; CMS tạo bài→đọc chi tiết, contact→inbox; customer create/reset/disable/reactivate/profile/audit→FE recover/reuse/login; settings→contact/policies/banner CTA; report filters/empty/CSV/390px. Giỏ hai dòng bỏ chọn một dòng: request chỉ một dòng, tổng 120000 VND, không reserve dòng chưa chọn, quay lại giỏ vẫn unchecked; đã bổ sung aria-checked vì RN Web không tự ánh xạ accessibilityState.checked. Đã xem ảnh sản phẩm/SKU, categories, reports và policies mobile: typography tiếng Việt rõ, không tràn chiều ngang; hình Expo icon là fixture upload tổng hợp, không dùng làm ảnh hàng thật.
 
@@ -68,6 +68,18 @@ Thiếu cấu hình email thật có thể nghiệm thu recovery độc lập v�
 
 Ưu tiên **voucher thật → quote/checkout/hủy → yêu cầu trả dòng/qty → nhận/kiểm tra/restock → hoàn tiền có ledger**. Cần model/audit/state/discount allocation/redemption transactional, không vượt tiền đã thu hoặc qty đã mua. Chưa có module nên không bật mã giảm giả, không refund COD tự động hay dùng cancel đơn đã giao để hoàn stock.
 
-Sau đó: wishlist, đánh giá sau mua, notification/read marker, brand/price/size/color/sort filters, CMS bài draft/schedule, FAQ/support workflow, brand CRUD và các quản trị legacy chưa nghiệm thu. Reports bổ sung ledger discount/refund/cash timing khi dữ liệu có căn cứ. Role kho/scope, transfers/request nhập, native testing, deployment/backup/restore còn mở; xem từng hàng PLAN.
+Sau đó: đánh giá sau mua, notification/read marker, CMS bài draft/schedule, FAQ/support workflow, brand CRUD và các quản trị legacy chưa nghiệm thu. Reports bổ sung ledger discount/refund/cash timing khi dữ liệu có căn cứ. Role kho/scope, transfers/request nhập, native testing, deployment/backup/restore còn mở; xem từng hàng PLAN.
 
 Credential từng nằm trong lịch sử Git cần chủ DB thay trước dùng ngoài local; chưa rewrite history hoặc đổi credential shared DB. Đã hash 19 mật khẩu legacy cũ bằng CAS ở checkpoint trước, không đổi mật khẩu đăng nhập. Không log secrets/PII, không công bố upload/outbox private. Rate limiter hiện in-memory process, multi-replica cần store chung; JWT/CORS/proxy/HTTPS/storage production chưa nghiệm thu.
+
+## Đợt 1 — mua sắm theo tài khoản (06/10)
+
+- Yêu thích: CustomerWishlist compound unique, user-only API page/ids/add/remove; snapshot khi sản phẩm ẩn/ngừng/xóa. FE card/detail/danh sách, loading/error và API thật.
+- Catalog: server SQL tham số hóa, cùng SKU cho size/màu/giá, brand/category/name, paging và sort min matched price/mã; hiển thị bộ lọc đang chọn/reset/empty. SKU dừng bán không lọt kết quả; simple SP không khớp size/màu; không giả ngày tạo.
+- Sổ địa chỉ: max20/customer, CRUD/default/version; khóa customer đảm bảo một default; xóa default chọn địa chỉ còn lại. FE Profile/Addresses/Cart, snapshot đã xác nhận; đổi địa chỉ không đổi đơn cũ.
+- Giỏ account: max50 SKU, qty1–999, server catalog metadata, GET/PUT version/merge receipt; thêm/tăng kiểm tra stock, không reserve. Đổi SKU/cộng dòng đích, giữ selected. Guest bound trước network, receipt retry; account không thành guest khi logout. Merge invalid giữ account/guest và có thao tác bỏ phần guest bị từ chối.
+- Checkout: hash/fingerprint chứa cartVersion/addressId; check owner/snapshot/selection/qty/version. Cùng transaction lưu đơn/reserve/receipt/bỏ lượng mua; replay chỉ đọc receipt, không trừ giỏ hai lần. Giá thay đổi rollback giữ cart/stock/orders/receipt.
+
+Tám ca API/MySQL mới trong BE/tests/shopping-flow.ts; shopping-browser.cjs chạy guest→login→merge→reload, save favorite→list→hidden/remove, filter impossible SKU→match price, change SKU→second device, address→COD→edit snapshot, logout→guest empty→khách B, rejected guest merge và discard giữ cart account. Checkout cố ý abort response **sau real API commit**, FE retry đúng payload và chỉ một đơn. Hai lượt selector cũ đã sửa: checkbox chờ lưu API và nhãn accessibility logout; runtime Playwright đã đổi thư mục và được cập nhật cấu hình test, không phải lỗi sản phẩm. Các DB của lượt lỗi đều được dọn.
+
+Migration customer-shopping đã chạy và chạy lại idempotent. Đếm live vẫn 16 SP/134 SKU/6 đơn/6 dòng; wishlist/address/cart/merge rows đều 0, không tạo demo hoặc fixtures live. Đã xem ảnh addresses/filter/wishlist/mobile và desktop, kiểm tra không tràn chiều ngang. Chưa runtime native; token hiện AsyncStorage cần SecureStore và kiểm thử Android trước nghiệm thu native.

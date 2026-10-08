@@ -32,7 +32,10 @@ export function normalizeSaleStatus(value: unknown) {
   const status = String(value ?? 'Đang mở bán').trim();
   if (!status || status.length > 50) throw new VariantValidationError('Trạng thái bán không hợp lệ.');
   // Sold out is derived from quantity; it must not prevent replenished items from selling.
-  return status.toLocaleLowerCase('vi') === 'hết hàng' ? 'Đang mở bán' : status;
+  const normalized = status.toLocaleLowerCase('vi');
+  if (['hết hàng', 'đang mở bán'].includes(normalized)) return 'Đang mở bán';
+  const paused = ['Tạm ngừng', 'Ngừng kinh doanh', 'Ngừng bán'].find(value=>value.toLocaleLowerCase('vi')===normalized);
+  return paused ?? status;
 }
 
 export function readVariantAttributeDefinitions(value: unknown): VariantAttributeDefinition[] {

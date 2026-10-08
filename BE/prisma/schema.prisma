@@ -7,6 +7,49 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Customer shopping state. IDs are resolved at the API boundary; snapshots survive catalog removal.
+model CustomerWishlist {
+  CustomerId Int
+  ProductId  Int
+  Name       String   @db.VarChar(255)
+  Image      String?  @db.Text
+  CreatedAt  DateTime @default(now()) @db.DateTime(3)
+  @@id([CustomerId, ProductId])
+  @@index([CustomerId, CreatedAt])
+  @@map("customerwishlist")
+}
+
+model CustomerAddress {
+  Id         Int      @id @default(autoincrement())
+  CustomerId Int
+  Label      String   @db.VarChar(80)
+  Name       String   @db.VarChar(255)
+  Phone      String   @db.VarChar(25)
+  Address    String   @db.VarChar(4000)
+  IsDefault  Boolean  @default(false)
+  Version    Int      @default(1)
+  UpdatedAt  DateTime @updatedAt @db.DateTime(3)
+  @@index([CustomerId, IsDefault])
+  @@map("customeraddress")
+}
+
+model CustomerCart {
+  CustomerId Int      @id
+  Items      Json
+  Version    Int      @default(1)
+  UpdatedAt  DateTime @updatedAt @db.DateTime(3)
+  @@map("customercart")
+}
+
+model CartMerge {
+  CustomerId  Int
+  Key         String   @db.VarChar(64)
+  Fingerprint String   @db.VarChar(64)
+  CreatedAt   DateTime @default(now()) @db.DateTime(3)
+  @@id([CustomerId, Key])
+  @@map("cartmerge")
+}
+
 model PasswordReset {
   Id                Int       @id @default(autoincrement())
   CustomerId        Int

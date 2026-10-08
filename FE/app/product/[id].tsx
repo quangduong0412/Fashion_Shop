@@ -2,6 +2,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { StyleSheet, Text, View, ScrollView, Pressable, ActivityIndicator, useWindowDimensions } from 'react-native';
 import CatalogImage from '../../components/CatalogImage';
+import { FavoriteButton } from '../../components/Wishlist';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -168,6 +169,7 @@ export default function ProductDetailScreen() {
         {/* Info */}
         <View style={[styles.infoSection, width >= 820 && styles.infoSectionWide]}>
           <View style={styles.brandRow}>
+            <FavoriteButton id={product.id} name={product.name}/>
             <Text style={styles.brandText}>{product.brand?.toUpperCase() || product.category?.toUpperCase() || 'FASHION'}</Text>
             <View style={styles.skuBadge}><Text style={styles.skuText}>{currentVariant?.sku ? `SKU: ${currentVariant.sku}` : `Mã SP: ${product.id}`}</Text></View>
           </View>

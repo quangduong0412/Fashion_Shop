@@ -7,6 +7,7 @@ import { saveProductChanges } from '../services/productEditing';
 import { positiveId, sendApiError } from '../services/apiErrors';
 import { pagination } from '../services/pagination';
 import { productMediaChanges, readGallery } from '../services/catalogMedia';
+import { listPublicCatalog, catalogFacets, publicProduct } from '../services/publicCatalog';
 
 const productResponse = (product: any) => ({
   id: product.MaSanPham,
@@ -59,6 +60,7 @@ const findCategory = async (categoryId: number) => {
 
 async function listProducts(req: Request, res: Response, internal: boolean) {
   try {
+    if (!internal) { res.json(await listPublicCatalog(req)); return; }
     const { page, pageSize, skip, search } = pagination(req);
     const sale = { notIn: ['Tạm ngừng', 'Ngừng kinh doanh', 'Ngừng bán'] };
     const where: Prisma.SanPhamWhereInput = {
@@ -78,6 +80,9 @@ async function listProducts(req: Request, res: Response, internal: boolean) {
   } catch (error) { sendApiError(res, error); }
 }
 export const getProducts = (req: Request, res: Response) => listProducts(req, res, false);
+export const getCatalogFacets = async (_req: Request, res: Response) => {
+  try { res.json(await catalogFacets()); } catch (error) { sendApiError(res, error); }
+};
 export const getInternalProducts = (req: Request, res: Response) => listProducts(req, res, true);
 export const getInternalProduct = async (req: Request, res: Response) => {
   try {
@@ -89,20 +94,19 @@ export const getInternalProduct = async (req: Request, res: Response) => {
 };
 
 export const getProductById = async (req: Request, res: Response) => {
-  const { id } = req.params;
   try {
     const product = await prisma.sanPham.findUnique({
-      where: { MaSanPham: Number(id) },
+      where: { MaSanPham: positiveId(req.params.id, 'Sản phẩm') },
       include: { loaiHang: true, bienThes: true }
     });
-    const formattedProduct = product && publicProductResponse(product);
+    const formattedProduct = publicProduct(product);
     if (formattedProduct) {
       res.json(formattedProduct);
     } else {
-      res.status(404).json({ error: 'Product not found' });
+      res.status(404).json({ error: 'Sản phẩm không còn được hiển thị.', code: 'PRODUCT_NOT_FOUND' });
     }
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch product' });
+    sendApiError(res, error);
   }
 };
 

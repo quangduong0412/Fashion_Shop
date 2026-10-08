@@ -8,6 +8,7 @@ import { cartInput, hash, checkoutContext, quoteCheckout } from '../services/che
 import { Principal } from '../services/sessions';
 import { allocateMoney, lockSettings } from '../services/storeSettings';
 import { money } from '../services/orderRules';
+import { checkCartVersion, checkCartPurchase, checkCheckoutAddress, removePurchasedCart, shoppingQuoteHash } from '../services/customerShopping';
 
 const detailInclude = { ctDonHangs: { include: { sanPham: { select: { TenSanPham: true, Anh: true } } } } } as const;
 const transactionOptions = { timeout: 20000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted };
@@ -32,7 +33,11 @@ async function readOrders(tx: Prisma.TransactionClient, ids: number[]) {
 export const quoteOrder = async (req: Request, res: Response) => {
   try {
     if (actor(req).role !== 'user') throw new ApiError(403, 'FORBIDDEN', 'Hãy đăng nhập tài khoản khách hàng để đặt hàng.');
-    res.json((await quoteCheckout(prisma, cartInput(req.body?.items), checkoutContext(req.body))).publicQuote);
+    const context = checkoutContext(req.body);
+    await checkCheckoutAddress(prisma, actor(req).id, req.body?.addressId, context.shipping);
+    if (req.body?.cartVersion !== undefined) await checkCartVersion(prisma, actor(req).id, req.body.cartVersion);
+    const quote = await quoteCheckout(prisma, cartInput(req.body?.items), context);
+    res.json({ ...quote.publicQuote, quoteHash: shoppingQuoteHash(quote.quoteHash, req.body) });
   } catch (error) { sendApiError(res, error); }
 };
 
@@ -46,7 +51,7 @@ export const createOrder = async (req: Request, res: Response) => {
     if (!['COD', 'Thanh toán khi nhận hàng', undefined].includes(req.body?.paymentMethod)) throw new ApiError(400, 'UNSUPPORTED_PAYMENT', 'Cửa hàng hiện hỗ trợ thanh toán khi nhận hàng (COD).');
     const key = req.get('Idempotency-Key') ?? req.body?.requestKey;
     if (typeof key !== 'string' || !/^[a-zA-Z0-9_-]{16,64}$/.test(key)) throw new ApiError(400, 'REQUEST_KEY_REQUIRED', 'Cần mã yêu cầu đặt hàng để tránh tạo đơn trùng. Hãy cập nhật ứng dụng.');
-    const fingerprint = hash({ items, ...context });
+    const fingerprint = hash({ items, ...context, ...(req.body?.cartVersion !== undefined ? { cartVersion: req.body.cartVersion } : {}), ...(req.body?.addressId != null ? { addressId: positiveId(req.body.addressId, 'Địa chỉ') } : {}) });
     // Receipts created before shipping settings existed used this narrower, equivalent default context.
     const legacyFingerprint = context.shippingMethod === 'STANDARD' && !context.note ? hash({ items, shipping, paymentMethod: 'COD' }) : null;
     const result = await prisma.$transaction(async tx => {
@@ -59,10 +64,12 @@ export const createOrder = async (req: Request, res: Response) => {
         if (previous.Fingerprint !== fingerprint && previous.Fingerprint !== legacyFingerprint) throw new ApiError(409, 'REQUEST_KEY_REUSED', 'Mã yêu cầu đã được dùng cho giỏ/địa chỉ khác.');
         return { replayed: true, orders: await readOrders(tx, previous.OrderIds as number[]) };
       }
+      if (req.body?.cartVersion !== undefined) await checkCartPurchase(tx, user.id, req.body.cartVersion, items);
+      await checkCheckoutAddress(tx, user.id, req.body?.addressId, shipping);
       for (const id of [...new Set(items.map(item => item.id))].sort((a, b) => a - b)) await tx.$queryRaw`SELECT MaSanPham FROM sanpham WHERE MaSanPham = ${id} FOR UPDATE`;
       await lockSettings(tx);
       const quote = await quoteCheckout(tx, items, context);
-      if (req.body?.quoteHash !== quote.quoteHash) throw new ApiError(409, 'PRICE_CHANGED', 'Giá hoặc thông tin đặt hàng đã thay đổi. Hãy xem lại tổng tiền trước khi xác nhận.');
+      if (req.body?.quoteHash !== shoppingQuoteHash(quote.quoteHash, req.body)) throw new ApiError(409, 'PRICE_CHANGED', 'Giá hoặc thông tin đặt hàng đã thay đổi. Hãy xem lại tổng tiền trước khi xác nhận.');
       const employee = await tx.nhanVien.findFirst({ where: { account: { Role: { in: ['ADMIN', 'STAFF', 'USER'] } } }, orderBy: { MaNhanVien: 'asc' } });
       if (!employee) throw new ApiError(409, 'STORE_NOT_READY', 'Cửa hàng chưa có nhân viên xử lý đơn.');
       const byWarehouse = new Map<number, typeof quote.lines>();
@@ -84,6 +91,7 @@ export const createOrder = async (req: Request, res: Response) => {
         await tx.orderEvent.create({ data: { OrderId: order.MaPhieuXuat, ToStatus: 'PENDING', ToPayment: 'UNPAID', ActorRole: user.role, ActorId: user.id, Note: context.note || 'Đặt hàng COD; tồn khả dụng đã được giữ.' } });
       }
       await tx.checkoutRequest.create({ data: { CustomerId: user.id, Key: key, Fingerprint: fingerprint, OrderIds: ids } });
+      await removePurchasedCart(tx, user.id, quote.lines.map(line => ({ id: line.product.MaSanPham, variantId: line.variant?.MaBienThe ?? null, quantity: line.quantity })));
       return { replayed: false, orders: await readOrders(tx, ids) };
     }, transactionOptions);
     const orders = result.orders.map(order => dto(order));

@@ -1,6 +1,6 @@
 # Fashion Haven — kế hoạch hoàn thiện
 
-Ngày rà soát: **05/10/2026**. Đây là backlog và tiêu chí nghiệm thu, không phải tuyên bố tính năng đã hoàn thành. Trạng thái có bằng chứng nằm trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md); cách chạy trong [README.md](README.md).
+Ngày rà soát: **06/10/2026**. Đây là backlog và tiêu chí nghiệm thu, không phải tuyên bố tính năng đã hoàn thành. Trạng thái có bằng chứng nằm trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md); cách chạy trong [README.md](README.md).
 
 ## Phạm vi và kiến trúc
 
@@ -8,9 +8,9 @@ Nguồn chính: `FE` (khách hàng, Expo SDK 57), `admin_web` (nội bộ, Vite)
 
 Hoàn thành nghĩa là khách xem sản phẩm/biến thể, dùng giỏ, đặt/theo dõi đơn; nhân viên được phân quyền để xử lý đơn; admin quản lý catalog/tồn với dữ liệu thật. Phải kiểm tra API/database và giao diện; tài liệu hoặc nút hiển thị không thay cho bằng chứng.
 
-## Đối chiếu toàn bộ yêu cầu — checkpoint 05/10/2026
+## Đối chiếu toàn bộ yêu cầu — checkpoint 06/10/2026
 
-Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt phạm vi** chỉ áp dụng ca đã chạy; **Một phần** còn thiếu nhánh hoặc dịch vụ; **Thiếu** chưa có luồng. API dự kiến không được coi là hoạt động. Đợt này đạt 71/71: 44 tích hợp API/MySQL, 25 unit, 1 browser và nhóm cha; mã/viewport/giới hạn ở COMPLETED_FEATURES.md.
+Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt phạm vi** chỉ áp dụng ca đã chạy; **Một phần** còn thiếu nhánh hoặc dịch vụ; **Thiếu** chưa có luồng. API dự kiến không được coi là hoạt động. Đợt này đạt 79/79: 52 tích hợp API/MySQL, 25 unit, 1 browser và nhóm cha; mã/viewport/giới hạn ở COMPLETED_FEATURES.md.
 
 ### Ứng dụng khách hàng
 
@@ -19,15 +19,15 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 | C01 Đăng ký / đăng nhập | `Register`, `Login` | `/users/register`, `/users/login` | `KhachHang`, `Account` | Hash, namespace chung; quyền server, không tự cấp admin | Email trùng/race/disabled bị từ chối; login đúng và đến đúng nơi | Đạt HTTP + browser login; form đăng ký chưa nghiệm thu toàn bộ |
 | C02 Quên / đặt lại mật khẩu | `/forgot-password`, `/reset-password`, Login | POST `/users/forgot-password`, `/reset-password` | `PasswordReset`, `CustomerAudit`, customer epoch | Token hash, 15 phút, một lần; generic; thu hồi session | Hết hạn/reuse/race/session đúng; local file outbox, không public token | Đạt API/MySQL + browser trong phạm vi nêu; email Resend thiếu cấu hình |
 | C03 Hồ sơ / đổi mật khẩu | `Profile`, `EditProfile` | GET/PUT `/users/profile`, POST `/users/change-password` | `KhachHang` / `NhanVien` | Chỉ actor hiện tại; mật khẩu 8 ký tự, tối đa 72 byte UTF-8 | Lưu thật, giữ form lỗi; password reset làm session cũ hết hiệu lực | Đạt HTTP thu hồi; UI có mã, cần nghiệm thu thêm |
-| C04 Sổ địa chỉ | `EditProfile`, `Cart` | Profile / checkout shipping | Một `DiaChi`; snapshot người nhận từng đơn | Không sửa địa chỉ lịch sử từ profile | Địa chỉ checkout lưu trên đơn; nhiều địa chỉ/default cần model/API riêng | Đạt snapshot; chưa có sổ nhiều địa chỉ |
+| C04 Sổ địa chỉ | `/addresses`, Profile, Cart | `/shopping/addresses` CRUD/default; quote/checkout addressId | CustomerAddress + shipping snapshot đơn | User ownership, max20, customer lock/default/version; không sửa đơn cũ | Sai chủ/stale/concurrent/xóa default; chọn FE→COD→sửa địa chỉ sau mua | Đạt API/MySQL + browser web; native chưa kiểm tra |
 | C05 Trang chủ / banner | `Home` | `/products`, `/categories`, `/settings`, `/posts` | Catalog/CMS/StoreSettings thật | Banner active trong lịch, link nội bộ; không fake bestseller | Admin cấu hình → FE banner/link/policies đúng | Đạt API/MySQL + browser trong phạm vi nêu; chưa sale campaign/voucher |
-| C06 Danh sách / lọc / tìm kiếm | `Products`, route `/explore` | GET `/products?page&pageSize&search&categoryId` | `SanPham`, `LoaiHang`, biến thể | Public không trả giá nhập; tạm ngừng không bán | Phân trang thật; search/category đúng; giá/màu/size/sort cần contract riêng | Đạt HTTP phân trang; bộ lọc nâng cao thiếu |
+| C06 Danh sách / lọc / tìm kiếm | Products, CatalogFilters | `/products` filters/sort/page, `/products/facets` | Catalog/biến thể/thương hiệu text | Cùng active SKU cho size/màu/giá; min matched price sort; không ngày tạo giả | Tổ hợp không có/paused/giá SKU/case/paging/sort/SQL input; FE empty→match | Đạt API/MySQL + browser web; facets giới hạn 200/nhóm |
 | C07 Chi tiết / chọn SKU | `app/product/[id].tsx` | GET `/products/:id`, `/:id/variants` | Biến thể và thuộc tính danh mục | Tổ hợp đầy đủ, đúng giá/tồn SKU; không chọn nhầm dòng | Giá/tồn theo biến thể, hết hàng/ngừng bán không thêm | Đạt browser luồng chọn biến thể |
-| C08 Giỏ hàng | `Cart`, `cart-state.ts` | Quote/checkout; local AsyncStorage | Dòng SKU + selected + pending request | Key ổn định; chỉ gửi dòng chọn; chưa chọn giữ lại; không tin giá local | Chọn/persist/retry không trừ dòng hai lần; empty/error rõ | 5 ca cart đạt; browser COD; đổi SKU trực tiếp/multi-device còn thiếu |
-| C09 Checkout COD | `Cart` | `/orders/quote`, `/checkout` | Snapshot đơn/dòng, CheckoutRequest, settings, stock | Giá/fee server; một fee cho checkout, phân bổ VND; full context hash; transaction/retry | Giá/config/địa chỉ/ghi chú đổi phải quote lại; retry cũ an toàn; tổng nhiều kho đúng | Đạt API/MySQL + browser COD/selected cart; voucher/return chưa có |
+| C08 Giỏ hàng | Cart, fashion-data | `/shopping/cart` GET/PUT CAS/merge | CustomerCart + CartMerge; guest gắn chủ local | Max50 SKU/999 qty, không giữ tồn, merge một lần; account không xuất sang guest | SKU change/two devices/logout/account swap/stale/race/rejected merge | Đạt API/MySQL + browser web; native/token storage còn mở |
+| C09 Checkout COD | Cart | `/orders/quote`, `/checkout` | Snapshot/receipt/cart/address/settings/stock | Full quote/fingerprint cả cartVersion/addressId; tx tạo đơn/stock/bỏ lượng mua | Lost response replay cùng payload; unselected giữ; giá đổi rollback; sai chủ/selection bị chặn | Đạt API/MySQL + browser web; voucher/return chưa có |
 | C10 Theo dõi / hủy đơn | `Orders` | `/orders/me`, `/:id`, `/:id/cancel` | Đơn, `OrderEvent` | Ownership; chỉ hủy PENDING; lý do; hoàn tồn một lần | Refresh trạng thái đã giao, xem vận đơn; không xem đơn người khác | Đạt HTTP/browser |
 | C11 Thanh toán online | Chưa có màn hình thật | Chưa có gateway/webhook | Chưa có giao dịch payment provider | Không tin callback/client; đối soát chữ ký | Thanh toán/retry/webhook/refund chạy sandbox thật | Thiếu; COD là luồng đang hỗ trợ |
-| C12 Yêu thích / đánh giá | Chưa có route/model đáp ứng | Chưa có | Chưa có wishlist/review | Ownership; review sau mua; không tạo sao/rating giả | Persist tài khoản, pagination/validation và quyền đúng | Thiếu |
+| C12 Yêu thích / đánh giá | `/wishlist`, FavoriteButton; review chưa có | `/shopping/wishlist` page/ids/PUT/DELETE | CustomerWishlist unique/customer snapshot; review chưa có | User only; add idempotent; hidden giữ snapshot và cho bỏ lưu | Concurrent unique/owner; FE lưu/reload/danh sách/ẩn→bỏ lưu | Yêu thích đạt API/MySQL + browser web; đánh giá thiếu |
 | C13 Bài viết | `News`, `/article/[id]` | GET paginated `/posts`, `/:id` | `BaiViet` | Data thật, paging/type/search; ADMIN sửa | Admin tạo → FE đọc chi tiết; giữ ảnh omitted | Đạt API/MySQL + browser trong phạm vi nêu; draft/schedule bài thiếu |
 | C14 Liên hệ / chính sách | `Contact`, `/policies` | POST `/contacts`, GET `/settings` | LienHe, StoreSettings | Validation/throttle; contact/policy thật, không số giả | Loading/error/success, admin inbox; chưa reply workflow | Đạt API/MySQL + browser trong phạm vi nêu |
 | C15 Thông báo | Chưa có luồng đáp ứng | Chưa có inbox/push | Chưa có notification | Chỉ người nhận; không giả số chưa đọc | Sự kiện đơn → thông báo → đọc/persist; native permission đúng | Thiếu |
@@ -69,11 +69,11 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 
 | ID / Yêu cầu | Màn hình / nguồn | API | Dữ liệu | Quy tắc / quyền | Tiêu chí nghiệm thu | Trạng thái checkpoint |
 | --- | --- | --- | --- | --- | --- | --- |
-| Q01 Tests / build / cleanup | `BE/tests`, cleanup CLI | HTTP/browser thật; db list/dry-run | Schema test riêng, manifest/marker/lease | finally cleanup; KEEP opt-in; không wildcard; bảo vệ app/active | Success/setupfail/testfail/KEEP/dry-run; full browser | 14 legacy đã dọn, 2 giữ; lifecycle đạt; 71/71 đạt, gồm full browser |
+| Q01 Tests / build / cleanup | `BE/tests`, cleanup CLI | HTTP/browser thật; db list/dry-run | Schema test riêng, manifest/marker/lease | finally cleanup; KEEP opt-in; không wildcard; bảo vệ app/active | Success/setupfail/testfail/KEEP/dry-run; full browser | 14 legacy đã dọn, 2 giữ; lifecycle đạt; 79/79 đạt, gồm full browser |
 | Q02 Không secrets / file rác | `.gitignore`, diff | Không áp dụng | Env/upload/backups/artifacts ngoài Git | Không xóa source/AGENTS/ảnh còn dùng; history credential cần rotate | Diff/stage không secrets/build/dependencies; docs có tác dụng giữ | Đã ignore; cleanup từng đợt, credential history còn mở |
 | Q03 Khách demo riêng | `scripts/provision-demo-customer.ts` | `npm.cmd run demo:customer` | DB phát triển của FE, CustomerAudit | Local, nonprod, opt-in, bcrypt, không reset existing | Email/password operator, login thật; không commit config | Đạt guard unit + tạo/race/retry/domain login MySQL; chưa cấp live vì thiếu mật khẩu cấu hình |
 | Q04 Assets / responsive | CatalogImage, media editors, SVG/fonts | `/images`, `/uploads`, catalog media | 12 assets chính + media fields; runtime upload ngoài Git | URL validation/fallback; preserve media on price/stock edit | Gallery/order/primary/variant/category thực; mobile/desktop | Đạt API/MySQL + browser trong phạm vi nêu; native/storage production chưa |
-| Q05 Tài liệu / hợp đồng | README, BE README, bảng này | Routes thực | Schema thực, SQL tham khảo | Không đánh complete từ docs; SQL DROP không chạy live | Checklist/evidence/demo/schema/giới hạn thật | Đang cập nhật theo lượt kiểm tra 05/10 |
+| Q05 Tài liệu / hợp đồng | README, BE README, bảng này; docs progress/report | Routes thực | Schema thực, SQL tham khảo | Không đánh complete từ docs; không sửa Word ngoài yêu cầu | Checklist/model/use case/sequence/evidence/demo/giới hạn | Đã cập nhật checkpoint 06/10; các đợt 2–6 còn mở |
 
 ## Lát cắt đã triển khai trong đợt này
 
@@ -84,7 +84,7 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 - [x] CMS payload/paging/detail và inbox contact validation thật; bỏ stats/nút giả. Bài viết chưa có draft/publish schedule.
 - [x] Settings version/audit, thông tin/chính sách/banner có lịch; phí một lần checkout, phân bổ exact VND nhiều kho, full quote/request context, giữ snapshot/retry cũ.
 - [x] Reports aggregate kỳ tạo đơn UTC+7, CSV, tồn từng SKU; chỉ số chưa có ledger trả null có lý do, không giả 0.
-- [x] 71/71 test đạt: 44 integration API/MySQL, 25 unit, browser thật và nhóm cha; typecheck/lint/build/export đạt.
+- [x] 79/79 test đạt: 52 integration API/MySQL, 25 unit, browser thật và nhóm cha; typecheck/lint/build/export đạt.
 - [x] Full browser mới qua giỏ selected/preserve, media, CMS/contact, accounts/recovery, settings/banner/policies, reports/CSV; xem screenshots mobile. Rà diff/stage không secrets/artifacts; không suy native/CRUD ít dùng đạt.
 
 ## Thứ tự tiếp tục
@@ -104,8 +104,10 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 
 ### P1/P2 — phần còn lại của đồ án
 
-- [ ] Wishlist theo tài khoản; review sau giao với ảnh/ownership; notifications in-app/read marker.
-- [ ] Lọc brand/price/size/color/sort; đổi SKU trong giỏ; sổ nhiều địa chỉ và tùy chọn giao khác nếu có nghiệp vụ.
+- [x] Wishlist theo tài khoản (đợt 1); pagination/unique/hidden snapshot/FE đã kiểm tra.
+- [ ] Review sau giao với ảnh/ownership; notifications in-app/read marker.
+- [x] Lọc brand/price/size/color/sort mã/giá, đổi SKU trong giỏ, sổ nhiều địa chỉ/default và account cart (đợt 1).
+- [ ] Phương thức giao bổ sung nếu có nghiệp vụ; timestamp tạo SP chỉ khi có dữ liệu phù hợp.
 - [ ] CMS bài draft/publish/schedule; banner đã có lịch nhưng chưa campaign/voucher. Support handled/reply/audit và FAQ.
 - [ ] Brand management entity; CRUD chức danh/chi nhánh/NCC/nhân sự còn cần validation/paging/browser đủ nhánh; chuyển kho và request nhập→duyệt thiếu.
 - [ ] Ledger tiền theo ngày thu/giảm giá/hoàn tiền/đổi trả để báo cáo đúng và đủ; hiện report theo ngày tạo đơn/trạng thái hiện tại với giới hạn rõ.
@@ -119,3 +121,7 @@ Customer chỉ hồ sơ/đơn của mình; STAFF đọc catalog/xử lý đơn; 
 ## Nghiệm thu mỗi lát cắt
 
 Nêu actor/state/money/stock/validation/errors; nối UI→API→DB thật; transaction, session/auth server, request/quote context đầy đủ; test success/permission/stale/race/retry/failure dùng DB riêng. Chạy checks/build và browser targets, rà diff/secrets/artifacts, ghi kết quả thật và hạn chế, rồi chọn mục tiếp theo. Không thực thi FashionHeaven.sql trên DB hiện tại vì có DROP DATABASE. Nếu kết thúc lượt khi còn việc, dùng checklist này và checkpoint COMPLETED_FEATURES.md để tiếp tục chính xác.
+
+## Thứ tự mới theo yêu cầu 06/10
+
+Đợt 1 đã kiểm tra API/MySQL và web 390×844/1440×1000. Tiếp theo đợt 2 voucher → đợt 3 gateway sandbox → đợt 4 return/refund → đợt 5 review/notifications → đợt 6 vận hành/ledger. Native Android/iOS chưa nghiệm thu; không phát hành hoặc dùng tiền thật. Chi tiết tiếp tục ở docs/IMPLEMENTATION_PROGRESS.md.

@@ -1,0 +1,23 @@
+import { useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { ProductFilters } from './fashion-data';
+
+export type Facets = {brands:string[];sizes:string[];colors:string[]};
+export default function CatalogFilters({value,facets,onApply,onClose}:{value:ProductFilters;facets:Facets;onApply:(value:ProductFilters)=>void;onClose:()=>void}){
+  const insets=useSafeAreaInsets(),[draft,setDraft]=useState(value),[error,setError]=useState('');
+  const choices=(label:string,key:'brand'|'size'|'color'|'sort',values:{value:string;label:string}[]) => <View style={styles.group}><Text style={styles.label}>{label}</Text><View style={styles.choices}>{values.map(item=><Pressable key={item.value} accessibilityRole="button" accessibilityLabel={`${label} ${item.label}`} accessibilityState={{selected:(draft[key]||'')===item.value}} onPress={()=>setDraft({...draft,[key]:item.value})} style={[styles.chip,(draft[key]||'')===item.value&&styles.active]}><Text style={styles.text}>{item.label}</Text></Pressable>)}</View></View>;
+  const options=(values:string[])=>[{value:'',label:'Tất cả'},...values.map(value=>({value,label:value}))];
+  return <Modal visible transparent animationType="slide" onRequestClose={onClose}><View style={styles.overlay}><View style={[styles.panel,{paddingTop:insets.top+16,paddingBottom:insets.bottom+16}]}><ScrollView contentContainerStyle={{gap:20}} keyboardShouldPersistTaps="handled">
+    <View style={styles.titleRow}><Text style={styles.title}>Lọc & sắp xếp</Text><Pressable accessibilityRole="button" accessibilityLabel="Đóng bộ lọc" onPress={onClose}><Text style={{padding:12}}>Đóng</Text></Pressable></View>
+    {choices('Thương hiệu','brand',options(facets.brands))}
+    <View style={styles.group}><Text style={styles.label}>Khoảng giá (VND)</Text><View style={styles.priceRow}><TextInput accessibilityLabel="Giá tối thiểu" placeholder="Từ" keyboardType="numeric" maxLength={13} value={draft.minPrice||''} onChangeText={minPrice=>setDraft({...draft,minPrice})} style={styles.input}/><TextInput accessibilityLabel="Giá tối đa" placeholder="Đến" keyboardType="numeric" maxLength={13} value={draft.maxPrice||''} onChangeText={maxPrice=>setDraft({...draft,maxPrice})} style={styles.input}/></View><Text style={styles.help}>Giá áp dụng cho biến thể khớp size và màu đã chọn.</Text></View>
+    {choices('Size','size',options(facets.sizes))}{choices('Màu','color',options(facets.colors))}
+    {choices('Sắp xếp','sort',[{value:'id_desc',label:'Mã mới trước'},{value:'price_asc',label:'Giá tăng dần'},{value:'price_desc',label:'Giá giảm dần'}])}
+    <Text style={styles.help}>Dữ liệu sản phẩm hiện chưa có ngày tạo. “Mã mới trước” sắp theo mã, không thay thế ngày tạo.</Text>
+    {!!error&&<Text accessibilityRole="alert" style={{color:'#9f2438'}}>{error}</Text>}
+    <Pressable accessibilityRole="button" onPress={()=>{setDraft({sort:'id_desc'});setError('');}} style={styles.chip}><Text>Đặt lại bộ lọc</Text></Pressable>
+    <Pressable accessibilityRole="button" style={styles.apply} onPress={()=>{const prices=[draft.minPrice,draft.maxPrice].filter(Boolean);if(prices.some(v=>!/^\d{1,13}$/.test(v!)||Number(v)>1000000000000)||(draft.minPrice&&draft.maxPrice&&Number(draft.minPrice)>Number(draft.maxPrice))){setError('Nhập khoảng giá nguyên, không âm và giá từ không vượt giá đến.');return;}onApply(draft);}}><Text style={{color:'#fff',fontWeight:'700'}}>Áp dụng bộ lọc</Text></Pressable>
+  </ScrollView></View></View></Modal>;
+}
+const styles=StyleSheet.create({overlay:{flex:1,backgroundColor:'rgba(30,20,20,0.35)',alignItems:'center',justifyContent:'center'},panel:{width:'100%',maxWidth:720,maxHeight:'100%',backgroundColor:'#fffefa',paddingHorizontal:20,borderRadius:20},titleRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},title:{fontFamily:'Inter',fontSize:23,fontWeight:'700',color:'#302524'},group:{gap:10},label:{fontFamily:'Inter',fontWeight:'700',color:'#302524'},choices:{flexDirection:'row',flexWrap:'wrap',gap:8},chip:{borderWidth:1,borderColor:'#ded5cc',paddingHorizontal:14,paddingVertical:12,borderRadius:12,minHeight:44},active:{borderColor:'#9f2438',backgroundColor:'#f8e9e7'},text:{color:'#483d36',fontFamily:'Inter'},priceRow:{flexDirection:'row',gap:12},input:{flex:1,minWidth:0,borderWidth:1,borderColor:'#ded5cc',borderRadius:10,padding:14,fontFamily:'Inter'},help:{fontFamily:'Inter',fontSize:12,lineHeight:19,color:'#81776f'},apply:{backgroundColor:'#9f2438',padding:16,borderRadius:12,alignItems:'center'}});

@@ -15,6 +15,7 @@ export type Product = {
   id: number;
   name: string;
   price: number;
+  priceMax?: number;
   category: string;
   categoryId?: number;
   image: string;
@@ -53,6 +54,8 @@ export type ProductVariant = {
 };
 
 export type CartItem = Product & {
+  available?: boolean;
+  problem?: string | null;
   selected?: boolean;
   quantity: number;
   variantQuantity?: number;
@@ -72,37 +75,125 @@ function queueCart<T>(operation: () => Promise<T>): Promise<T> {
   return result;
 }
 
-async function readStoredCartEnvelope(): Promise<CartEnvelope> {
-  const value = await AsyncStorage.getItem('cart');
+type GuestCart = CartEnvelope & { mergeKey?: string; ownerId?: number };
+let accountCartVersion = 0;
+let accountCartOwner: number | null = null;
+let accountCartItems: CartItem[] = [];
+let mergeWarning = '';
+let rejectedMergeKeys: string[] = [];
+export function getCartMergeWarning() { return mergeWarning; }
+export function discardRejectedGuestCart() {
+  return queueCart(async()=>{
+    const user=await currentUser();
+    if(user?.role!=='user') throw new Error('Đăng nhập lại để xử lý giỏ khách.');
+    const keys=rejectedMergeKeys.filter(key=>key.startsWith(`guest_merge_${user.id}_`)||key===`legacy_cart_${user.id}`);
+    await Promise.all(keys.map(key=>AsyncStorage.removeItem(key)));
+    mergeWarning='';rejectedMergeKeys=[];
+  });
+}
+export function getAccountCartVersion() { return accountCartVersion; }
+async function quarantineLegacyCart() {
+  const guestRaw=await AsyncStorage.getItem('guest_cart_v1');
+  if(guestRaw){
+    let guest:GuestCart|null=null;try{guest=JSON.parse(guestRaw);}catch{ /* Handled by the cart parser. */ }
+    if(guest?.ownerId&&guest.mergeKey){
+      await AsyncStorage.setItem(`guest_merge_${guest.ownerId}_${guest.mergeKey}`,guestRaw);
+      await AsyncStorage.removeItem('guest_cart_v1');
+    }
+  }
+  const legacy = await AsyncStorage.getItem('cart');
+  if (!legacy) return;
+  const user = await currentUser();
+  const key = user?.role === 'user' ? `legacy_cart_${user.id}` : 'guest_cart_v1';
+  if (!await AsyncStorage.getItem(key)) await AsyncStorage.setItem(key, legacy);
+  await AsyncStorage.removeItem('cart');
+}
+async function bindGuestCart(userId:number){
+  const guest=await readStoredCartEnvelope();
+  if(!guest.items.length)return;
+  const mergeKey=guest.mergeKey||`merge_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
+  // Ownership is durable before the network request. An ambiguous merge can never move to another account.
+  const value=JSON.stringify({...guest,ownerId:userId,mergeKey});
+  await AsyncStorage.setItem('guest_cart_v1',value);
+  await AsyncStorage.setItem(`guest_merge_${userId}_${mergeKey}`,value);
+  await AsyncStorage.removeItem('guest_cart_v1');
+}
+async function readStoredCartEnvelope(key = 'guest_cart_v1'): Promise<GuestCart> {
+  await quarantineLegacyCart();
+  const value = await AsyncStorage.getItem(key);
   let parsed: unknown;
   try { parsed = value ? JSON.parse(value) : []; } catch { parsed = []; }
-  const envelope = cartEnvelope(parsed);
-  if (JSON.stringify(envelope) !== value) await AsyncStorage.setItem('cart', JSON.stringify(envelope));
+  const envelope: GuestCart = { ...cartEnvelope(parsed), ...(parsed && typeof parsed === 'object' && 'mergeKey' in parsed && typeof parsed.mergeKey === 'string' ? { mergeKey: parsed.mergeKey } : {}) };
+  if (JSON.stringify(envelope) !== value) await AsyncStorage.setItem(key, JSON.stringify(envelope));
   return envelope;
 }
 
+const cartPayload = (items: CartItem[]) => items.map(item => ({ id: item.id, variantId: item.variantId ?? null, quantity: item.quantity, selected: item.selected !== false }));
+function normalizeAccountCart(result: {items: CartItem[]; version: number}) {
+  accountCartVersion = result.version;
+  accountCartItems = result.items.map(item => normalizeProductMedia(item) as CartItem);
+  return accountCartItems;
+}
+async function readAccountCart(userId: number): Promise<CartItem[]> {
+  await bindGuestCart(userId);
+  mergeWarning='';rejectedMergeKeys=[];
+  const pendingKeys=(await AsyncStorage.getAllKeys()).filter(key=>key.startsWith(`guest_merge_${userId}_`));
+  for (const key of [`legacy_cart_${userId}`, ...pendingKeys]) {
+    const stored = await readStoredCartEnvelope(key);
+    if (!stored.items.length) continue;
+    const mergeKey = stored.mergeKey || `merge_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
+    await AsyncStorage.setItem(key, JSON.stringify({ ...stored, mergeKey }));
+    try { await apiRequest('/shopping/cart/merge', { method: 'POST', body: JSON.stringify({ mergeKey, items: cartPayload(stored.items) }) }); }
+    catch(cause){
+      if(cause instanceof ApiError&&[400,409].includes(cause.status)){mergeWarning=`Giỏ khách chưa hợp nhất: ${cause.message} Giỏ tài khoản vẫn được giữ; có thể thử lại hoặc bỏ phần giỏ khách này.`;rejectedMergeKeys.push(key);continue;}
+      throw cause;
+    }
+    await AsyncStorage.removeItem(key);
+  }
+  const result = await apiRequest('/shopping/cart');
+  if ((await currentUser())?.id !== userId) throw new Error('Tài khoản đã thay đổi. Hãy tải lại giỏ.');
+  accountCartOwner = userId;
+  return normalizeAccountCart(result);
+}
+
 export function readCart(): Promise<CartItem[]> {
-  return queueCart(async () => (await readStoredCartEnvelope()).items);
+  return queueCart(async () => {
+    const user = await currentUser();
+    return user?.role === 'user' ? readAccountCart(user.id) : (await readStoredCartEnvelope()).items;
+  });
 }
 
 export function updateCart(change: (cart: CartItem[]) => CartItem[]): Promise<CartItem[]> {
   return queueCart(async () => {
+    const user = await currentUser();
+    if (user?.role === 'user') {
+      const current = accountCartOwner === user.id ? accountCartItems : await readAccountCart(user.id);
+      const next = normalizeCart(change(current));
+      return normalizeAccountCart(await apiRequest('/shopping/cart', { method: 'PUT', body: JSON.stringify({ items: cartPayload(next), expectedVersion: accountCartVersion }) }));
+    }
     const stored = await readStoredCartEnvelope();
     const next = normalizeCart(change(stored.items));
-    await AsyncStorage.setItem('cart', JSON.stringify({ ...stored, items: next }));
+    if (stored.mergeKey) throw new Error('Giỏ có yêu cầu hợp nhất chưa rõ kết quả. Đăng nhập để kiểm tra lại trước khi sửa.');
+    await AsyncStorage.setItem('guest_cart_v1', JSON.stringify({ ...stored, items: next }));
     return next;
   });
 }
 
 export function finishCheckoutCart(requestKey: string, purchased: CartItem[], pendingStorageKey: string): Promise<CartItem[]> {
   return queueCart(async () => {
+    const user = await currentUser();
+    if (user?.role === 'user') {
+      const remaining = normalizeAccountCart(await apiRequest('/shopping/cart'));
+      await AsyncStorage.removeItem(pendingStorageKey);
+      return remaining;
+    }
     const next = applyPurchasedCart(await readStoredCartEnvelope(), requestKey, purchased);
     // The cart and replay marker are written atomically in one storage entry.
-    await AsyncStorage.setItem('cart', JSON.stringify(next));
+    await AsyncStorage.setItem('guest_cart_v1', JSON.stringify(next));
     try {
       await AsyncStorage.removeItem(pendingStorageKey);
       // Cleanup failure cannot turn an accepted order into a failed checkout.
-      await AsyncStorage.setItem('cart', JSON.stringify({ ...next, appliedCheckouts: next.appliedCheckouts.filter(key => key !== requestKey) }));
+      await AsyncStorage.setItem('guest_cart_v1', JSON.stringify({ ...next, appliedCheckouts: next.appliedCheckouts.filter(key => key !== requestKey) }));
     } catch { /* Retain the marker so a later replay cannot subtract twice. */ }
     return next.items;
   });
@@ -137,7 +228,8 @@ function normalizeProductMedia(product: Product): Product {
 }
 
 export type ProductPage = { items: Product[]; page: number; total: number; totalPages: number };
-export async function fetchProductPage(options: { page?: number; pageSize?: number; search?: string; categoryId?: number } = {}): Promise<ProductPage> {
+export type ProductFilters = { page?: number; pageSize?: number; search?: string; categoryId?: number; brand?: string; size?: string; color?: string; minPrice?: string; maxPrice?: string; sort?: string };
+export async function fetchProductPage(options: ProductFilters = {}): Promise<ProductPage> {
   const query = new URLSearchParams(Object.entries(options).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
   const result = await apiRequest(`/products?${query}`);
   return { ...result, items: result.items.map(normalizeProductMedia) };
@@ -169,11 +261,17 @@ export async function currentUser() {
 }
 
 export async function clearSession() {
-  await Promise.all(['token', 'currentUser', 'isAdmin'].map(key => AsyncStorage.removeItem(key)));
+  await queueCart(async () => {
+    await quarantineLegacyCart();
+    await Promise.all(['token', 'currentUser', 'isAdmin'].map(key => AsyncStorage.removeItem(key)));
+    accountCartVersion = 0;
+    accountCartOwner = null; accountCartItems = [];
+    mergeWarning='';rejectedMergeKeys=[];
+  });
 }
 
 export class ApiError extends Error {
-  constructor(message: string, public readonly status: number) {
+  constructor(message: string, public readonly status: number, public readonly code = 'REQUEST_FAILED') {
     super(message);
     this.name = 'ApiError';
   }
@@ -193,7 +291,7 @@ export async function apiRequest(path: string, options: RequestInit = {}) {
       const message = response.status === 401 || response.status === 403
         ? 'Phiên đăng nhập không hợp lệ hoặc tài khoản không có quyền. Vui lòng đăng nhập lại.'
         : 'Không thể xử lý yêu cầu. Vui lòng thử lại.';
-      throw new ApiError(data?.error || message, response.status);
+      throw new ApiError(data?.error || message, response.status, typeof data?.code==='string'?data.code:'REQUEST_FAILED');
     }
     if (data === null) throw new ApiError('Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại.', response.status);
     return data;
@@ -206,9 +304,17 @@ export async function apiRequest(path: string, options: RequestInit = {}) {
 }
 
 export async function setSession(user: unknown, token: string, isAdmin: boolean) {
-  await Promise.all([
+  await queueCart(async () => {
+    await quarantineLegacyCart();
+    const customer=user as {id?:number;role?:string};
+    if(customer?.role==='user'&&customer.id)await bindGuestCart(customer.id);
+    await Promise.all([
     AsyncStorage.setItem('currentUser', JSON.stringify(user)),
     AsyncStorage.setItem('token', token),
     AsyncStorage.setItem('isAdmin', String(isAdmin)),
-  ]);
+    ]);
+    accountCartVersion = 0;
+    accountCartOwner = null; accountCartItems = [];
+    mergeWarning='';rejectedMergeKeys=[];
+  });
 }

@@ -9,7 +9,7 @@
     "predev": "npm run db:prepare",
     "dev": "nodemon src/server.ts",
     "db:migrate-orders": "ts-node migrate_order_tables.ts",
-    "db:prepare": "npm run db:migrate-orders && npm run db:migrate-inventory && npm run db:migrate-order-safety && npm run db:migrate-accounts-media && npm run db:migrate-store-settings && prisma generate",
+    "db:prepare": "npm run db:migrate-orders && npm run db:migrate-inventory && npm run db:migrate-order-safety && npm run db:migrate-accounts-media && npm run db:migrate-store-settings && npm run db:migrate-customer-shopping && prisma generate",
     "db:migrate-inventory": "ts-node migrate_inventory.ts",
     "seed:catalog": "ts-node seed_catalog.ts",
     "seed:samples": "ts-node add_sample_data.ts",
@@ -22,7 +22,8 @@
     "demo:customer": "ts-node scripts/provision-demo-customer.ts",
     "test:db:list": "ts-node scripts/cleanup-test-databases.ts --list",
     "test:db:cleanup": "ts-node scripts/cleanup-test-databases.ts",
-    "db:migrate-store-settings": "ts-node migrate_store_settings.ts"
+    "db:migrate-store-settings": "ts-node migrate_store_settings.ts",
+    "db:migrate-customer-shopping": "ts-node migrate_customer_shopping.ts"
   },
   "keywords": [],
   "author": "",

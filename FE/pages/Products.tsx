@@ -5,10 +5,11 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, T
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductCard from '../components/ProductCard';
 import CatalogImage from '../components/CatalogImage';
+import CatalogFilters, {type Facets} from '../components/CatalogFilters';
 import { categoryIcon } from '../components/catalog-media';
 import type { CatalogCategory } from '../components/catalog-media';
 import { Colors } from '../constants/theme';
-import { addCartItem, apiRequest, fetchProductPage, Product } from '../components/fashion-data';
+import { addCartItem, apiRequest, fetchProductPage, Product, type ProductFilters } from '../components/fashion-data';
 
 export default function ProductsScreen() {
   const router = useRouter();
@@ -18,6 +19,9 @@ export default function ProductsScreen() {
   const columns = width >= 1050 ? 4 : width >= 700 ? 3 : 2;
   const [products, setProducts] = useState<Product[]>([]);
   const [query, setQuery] = useState('');
+  const [filters,setFilters]=useState<ProductFilters>({sort:'id_desc'});
+  const [facets,setFacets]=useState<Facets>({brands:[],sizes:[],colors:[]});
+  const [filterOpen,setFilterOpen]=useState(false);
   const [category, setCategory] = useState(params.categoryId || '');
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [page, setPage] = useState(1);
@@ -32,11 +36,11 @@ export default function ProductsScreen() {
     const current = ++generation.current;
     setLoading(true); setError('');
     try {
-      const [result, categoryList] = await Promise.all([fetchProductPage({ page, pageSize: 20, search: query, ...(category ? { categoryId: Number(category) } : {}) }), apiRequest('/categories')]);
-      if (current === generation.current) { setProducts(result.items); setTotalPages(result.totalPages); setTotal(result.total); setCategories(categoryList); }
+      const [result, categoryList,facetList] = await Promise.all([fetchProductPage({ ...Object.fromEntries(Object.entries(filters).filter(([,v])=>v!=='')), page, pageSize: 20, search: query, ...(category ? { categoryId: Number(category) } : {}) }), apiRequest('/categories'),apiRequest('/products/facets')]);
+      if (current === generation.current) { setProducts(result.items); setTotalPages(result.totalPages); setTotal(result.total); setCategories(categoryList); setFacets(facetList); }
     } catch (cause) { if (current === generation.current) setError(cause instanceof Error ? cause.message : 'Không thể tải sản phẩm.'); }
     finally { if (current === generation.current) setLoading(false); }
-  }, [page, category, query]);
+  }, [page, category, query, filters]);
   useFocusEffect(useCallback(() => { const timer = setTimeout(() => void loadProducts(), 250); return () => { clearTimeout(timer); generation.current++; }; }, [loadProducts]));
   const visible = products;
   const addToCart = async (product: Product) => {
@@ -54,8 +58,11 @@ export default function ProductsScreen() {
     } finally { addLock.current = false; }
   };
   return <View style={[styles.root, { paddingTop: insets.top }]}>
+    {filterOpen&&<CatalogFilters value={filters} facets={facets} onClose={()=>setFilterOpen(false)} onApply={value=>{setFilters(value);setPage(1);setFilterOpen(false);}}/>}
     <View style={styles.header}><Text style={styles.title}>Bộ sưu tập</Text><Text style={styles.subtitle}>Cập nhật trực tiếp từ FashionHeaven</Text></View>
     <View style={styles.search}><MaterialIcons name="search" size={20} color={Colors.light.secondary}/><TextInput accessibilityLabel="Tìm sản phẩm" value={query} onChangeText={value => { setQuery(value); setPage(1); }} placeholder="Tìm tên hoặc mã sản phẩm" style={styles.input}/></View>
+    <View style={{flexDirection:'row',flexWrap:'wrap',gap:12,paddingHorizontal:16,paddingVertical:8}}><Pressable accessibilityRole="button" onPress={()=>setFilterOpen(true)} style={styles.retry}><Text style={styles.retryText}>Lọc & sắp xếp</Text></Pressable><Pressable accessibilityRole="button" onPress={()=>{setFilters({sort:'id_desc'});setQuery('');setCategory('');setPage(1);}}><Text style={{padding:12,color:Colors.light.primary}}>Xóa tất cả bộ lọc</Text></Pressable></View>
+    <View style={{flexDirection:'row',flexWrap:'wrap',gap:8,paddingHorizontal:16}}>{[filters.brand,filters.size?`Size ${filters.size}`:'',filters.color,filters.minPrice?`Từ ${Number(filters.minPrice).toLocaleString('vi-VN')}đ`:'',filters.maxPrice?`Đến ${Number(filters.maxPrice).toLocaleString('vi-VN')}đ`:'',filters.sort==='price_asc'?'Giá tăng dần':filters.sort==='price_desc'?'Giá giảm dần':''].filter(Boolean).map((value,index)=><Text key={`${index}:${value}`} style={{backgroundColor:'#f8e9e7',borderRadius:8,padding:8,color:Colors.light.primary,fontSize:12}}>{value}</Text>)}</View>
     <ScrollView horizontal style={styles.filterScroll} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>{[{ id: '', name: 'Tất cả', icon: 'all', image: '' }, ...categories].map(item => <Pressable accessibilityRole="button" accessibilityState={{ selected: category === String(item.id) }} accessibilityLabel={`Danh mục ${item.name}`} key={String(item.id)} onPress={() => { setCategory(String(item.id)); setPage(1); }} style={[styles.chip, category === String(item.id) && styles.chipActive]}><CatalogImage source={item.image} label={item.name} fallbackIcon={categoryIcon(item)} fallbackLabel="" style={styles.chipImage} /><Text style={[styles.chipText, category === String(item.id) && styles.chipTextActive]}>{item.name}</Text></Pressable>)}</ScrollView>
     {loading ? <View style={styles.center}><ActivityIndicator color={Colors.light.primary}/><Text style={styles.empty}>Đang tải sản phẩm…</Text></View> : error ? <View style={styles.center}><Text accessibilityRole="alert" style={styles.error}>{error}</Text><Pressable accessibilityRole="button" onPress={loadProducts} style={styles.retry}><Text style={styles.retryText}>Thử lại</Text></Pressable></View> : <ScrollView refreshControl={<RefreshControl refreshing={false} onRefresh={loadProducts}/>} contentContainerStyle={styles.content}><View style={styles.container}><Text style={styles.count}>{total} sản phẩm · Trang {page}/{Math.max(1, totalPages)}</Text><View style={styles.grid}>{visible.map(product => <View key={product.id} style={[styles.col, { width: `${100 / columns}%` }]}><ProductCard product={product} onAdd={() => addToCart(product)} onPress={() => router.push(`/product/${product.id}` as never)}/></View>)}</View>{!visible.length && <Text style={styles.empty}>Không có sản phẩm phù hợp.</Text>}<View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 16 }}><Pressable accessibilityRole="button" disabled={page <= 1} accessibilityState={{ disabled: page <= 1 }} onPress={() => setPage(value => value - 1)} style={[styles.retry, page <= 1 && styles.disabled]}><Text style={styles.retryText}>← Trước</Text></Pressable><Pressable accessibilityRole="button" disabled={page >= totalPages} accessibilityState={{ disabled: page >= totalPages }} onPress={() => setPage(value => value + 1)} style={[styles.retry, page >= totalPages && styles.disabled]}><Text style={styles.retryText}>Sau →</Text></Pressable></View></View></ScrollView>}
   </View>;

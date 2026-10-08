@@ -3,7 +3,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View, ScrollView, Pressable, TextInput } from 'react-native';
 import CatalogImage from '@/components/CatalogImage';
-import { ApiError, apiRequest, CartItem, cartLineKey, clearSession, currentUser, finishCheckoutCart, formatPrice, readCart, saveCart, updateCart } from '@/components/fashion-data';
+import { ApiError, apiRequest, CartItem, cartLineKey, clearSession, currentUser, finishCheckoutCart, formatPrice, readCart, updateCart, getAccountCartVersion, getCartMergeWarning, discardRejectedGuestCart } from '@/components/fashion-data';
+import type { SavedAddress } from '../app/addresses';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +13,13 @@ export default function CartScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartVersion,setCartVersion]=useState(0);
+  const [cartLoading,setCartLoading]=useState(true);
+  const [cartSaving,setCartSaving]=useState(false);
+  const savingCount=useRef(0);
+  const [addresses,setAddresses]=useState<SavedAddress[]>([]);
+  const [addressId,setAddressId]=useState<number|null>(null);
+  const [changingVariant,setChangingVariant]=useState('');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const checkoutLock = useRef(false);
   const [checkoutError, setCheckoutError] = useState('');
@@ -26,16 +34,22 @@ export default function CartScreen() {
 
   useFocusEffect(useCallback(() => {
     let active = true;
-    void readCart().then(next => { if (active) setCart(next); }).catch(() => {
-      if (active) setCheckoutError('Không thể đọc giỏ hàng. Vui lòng thử lại.');
-    });
+    setCart([]);setQuote(null);setCartLoading(true);setCheckoutError('');setAddresses([]);setAddressId(null);setShippingAddress({name:'',phone:'',address:''});addressEdited.current=false;
+    void readCart().then(next => { if (active) {setCart(next);setCartVersion(getAccountCartVersion());setCheckoutError(getCartMergeWarning());} }).catch(cause => {
+      if (active) setCheckoutError(cause instanceof Error?cause.message:'Không thể đọc giỏ hàng. Vui lòng thử lại.');
+    }).finally(()=>{if(active)setCartLoading(false);});
     void (async () => {
       const user = await currentUser();
       if (user?.role !== 'user') { if (active) setHasPendingRequest(false); return; }
       const pending = await AsyncStorage.getItem(`checkout_pending_${user.id}`);
       if (active) setHasPendingRequest(!!pending);
-      const profile = await apiRequest('/users/profile');
-      if (active && !addressEdited.current) setShippingAddress({ name: profile.TenKhach || '', phone: profile.DienThoai || '', address: profile.DiaChi || '' });
+      const [profile,saved] = await Promise.all([apiRequest('/users/profile'),apiRequest('/shopping/addresses')]);
+      if(active)setAddresses(saved.items);
+      if (active && !addressEdited.current) {
+        const defaultAddress=saved.items.find((a:SavedAddress)=>a.isDefault);
+        if(defaultAddress){setShippingAddress({name:defaultAddress.name,phone:defaultAddress.phone,address:defaultAddress.address});setAddressId(defaultAddress.id);}
+        else setShippingAddress({ name: profile.TenKhach || '', phone: profile.DienThoai || '', address: profile.DiaChi || '' });
+      }
     })().catch(error => {
       if (active && error instanceof ApiError && [401, 403].includes(error.status)) {
         setCheckoutError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
@@ -46,6 +60,10 @@ export default function CartScreen() {
   }, []));
 
   const itemsForApi = (items: CartItem[]) => items.map(item => ({ id: item.id, quantity: item.quantity, variantId: item.variantId, size: item.size, color: item.color }));
+  const persistChange=async(change:(items:CartItem[])=>CartItem[])=>{
+    savingCount.current++;setCartSaving(true);
+    try{return await updateCart(change);}finally{savingCount.current--;setCartSaving(savingCount.current>0);}
+  };
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -57,39 +75,39 @@ export default function CartScreen() {
       setQuoting(true);
       if (!user || user.role !== 'user') { if (active) setNeedsLogin(true); return; }
       if (active) setHasPendingRequest(!!await AsyncStorage.getItem(`checkout_pending_${user.id}`));
-      if (!shippingAddress.name.trim() || !shippingAddress.phone.trim() || !shippingAddress.address.trim()) { setCheckoutError('Nhập đủ địa chỉ để xác nhận tổng thanh toán.'); return; }
-      const next = await apiRequest('/orders/quote', { method: 'POST', body: JSON.stringify({ items: itemsForApi(quoteItems), shipping: shippingAddress, shippingMethod: 'STANDARD', paymentMethod: 'COD', note }) });
+      if (!shippingAddress.name.trim() || !shippingAddress.phone.trim() || !shippingAddress.address.trim()) { setCheckoutError(getCartMergeWarning()); return; }
+      const next = await apiRequest('/orders/quote', { method: 'POST', body: JSON.stringify({ items: itemsForApi(quoteItems), shipping: shippingAddress, shippingMethod: 'STANDARD', paymentMethod: 'COD', note, cartVersion, ...(addressId?{addressId}:{}) }) });
       if (active) { setQuote(next); setCheckoutError(''); setNeedsLogin(false); }
     })().catch(cause => {
       if (active) { setCheckoutError(cause instanceof Error ? cause.message : 'Không thể cập nhật giá/tồn kho.'); setNeedsLogin(cause instanceof ApiError && [401, 403].includes(cause.status)); }
     }).finally(() => { if (active) setQuoting(false); });
     return () => { active = false; };
-  }, [cart, shippingAddress, note]);
+  }, [cart, shippingAddress, note, cartVersion, addressId]);
 
   const changeQuantity = async (lineKey: string, amount: number) => {
     if (checkoutLock.current) return;
     try {
-      const next = await updateCart(items => items.map(item => cartLineKey(item) === lineKey
+      const next = await persistChange(items => items.map(item => cartLineKey(item) === lineKey
         ? { ...item, quantity: Math.max(1, Math.min(item.quantity + amount, item.variantQuantity ?? 999, 999)) } : item));
-      setQuote(null); setCart(next);
-    } catch { setCheckoutError('Không thể lưu số lượng. Vui lòng thử lại.'); }
+      setQuote(null); setCart(next);setCartVersion(getAccountCartVersion());
+    } catch(cause) { setCheckoutError(cause instanceof Error?cause.message:'Không thể lưu số lượng. Vui lòng thử lại.'); }
   };
   const removeItem = async (lineKey: string) => {
     if (checkoutLock.current) return;
-    try { const next = await updateCart(items => items.filter(item => cartLineKey(item) !== lineKey)); setQuote(null); setCart(next); }
-    catch { setCheckoutError('Không thể xóa sản phẩm khỏi giỏ. Vui lòng thử lại.'); }
+    try { const next = await persistChange(items => items.filter(item => cartLineKey(item) !== lineKey)); setQuote(null); setCart(next);setCartVersion(getAccountCartVersion()); }
+    catch(cause) { setCheckoutError(cause instanceof Error?cause.message:'Không thể xóa sản phẩm khỏi giỏ. Vui lòng thử lại.'); }
   };
   const clearCart = async () => {
     if (checkoutLock.current) return;
-    try { await saveCart([]); setQuote(null); setCart([]); }
-    catch { setCheckoutError('Không thể xóa giỏ hàng. Vui lòng thử lại.'); }
+    try { await persistChange(()=>[]); setQuote(null); setCart([]);setCartVersion(getAccountCartVersion()); }
+    catch(cause) { setCheckoutError(cause instanceof Error?cause.message:'Không thể xóa giỏ hàng. Vui lòng thử lại.'); }
   };
 
   const toggleSelection = async (lineKey?: string) => {
     if (checkoutLock.current) return;
     const allSelected = cart.every(item => item.selected !== false);
-    try { const next = await updateCart(items => items.map(item => !lineKey || cartLineKey(item) === lineKey ? { ...item, selected: lineKey ? item.selected === false : !allSelected } : item)); setQuote(null); setCart(next); }
-    catch { setCheckoutError('Không thể lưu lựa chọn. Vui lòng thử lại.'); }
+    try { const next = await persistChange(items => items.map(item => !lineKey || cartLineKey(item) === lineKey ? { ...item, selected: lineKey ? item.selected === false : !allSelected } : item)); setQuote(null); setCart(next);setCartVersion(getAccountCartVersion()); }
+    catch(cause) { setCheckoutError(cause instanceof Error?cause.message:'Không thể lưu lựa chọn. Vui lòng thử lại.'); }
   };
   const subtotal = quote?.subtotal ?? selectedCart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const total = quote?.total ?? subtotal;
@@ -124,7 +142,7 @@ export default function CartScreen() {
         }
 
         if (!quote || quoting) { setCheckoutError('Cần cập nhật tổng tiền từ cửa hàng trước khi đặt.'); return; }
-        pending = { cart: selectedCart, payload: { paymentMethod: 'COD', shipping: shippingAddress, shippingMethod: 'STANDARD', note, items: itemsForApi(selectedCart), quoteHash: quote.quoteHash,
+        pending = { cart: selectedCart, payload: { paymentMethod: 'COD', shipping: shippingAddress, shippingMethod: 'STANDARD', note, cartVersion, ...(addressId?{addressId}:{}), items: itemsForApi(selectedCart), quoteHash: quote.quoteHash,
           requestKey: `checkout_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}` } };
         await AsyncStorage.setItem(storageKey, JSON.stringify(pending));
       }
@@ -135,7 +153,7 @@ export default function CartScreen() {
         // A timeout/server failure is ambiguous: preserve the same request for replay.
         if (cause instanceof ApiError && [400, 409, 422].includes(cause.status)) {
           await AsyncStorage.removeItem(storageKey); setHasPendingRequest(false);
-          const updatedQuote = await apiRequest('/orders/quote', { method: 'POST', body: JSON.stringify({ items: itemsForApi(selectedCart), shipping: shippingAddress, shippingMethod: 'STANDARD', paymentMethod: 'COD', note }) }).catch(() => null);
+          const updatedQuote = await apiRequest('/orders/quote', { method: 'POST', body: JSON.stringify({ items: itemsForApi(selectedCart), shipping: shippingAddress, shippingMethod: 'STANDARD', paymentMethod: 'COD', note, cartVersion, ...(addressId?{addressId}:{}) }) }).catch(() => null);
           setQuote(updatedQuote);
         }
         throw cause;
@@ -161,7 +179,13 @@ export default function CartScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {cart.length === 0 ? (
+        {cartLoading&&<ActivityIndicator color={Colors.light.primary}/>}
+        {!!checkoutError&&cart.length===0&&!getCartMergeWarning()&&<Text accessibilityRole="alert" style={styles.checkoutError}>{checkoutError}</Text>}
+        {!!getCartMergeWarning()&&<Text accessibilityRole="alert" style={styles.checkoutError}>{getCartMergeWarning()}</Text>}
+        {cartSaving&&<View style={{flexDirection:'row',gap:10,padding:12}}><ActivityIndicator color={Colors.light.primary}/><Text>Đang lưu giỏ vào tài khoản…</Text></View>}
+        <Pressable accessibilityRole="button" disabled={isCheckingOut||cartLoading} onPress={async()=>{setCartLoading(true);setQuote(null);try{const next=await readCart();setCart(next);setCartVersion(getAccountCartVersion());setCheckoutError(getCartMergeWarning());}catch(cause){setCheckoutError(cause instanceof Error?cause.message:'Không thể đồng bộ giỏ.');}finally{setCartLoading(false);}}}><Text style={{color:Colors.light.primary,padding:12}}>Đồng bộ lại giỏ hàng</Text></Pressable>
+        {!!getCartMergeWarning()&&<Pressable accessibilityRole="button" onPress={async()=>{try{await discardRejectedGuestCart();setCheckoutError('Đã bỏ giỏ khách chưa hợp nhất. Giỏ tài khoản vẫn được giữ.');}catch(cause){setCheckoutError(cause instanceof Error?cause.message:'Không thể bỏ giỏ khách.');}}}><Text style={{color:Colors.light.primary,padding:12}}>Bỏ phần giỏ khách chưa hợp nhất</Text></Pressable>}
+        {cartLoading ? null : cart.length === 0 ? (
           <View style={styles.empty}>
             <MaterialIcons name="shopping-bag" size={64} color={Colors.light.surfaceContainerHigh} style={{ marginBottom: 16 }} />
             <Text style={styles.emptyTitle}>Giỏ hàng đang trống</Text>
@@ -197,20 +221,25 @@ export default function CartScreen() {
                   <View style={styles.itemInfo}>
                     <View>
                       <View style={styles.itemTitleRow}>
-                        <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                        <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
                         <Pressable style={styles.itemRemoveBtn} onPress={() => removeItem(cartLineKey(item))}>
                           <MaterialIcons name="close" size={18} color={Colors.light.outline} />
                         </Pressable>
                       </View>
                       <Text style={styles.itemVariant}>
                         {[
+                          item.size ? `Size ${item.size}` : undefined,
                           item.color,
-                          ...Object.entries(item.attributes || {}).map(([key, value]) => {
+                          ...Object.entries(item.attributes || {}).filter(([key])=>key!=='size').map(([key, value]) => {
                             const definition = item.categoryAttributes?.find(attribute => attribute.key === key);
                             return `${definition?.label || key}: ${value}${definition?.unit ? ` ${definition.unit}` : ''}`;
                           })
                         ].filter(Boolean).join(' · ') || item.size || 'Mặc định'}
                       </Text>
+                      {!!item.variantSku&&<Text style={styles.itemVariant}>SKU: {item.variantSku}</Text>}
+                      {!!item.problem&&<Text style={styles.checkoutError}>{item.problem}</Text>}
+                      {!!item.variants?.length&&<Pressable accessibilityRole="button" accessibilityLabel={`Đổi biến thể ${item.name}`} disabled={isCheckingOut} onPress={()=>setChangingVariant(changingVariant===cartLineKey(item)?'':cartLineKey(item))}><Text style={{color:Colors.light.primary,paddingVertical:8}}>Đổi size / màu</Text></Pressable>}
+                      {changingVariant===cartLineKey(item)&&<View style={{flexDirection:'row',flexWrap:'wrap',gap:6}}>{item.variants?.map(variant=><Pressable key={variant.id} accessibilityRole="button" accessibilityLabel={`Chọn SKU ${variant.sku}`} disabled={isCheckingOut||variant.quantity<item.quantity||variant.id===item.variantId} onPress={async()=>{try{const next=await persistChange(rows=>{const target=rows.find(row=>row.id===item.id&&row.variantId===variant.id),quantity=item.quantity+(target?.quantity||0);return [...rows.filter(row=>cartLineKey(row)!==cartLineKey(item)&&!(row.id===item.id&&row.variantId===variant.id)),{...item,variantId:variant.id,variantSku:variant.sku,size:variant.size,color:variant.color,attributes:variant.attributes,price:variant.price??item.price,quantity,variantQuantity:variant.quantity,selected:item.selected!==false||(!!target&&target.selected!==false)}];});setCart(next);setCartVersion(getAccountCartVersion());setQuote(null);setChangingVariant('');}catch(cause){setCheckoutError(cause instanceof Error?cause.message:'Không thể đổi SKU.');}}} style={{padding:10,borderWidth:1,borderRadius:8,borderColor:Colors.light.outline,opacity:variant.quantity<item.quantity||variant.id===item.variantId?0.4:1}}><Text>{[variant.size,variant.color].filter(Boolean).join(' · ')} · còn {variant.quantity}</Text></Pressable>)}</View>}
                     </View>
                     <View style={styles.itemPriceRow}>
                       <Text style={styles.itemPrice}>{formatPrice(quote?.items.find((line: any) => line.id === item.id && (line.variantId ?? undefined) === item.variantId)?.price ?? item.price)}</Text>
@@ -237,12 +266,14 @@ export default function CartScreen() {
                   <Text style={styles.cardTitle}>Địa chỉ nhận hàng</Text>
                 </View>
               </View>
+              <Pressable accessibilityRole="button" onPress={()=>router.push('/addresses' as never)}><Text style={{color:Colors.light.primary,paddingVertical:12}}>Quản lý sổ địa chỉ →</Text></Pressable>
+              {addresses.map(saved=><Pressable key={saved.id} accessibilityRole="button" accessibilityLabel={`Giao đến ${saved.label}`} disabled={isCheckingOut} onPress={()=>{addressEdited.current=true;setAddressId(saved.id);setShippingAddress({name:saved.name,phone:saved.phone,address:saved.address});}} style={{padding:12,marginBottom:8,borderWidth:1,borderColor:addressId===saved.id?Colors.light.primary:Colors.light.outline,borderRadius:10}}><Text>{saved.label}{saved.isDefault?' · Mặc định':''}</Text><Text>{saved.name} · {saved.address}</Text></Pressable>)}
               <TextInput accessibilityLabel="Họ tên người nhận" placeholder="Họ tên người nhận" value={shippingAddress.name} editable={!isCheckingOut} maxLength={255} style={styles.shippingInput}
-                onChangeText={name => { addressEdited.current = true; setShippingAddress(current => ({ ...current, name })); }} />
+                onChangeText={name => { addressEdited.current = true;setAddressId(null); setShippingAddress(current => ({ ...current, name })); }} />
               <TextInput accessibilityLabel="Số điện thoại nhận hàng" placeholder="Số điện thoại" value={shippingAddress.phone} editable={!isCheckingOut} keyboardType="phone-pad" maxLength={25} style={styles.shippingInput}
-                onChangeText={phone => { addressEdited.current = true; setShippingAddress(current => ({ ...current, phone })); }} />
+                onChangeText={phone => { addressEdited.current = true;setAddressId(null); setShippingAddress(current => ({ ...current, phone })); }} />
               <TextInput accessibilityLabel="Địa chỉ nhận hàng" placeholder="Số nhà, đường, phường/xã, tỉnh/thành phố" value={shippingAddress.address} editable={!isCheckingOut} multiline maxLength={4000} style={styles.shippingInput}
-                onChangeText={address => { addressEdited.current = true; setShippingAddress(current => ({ ...current, address })); }} />
+                onChangeText={address => { addressEdited.current = true;setAddressId(null); setShippingAddress(current => ({ ...current, address })); }} />
               <Text style={styles.summaryLabel}>Thanh toán khi nhận hàng</Text>
             </View>
 
@@ -288,7 +319,7 @@ export default function CartScreen() {
               <Text style={styles.loginButtonText}>Đăng nhập tài khoản khách hàng</Text>
             </Pressable>
           )}
-          <Pressable accessibilityRole="button" accessibilityLabel="Đặt hàng ngay" style={[styles.checkoutBtn, (isCheckingOut || (!hasPendingRequest && (quoting || (!quote && !needsLogin) || !selectedCart.length))) && styles.checkoutBtnDisabled]} onPress={checkout} disabled={isCheckingOut || (!hasPendingRequest && (quoting || (!quote && !needsLogin) || !selectedCart.length))}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Đặt hàng ngay" style={[styles.checkoutBtn, (isCheckingOut || cartSaving || cartLoading || (!hasPendingRequest && (quoting || (!quote && !needsLogin) || !selectedCart.length))) && styles.checkoutBtnDisabled]} onPress={checkout} disabled={isCheckingOut || cartSaving || cartLoading || (!hasPendingRequest && (quoting || (!quote && !needsLogin) || !selectedCart.length))}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               {isCheckingOut ? <ActivityIndicator size="small" color={Colors.light.onPrimary} /> : <MaterialIcons name="lock" size={20} color={Colors.light.onPrimary} />}
               <Text style={styles.checkoutBtnText}>{isCheckingOut ? 'Đang kiểm tra đơn...' : hasPendingRequest ? 'Kiểm tra yêu cầu đặt hàng' : quoting ? 'Đang cập nhật giá...' : 'Đặt hàng COD'}</Text>

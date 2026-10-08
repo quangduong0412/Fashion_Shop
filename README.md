@@ -1,12 +1,12 @@
 # Fashion Haven
 
-Hệ thống bán lẻ thời trang gồm ứng dụng khách hàng, trang quản trị và API dùng chung. Tình trạng triển khai và kiểm chứng ngày **05/10/2026** được ghi trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md); các hạng mục tiếp theo nằm trong [PLAN.md](PLAN.md).
+Hệ thống bán lẻ thời trang gồm ứng dụng khách hàng, trang quản trị và API dùng chung. Tình trạng triển khai và kiểm chứng ngày **06/10/2026** được ghi trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md); các hạng mục tiếp theo nằm trong [PLAN.md](PLAN.md).
 
 ## Nguồn đang sử dụng
 
 | Thư mục | Vai trò thực tế |
 | --- | --- |
-| `FE` | Ứng dụng khách hàng React Native, **Expo SDK 57**, Expo Router. `app` khai báo route, `pages` triển khai màn hình; `components/fashion-data.ts` quản lý API và giỏ hàng cục bộ. |
+| `FE` | Ứng dụng khách hàng React Native, **Expo SDK 57**, Expo Router. `app` khai báo route, `pages` triển khai màn hình; `components/fashion-data.ts` quản lý API, giỏ theo tài khoản và hợp nhất giỏ khách. |
 | `admin_web` | Trang quản trị React, TypeScript, Vite; dùng API trong `BE`. |
 | `BE` | REST API Express, TypeScript, Prisma; database provider **MySQL**, không phải SQL Server. Ảnh catalog/bài viết chính tại `BE/public/images`. |
 | `fashion_ui1`, `fashion_ui2` | Bản thiết kế HTML/hình ảnh tham khảo; không phải ứng dụng đang chạy. |
@@ -68,7 +68,7 @@ npm.cmd run web
 
 Test backend tạo database **mới** dạng `fashionhaven_test_<timestamp>_<random>` trên MySQL local. Runner đóng tiến trình/kết nối và dọn đúng database do lần chạy đó tạo trong `finally`, kể cả setup/test lỗi. `KEEP_TEST_DB=true` giữ lại có chủ đích để debug. Cần quyền CREATE/DROP DATABASE; không tạo fixtures trong database cửa hàng. Lệnh liệt kê trước khi dọn: `cd BE; npm.cmd run test:db:list`. Xem [quy tắc cleanup và danh sách đã dọn](BE/TEST_DATABASE_CLEANUP.md).
 
-Kiểm tra trình duyệt tùy chọn dùng bản build thật `FE/dist`, `admin_web/dist`, Express và MySQL kiểm tra. Lượt mới nhất đạt **71/71** (44 integration API/MySQL, 25 unit, 1 browser và nhóm cha). Phạm vi web và giới hạn thiết bị native nằm trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md); không dùng kết quả checkpoint cũ để nghiệm thu mã mới.
+Kiểm tra trình duyệt tùy chọn dùng bản build thật `FE/dist`, `admin_web/dist`, Express và MySQL kiểm tra. Lượt mới nhất đạt **79/79** (52 integration API/MySQL, 25 unit, 1 browser và nhóm cha). Phạm vi web và giới hạn thiết bị native nằm trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md); không dùng kết quả checkpoint cũ để nghiệm thu mã mới.
 
 ### Khách hàng thử nghiệm riêng
 
@@ -97,7 +97,7 @@ Seed tài khoản không chạy tự động: `BE/prisma/seed.ts` và `BE/add_sa
 4. Khách chỉ hủy khi đơn còn PENDING; tồn khả dụng hoàn đúng một lần. Nhập kho dùng DRAFT → RECEIVED, không cộng tồn lúc tạo nháp.
 5. Admin quản lý trạng thái tài khoản/audit, đăng bài để FE đọc chi tiết; xem báo cáo aggregate theo ngày tạo đơn UTC+7, xuất CSV. Phân biệt giá trị đơn đã giao với tiền đã đối soát.
 
-Phí giao lấy từ database và chia vào các đơn theo kho, tổng không đổi; retry dùng snapshot cũ. Chỉ COD; **voucher, đổi trả/hoàn tiền, yêu thích, đánh giá, thông báo, bộ lọc nâng cao và CMS nháp/lịch xuất bản bài viết còn thiếu**. Banner đã có trạng thái/lịch hiển thị riêng. Không bật thanh toán online giả hoặc tự sửa chứng từ cũ. Bảng theo dõi đầy đủ ở [PLAN.md](PLAN.md).
+Phí giao lấy từ database và chia vào các đơn theo kho, tổng không đổi; retry dùng snapshot cũ. Chỉ COD; **voucher, đổi trả/hoàn tiền, đánh giá, thông báo và CMS nháp/lịch xuất bản bài viết còn thiếu**. Banner đã có trạng thái/lịch hiển thị riêng. Không bật thanh toán online giả hoặc tự sửa chứng từ cũ. Bảng theo dõi đầy đủ ở [PLAN.md](PLAN.md).
 
 ## Mô hình dữ liệu cốt lõi
 
@@ -117,3 +117,11 @@ erDiagram
 ```
 
 Đây là sơ đồ quan hệ nghiệp vụ chính, không khẳng định mọi cạnh là foreign key vật lý; xem schema Prisma đầy đủ. Model `PhieuXuat` map tới bảng `donhang`, model `CTDonHang` map tới `ctdonhang` để giữ tương thích. `StoreSettings`/`SettingsAudit` lưu cấu hình có version; snapshot tiền/ảnh/thông tin đơn không thay đổi theo catalog hoặc cài đặt mới.
+
+## Mua sắm theo tài khoản (đợt 1)
+
+Đã có yêu thích, bộ lọc brand/giá/size/màu, sổ nhiều địa chỉ/default và giỏ qua API. Vào Tài khoản → Sản phẩm yêu thích / Địa chỉ nhận hàng. Bộ sưu tập → Lọc & sắp xếp; điều kiện cùng SKU, giá listing là giá thấp nhất khớp. Chưa có ngày tạo sản phẩm nên chỉ sắp mã/giá. Trong giỏ có đổi size/màu, đồng bộ lại và giữ các dòng chưa chọn.
+
+Giỏ khách vãng lai hợp nhất một lần khi đăng nhập, cộng số lượng SKU trùng và giữ lựa chọn. Phần guest được gắn với tài khoản trước khi gửi; logout/đổi khách không sao chép giỏ account sang guest. Nếu guest không đủ tồn, hệ thống giữ giỏ account và thông báo phần chưa hợp nhất để thử lại hoặc bỏ có chủ đích. Không giữ tồn chỉ vì thêm giỏ. Checkout COD kiểm tra phiên bản giỏ/địa chỉ, lưu snapshot và bỏ lượng đã mua trong transaction; retry sau mất phản hồi không tạo/trừ lần hai.
+
+Migration mới: `cd BE`, `npm.cmd run db:migrate-customer-shopping`, `npx.cmd prisma generate`; `db:prepare` đã bao gồm bước này. Trên máy hiện tại đã áp dụng và chạy lại, dữ liệu 16 SP/134 SKU/6 đơn/6 dòng giữ nguyên; bốn bảng mới chưa có dữ liệu thử. Không chạy SQL DROP/seed. Checkpoint và báo cáo: [docs/IMPLEMENTATION_PROGRESS.md](docs/IMPLEMENTATION_PROGRESS.md), [docs/REPORT_UPDATES.md](docs/REPORT_UPDATES.md).

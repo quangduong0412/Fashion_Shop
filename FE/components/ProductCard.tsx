@@ -4,6 +4,7 @@ import { Product, formatPrice } from './fashion-data';
 import { Colors } from '../constants/theme';
 import { MaterialIcons } from '@expo/vector-icons';
 import CatalogImage from './CatalogImage';
+import { FavoriteButton } from './Wishlist';
 
 export default function ProductCard({ product, onAdd, onPress, style }: { product: Product; onAdd: () => void, onPress?: () => void, style?: StyleProp<ViewStyle> }) {
   const canPurchase = product.quantity > 0 && (!product.status || product.status === 'Đang mở bán');
@@ -12,6 +13,7 @@ export default function ProductCard({ product, onAdd, onPress, style }: { produc
     <Pressable accessibilityRole="button" accessibilityLabel={`Xem ${product.name}`} style={[styles.card, style]} onPress={onPress}>
       <View style={styles.imageContainer}>
         <CatalogImage source={product.image} label={product.name} style={styles.image} />
+        <View style={{position:'absolute',right:6,top:6}}><FavoriteButton id={product.id} name={product.name}/></View>
         {!canPurchase && <View style={styles.stockBadge}><Text style={styles.stockBadgeText}>{product.quantity <= 0 ? 'Hết hàng' : 'Tạm ngừng bán'}</Text></View>}
       </View>
       <View style={styles.body}>
@@ -22,7 +24,7 @@ export default function ProductCard({ product, onAdd, onPress, style }: { produc
         </View>
         <View style={styles.priceRow}>
           <View>
-            <Text style={styles.price}>{formatPrice(product.price)}</Text>
+            <Text style={styles.price}>{product.priceMax && product.priceMax > product.price ? 'Từ ' : ''}{formatPrice(product.price)}</Text>
           </View>
           <Pressable accessibilityRole="button" disabled={!canPurchase} accessibilityState={{ disabled: !canPurchase }} style={[styles.addBtn, !canPurchase && styles.disabled]} onPress={event => { event.stopPropagation(); onAdd(); }} accessibilityLabel={`${product.variants?.length ? 'Chọn biến thể' : 'Thêm vào giỏ'} ${product.name}`}>
             <MaterialIcons name={product.variants?.length ? 'tune' : 'add'} size={18} color={Colors.light.onPrimary} />

@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
 import { useEffect } from 'react';
+import { WishlistProvider } from '../components/Wishlist';
 
 import {
   useFonts,
@@ -39,11 +40,13 @@ export default function RootLayout() {
   }
 
   return (
-    <>
+    <WishlistProvider>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="profile" options={{ headerShown: false }} />
         <Stack.Screen name="orders" options={{ headerShown: false }} />
+        <Stack.Screen name="wishlist" options={{ headerShown: false }} />
+        <Stack.Screen name="addresses" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
         <Stack.Screen name="reset-password" options={{ headerShown: false }} />
@@ -55,6 +58,6 @@ export default function RootLayout() {
         <Stack.Screen name="product/[id]" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style="auto" />
-    </>
+    </WishlistProvider>
   );
 }

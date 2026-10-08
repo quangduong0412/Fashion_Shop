@@ -10,7 +10,7 @@ import { BlurView } from 'expo-blur';
 export default function LoginScreen() {
   const router = useRouter();
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
-  const customerDestination = returnTo === '/cart' ? '/cart' : '/';
+  const customerDestination = ['/cart','/wishlist','/addresses'].includes(returnTo || '') ? returnTo! : '/';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);

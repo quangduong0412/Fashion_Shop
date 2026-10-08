@@ -60,7 +60,8 @@ exports.runBrowser = async ({ base, productId, customerId, prisma }) => {
     await page.getByText('Mua ngay', { exact: true }).click();
     const unselected = page.getByRole('checkbox', { name: /^Thanh toán Browser retained cart item/ });
     assert.equal(await unselected.isChecked(), true, 'New cart rows must expose their checked state');
-    await unselected.uncheck();
+    await unselected.click();
+    await page.waitForFunction(() => document.querySelector('[aria-label^="Thanh toán Browser retained cart item"]')?.getAttribute('aria-checked') === 'false');
     await page.getByLabel('Họ tên người nhận').fill('Browser synthetic customer');
     await page.getByLabel('Số điện thoại nhận hàng').fill('0900000000');
     await page.getByLabel('Địa chỉ nhận hàng').fill('Synthetic browser test address');
@@ -207,6 +208,7 @@ exports.runBrowser = async ({ base, productId, customerId, prisma }) => {
     await require('./customer-browser.cjs').runCustomerBrowser({ admin, page, customerUrl: customerWeb.url, prisma, directory });
     await require('./settings-browser.cjs').checkSettingsBrowser({ admin, page, customerUrl: customerWeb.url, prisma, directory });
     await require('./report-browser.cjs').runReportBrowser({ admin, directory });
+    await require('./shopping-browser.cjs').runShoppingBrowser({ browser, customerUrl: customerWeb.url, base, prisma, directory, routeApi, errors });
     assert.deepEqual(errors, []);
   } catch (error) {
     await activePage.screenshot({ path: path.join(directory, 'browser-failure.png'), fullPage: true }).catch(() => {});
