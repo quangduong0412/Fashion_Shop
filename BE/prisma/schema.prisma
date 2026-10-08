@@ -7,6 +7,53 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Voucher {
+  Id               Int      @id @default(autoincrement())
+  Code             String   @unique @db.VarChar(40)
+  Type             String   @db.VarChar(10)
+  Value            Decimal  @db.Decimal(18, 0)
+  MaxDiscount      Decimal? @db.Decimal(18, 0)
+  MinSubtotal      Decimal  @default(0) @db.Decimal(18, 0)
+  StartsAt         DateTime @db.DateTime(3)
+  EndsAt           DateTime @db.DateTime(3)
+  IsActive         Boolean  @default(true)
+  TotalLimit       Int?
+  PerCustomerLimit Int      @default(1)
+  UsedCount        Int      @default(0)
+  Scope            String   @default("ALL") @db.VarChar(10)
+  ScopeIds         Json
+  Version          Int      @default(1)
+  UpdatedAt        DateTime @updatedAt @db.DateTime(3)
+  @@map("voucher")
+}
+
+model VoucherUsage {
+  Id          Int      @id @default(autoincrement())
+  VoucherId   Int
+  CustomerId  Int
+  CheckoutKey String   @db.VarChar(64)
+  OrderIds    Json
+  Snapshot    Json
+  Discount    Decimal  @db.Decimal(18, 0)
+  Status      String   @default("ACTIVE") @db.VarChar(10)
+  CreatedAt   DateTime @default(now()) @db.DateTime(3)
+  UpdatedAt   DateTime @updatedAt @db.DateTime(3)
+  @@unique([CustomerId, CheckoutKey])
+  @@index([VoucherId, CustomerId, Status])
+  @@map("voucherusage")
+}
+
+model VoucherAudit {
+  Id        Int      @id @default(autoincrement())
+  VoucherId Int
+  ActorId   Int
+  Action    String   @db.VarChar(30)
+  Version   Int
+  CreatedAt DateTime @default(now()) @db.DateTime(3)
+  @@index([VoucherId, Id])
+  @@map("voucheraudit")
+}
+
 // Customer shopping state. IDs are resolved at the API boundary; snapshots survive catalog removal.
 model CustomerWishlist {
   CustomerId Int
@@ -309,6 +356,8 @@ model PhieuXuat {
   TongTien             Float
   TienHang             Decimal? @db.Decimal(18, 0)
   GiamGiaDon           Decimal? @db.Decimal(18, 0)
+  VoucherCode          String? @db.VarChar(40)
+  VoucherSnapshot      Json?
   PhiGiaoHang          Decimal? @db.Decimal(18, 0)
   ShippingMethod       String? @db.VarChar(30)
   ShippingLabel        String? @db.VarChar(100)
@@ -342,6 +391,7 @@ model CTDonHang {
   SoLuong     Int
   DonGiaBan   Float
   GiamGia     Float     @default(0)
+  GiamGiaDong Decimal? @db.Decimal(18, 0)
   ThanhTien   Float
   TenSanPham  String?   @db.VarChar(255)
   AnhSanPham  String?   @db.Text

@@ -52,7 +52,7 @@ export const getAdminData = async (req: Request, res: Response) => {
       statuses: orderGroups.map(group => ({ status: group.TrangThai, count: group._count._all, total: group._sum.TongTien ?? 0 })) };
     res.json({
       ...(!staff ? { statistics } : {}), fetchedAt: new Date().toISOString(), bootstrapLimit: 100, recentOrdersLimit: 50,
-      access: { role: (req as any).user.role, allowedTabs: staff ? ['orders', 'products'] : ['dashboard', 'products', 'categories', 'orders', 'customers', 'employees', 'suppliers', 'imports', 'exports', 'posts', 'contacts', 'branches', 'roles', 'reports', 'settings'] },
+      access: { role: (req as any).user.role, allowedTabs: staff ? ['orders', 'products'] : ['dashboard', 'products', 'categories', 'orders', 'customers', 'employees', 'suppliers', 'imports', 'exports', 'posts', 'contacts', 'branches', 'roles', 'reports', 'settings', 'vouchers'] },
       categories: categories.map(c => ({ ...serializeCategory(c), variantAttributes: readVariantAttributeDefinitions(c.ThuocTinhBienThe) })),
       warehouses: warehouses.map(w => ({ id: w.MaKho, name: w.TenKho })),
       products: products.map(p => ({

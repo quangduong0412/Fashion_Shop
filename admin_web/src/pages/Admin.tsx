@@ -17,6 +17,7 @@ import ImportsView from '../components/ImportsView';
 import ExportsView from '../components/ExportsView';
 import ReportsView from '../components/ReportsView';
 import SettingsView from '../components/SettingsView';
+import VouchersView from '../components/VouchersView';
 import PostsView from '../components/PostsView';
 import ContactsView from '../components/ContactsView';
 import BranchesView from '../components/BranchesView';
@@ -98,7 +99,7 @@ export default function Admin() {
           {activeTab === 'contacts' && <ContactsView contacts={data.contacts} onDelete={async id => { await mutate(`/contacts/${id}`, 'DELETE'); }} />}
           {activeTab === 'branches' && <BranchesView branches={data.branches} onSave={record => legacySave('branches', record)} onDelete={id => remove('branches', id, 'Xóa chi nhánh chưa có nhân viên/giao dịch?')} />}
           {activeTab === 'roles' && <RolesView roles={data.roles} onSave={record => legacySave('roles', record)} onDelete={id => remove('roles', id, 'Xóa chức vụ chưa được sử dụng?')} />}
-          {activeTab === 'reports' && <ReportsView />}{activeTab === 'settings' && <SettingsView />}
+          {activeTab === 'vouchers' && <VouchersView products={data.products} categories={data.categories} />}{activeTab === 'reports' && <ReportsView />}{activeTab === 'settings' && <SettingsView />}
         </>}
       </main>
     </div>

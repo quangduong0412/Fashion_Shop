@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000">
+<rect width="800" height="1000" fill="#f4efe9"/><rect x="50" y="50" width="700" height="900" rx="28" fill="#fffaf5" stroke="#ded4ca"/>
+<path d="m310 280-130 80 70 135 65-35v265h170V460l65 35 70-135-130-80c-25 65-155 65-180 0Z" fill="#ded2c5" stroke="#8c6e5d" stroke-width="8" stroke-linejoin="round"/>
+<text x="400" y="145" text-anchor="middle" font-family="Arial,sans-serif" font-size="32" fill="#a21530">FASHION HAVEN</text>
+<text x="400" y="800" text-anchor="middle" font-family="Arial,sans-serif" font-size="30" fill="#493e39">MẪU MINH HỌA · DEMO</text>
+<text x="400" y="850" text-anchor="middle" font-family="Arial,sans-serif" font-size="22" fill="#76675e">Không phải ảnh sản phẩm thực tế</text>
+</svg>

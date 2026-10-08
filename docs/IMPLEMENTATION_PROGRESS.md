@@ -53,3 +53,19 @@ Chưa cấp demo live do thiếu cấu hình của người vận hành. Điền
 7. Luồng API local cổng4000 chưa chạy tại thời điểm audit; khởi động BE/FE/admin theo README để thao tác với DB phát triển. Không dùng fixtures integration làm tài khoản demo live.
 
 Đợt 1 đạt phạm vi đã chạy; toàn project **chưa hoàn thành**. Bản báo cáo có đoạn văn và sơ đồ ở REPORT_UPDATES.md, không sửa tệp Word.
+
+
+## Khôi phục vận hành 08/10/2026
+
+- Nguyên nhân màn hình quản trị lỗi: client Prisma đã có VoucherCode/VoucherSnapshot/GiamGiaDong nhưng MySQL ứng dụng chưa được migration (P2022). Đã chạy `npm.cmd run db:migrate-vouchers`; migration chỉ thêm bảng/cột nullable, không reset hoặc tính lại đơn cũ. `db:prepare` đã bao gồm bước này cho lần khởi động sau.
+- Đã gọi API local đang chạy: `/api/users/profile`, `/api/admin`, `/api/orders?pageSize=1`, `/api/vouchers` đều HTTP 200. Trình duyệt Edge headless mở dashboard, Sản phẩm & Tồn kho, Quản lý đơn hàng trên `localhost:5173` thành công, không có pageerror. Ảnh local: `BE/test-artifacts/runtime-restored-2026-10-08.png`.
+- Dữ liệu cửa hàng giữ nguyên 16 sản phẩm / 134 SKU / 6 đơn / 6 dòng đơn. Không tạo dữ liệu demo hoặc giao dịch thử trong database cửa hàng.
+- Suite API/MySQL/unit mới: **93/93**, 0 fail/skip, TAP `BE/test-artifacts/voucher-api-2026-10-08.tap`; database `fashionhaven_test_1791420805568_e2667bab` đã dọn trong finally. Đây không phải nghiệm thu browser voucher. Lượt đầy đủ browser trước khi thêm voucher đạt 83/83, database `fashionhaven_test_1791419811111_1942818d` đã dọn.
+- Voucher đã có API ADMIN, giới hạn/phạm vi, quote/checkout/transaction/snapshot/phân bổ giảm giá nhiều kho, retry và hoàn lượt khi hủy toàn bộ. FE/admin đã typecheck/lint/build; còn cần nghiệm thu riêng UI voucher và cập nhật aggregate giảm giá báo cáo trước khi đánh dấu Đợt 2 hoàn thành.
+- Bộ demo 60 bản ghi mỗi phân hệ (240 SKU, 180 dòng nhập, 60 voucher/lượt dùng) đã được kiểm tra trong transaction rollback của database integration. Database đích riêng `fashionhaven_demo_v1` **chưa tạo** vì thiếu `DEMO_DATA_PASSWORD`, `NODE_ENV=development`, `ALLOW_DEMO_DATA=true` local. Không tự đặt mật khẩu. Lệnh `demo:data:plan` chỉ đọc; `demo:data:provision` cần cấu hình và không chạy tự động. `demo:dev` chạy API với database demo, không thay `.env`/database gốc.
+- Ưu tiên theo chỉ đạo mới: hệ thống hiện chạy được; tạm dừng mở rộng tính năng để người dùng vận hành. Chưa nghiệm thu Android/iOS, thanh toán online, đổi trả/hoàn tiền, đánh giá và thông báo. Giữ nguyên BaoCao/report_work.
+
+
+### Web khách hàng đã khôi phục tại cổng 8081
+
+Expo/Metro process cũ trả `/status` nhưng request trang chủ timeout. Đã dừng đúng process Expo trong FE đã xác minh, dùng bản Expo web export vừa build thành công và phục vụ tại `http://localhost:8081`. Trang chủ, explore, cart, product trả HTTP 200; Edge headless 390×844 đã tìm và hiển thị sản phẩm thật qua API, không pageerror. Script: `cd BE; npm.cmd run preview:customer`. Sau khi sửa FE cần chạy lại `cd FE; npx.cmd expo export --platform web` để cập nhật bản preview. Native/Metro chưa được nghiệm thu trong lượt khôi phục này. Backend 4000 và admin Vite 5173 giữ process đang chạy; không tạo dữ liệu nghiệp vụ khi kiểm tra. Ảnh FE local ngoài Git: `BE/test-artifacts/customer-runtime-restored-2026-10-08.png`.

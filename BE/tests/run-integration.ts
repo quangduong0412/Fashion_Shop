@@ -53,7 +53,7 @@ async function main() {
         await markerClient.$executeRaw`INSERT INTO __fashion_test_owner (Id, RunId, Project) VALUES (1, ${runId}, 'fashion-haven-integration')`;
       } finally { await markerClient.$disconnect(); }
     },
-    test: () => arg === '--cleanup-probe=test-failure' ? Promise.resolve(2) : runChild(['--test', '-r', 'ts-node/register', 'tests/integration.test.ts', 'tests/cart-state.test.ts', 'tests/request-throttle.test.ts', 'tests/test-database-lifecycle.test.ts', 'tests/content-validation.test.ts', 'tests/store-settings.test.ts', 'tests/development-customer.test.ts']),
+    test: () => arg === '--cleanup-probe=test-failure' ? Promise.resolve(2) : runChild(['--test', '-r', 'ts-node/register', 'tests/integration.test.ts', 'tests/cart-state.test.ts', 'tests/request-throttle.test.ts', 'tests/test-database-lifecycle.test.ts', 'tests/content-validation.test.ts', 'tests/store-settings.test.ts', 'tests/development-customer.test.ts', 'tests/demo-data.test.ts', 'tests/vouchers.test.ts']),
     finish: async () => {
       if (child) {
         const running = child; running.kill();

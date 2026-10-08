@@ -73,3 +73,8 @@ Browser Edge/Chromium headless chạy build thật với API/DB thật tại 390
 ## Kết luận và hướng phát triển
 
 Đợt 1 đã mở rộng luồng mua sắm theo tài khoản và kiểm chứng tính nhất quán UI/API/database trên web. Chống trùng yêu thích/hợp nhất giỏ, CAS cập nhật giữa thiết bị, snapshot địa chỉ và checkout idempotent giúp tránh mất dữ liệu hoặc xử lý lặp. Hệ thống chưa được kết luận hoàn chỉnh toàn bộ: đợt 2 voucher, đợt 3 sandbox gateway, đợt 4 return/refund, đợt 5 reviews/notifications và đợt 6 vận hành/ledger vẫn cần triển khai. Native Android/iOS, SecureStore/deep link/build, email/gateway/carrier thật và môi trường production chưa nghiệm thu. Giữ các giới hạn này khi cập nhật kết luận báo cáo.
+
+
+## Phụ lục checkpoint 08/10/2026
+
+Đã khôi phục mismatch schema P2022 bằng migration voucher thêm bảng/cột, giữ nguyên 16 SP/134 SKU/6 đơn. API quản trị và trình duyệt dashboard/catalog/orders đã chạy thật; FE web export phục vụ 8081 và hiển thị sản phẩm thật ở 390×844. Suite mới 93/93 API/MySQL/unit và cleanup pass; đây chưa phải nghiệm thu browser/native cho voucher. Script demo 60 mỗi phân hệ chỉ được nghiệm thu trong database kiểm thử rollback, chưa cấp database demo do thiếu mật khẩu local. Chưa đánh dấu hoàn thành toàn hệ thống hay Đợt 2. Không chỉnh Word/BaoCao/report_work. Chi tiết trong IMPLEMENTATION_PROGRESS.md.

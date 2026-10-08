@@ -54,3 +54,12 @@ Các database do runner tạo sau đây đều đã được đóng kết nối 
 - `fashionhaven_test_1791296604382_86bca6c3`: **79/79** với browser FE/admin, đã dọn. TAP local: `BE/test-artifacts/acceptance-2026-10-06.tap` (ngoài Git).
 
 Dry-run sau đợt này chỉ còn hai database không xác minh nguồn ở mục trên; tiếp tục giữ nguyên. Database ứng dụng vẫn 16 sản phẩm / 134 SKU / 6 đơn / 6 dòng đơn; bốn bảng mua sắm mới trống. Dữ liệu demo được người dùng yêu cầu bổ sung ngày 08/10 được theo dõi riêng, không phải fixture integration.
+
+
+## Kiểm tra 08/10/2026
+
+- `fashionhaven_test_1791419811111_1942818d`: 83/83 gồm browser và demo rollback, đã dọn.
+- `fashionhaven_test_1791420708487_2a783c82`: lượt phát hiện lỗi cập nhật ngày voucher/cơ chế fault test, 89 pass / 4 fail gồm nhóm cha; giữ lỗi gốc, đã dọn.
+- `fashionhaven_test_1791420805568_e2667bab`: sau sửa, 93/93 API/MySQL/unit, không bật browser; đã dọn.
+
+Không dọn database demo bằng công cụ cleanup integration. Không tạo fixture trong database ứng dụng khi khôi phục P2022.

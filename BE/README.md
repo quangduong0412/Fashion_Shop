@@ -195,3 +195,25 @@ Giỏ không giữ tồn. Thêm/tăng/đổi SKU phải còn bán, đúng sản 
 FE mới gửi `cartVersion`, tùy chọn `addressId` vào quote/checkout. Quote hash/fingerprint xét cả hai. Checkout mới kiểm tra dòng đang chọn/qty/version và quyền/snapshot địa chỉ; trong transaction tạo đơn, giữ tồn, lưu receipt và trừ đúng lượng đã mua khỏi giỏ. Receipt replay trước kiểm tra catalog/địa chỉ/cart hiện tại, không trừ giỏ lần hai. Client cũ không có hai trường vẫn dùng snapshot shipping theo contract cũ. Địa chỉ chỉnh sửa/xóa không đổi chứng từ cũ.
 
 GET `/products` thêm `brand`, `size`, `color`, `minPrice`, `maxPrice`, `sort=id_desc|price_asc|price_desc`. SQL tham số hóa, lọc và phân trang tại DB; điều kiện size/màu/giá cùng một SKU đang bán. Simple product không khớp size/màu. Giá so sánh là giá thấp nhất trong SKU khớp (cả hai chiều sort), `priceMax` là mức cao nhất khớp; listing chỉ trả SKU khớp. Hết hàng vẫn xuất hiện để xem, ngừng bán/ẩn không xuất hiện. Chưa có timestamp tạo sản phẩm nên không cung cấp sort ngày tạo giả. GET `/products/facets` lấy brand/size/màu từ catalog công khai, tối đa 200 mỗi nhóm và trả `optionLimit`.
+
+
+### Khôi phục schema và bộ demo riêng (08/10)
+
+Nếu backend đang chạy trong lúc source/schema thay đổi, chạy `npm.cmd run db:migrate-vouchers` trước khi dùng client Prisma mới. `db:prepare` đã bao gồm migration này. Không chạy SQL có DROP/reset để chữa lỗi P2022. Checkpoint local: profile/admin/orders/vouchers HTTP 200, dữ liệu cửa hàng giữ nguyên.
+
+Bộ demo có chủ đích, không dùng seed cũ:
+
+```powershell
+npm.cmd run demo:data:plan
+# Trong BE/.env local: NODE_ENV=development, ALLOW_DEMO_DATA=true,
+# DEMO_DATA_PASSWORD do người vận hành đặt (8 ký tự trở lên, tối đa 72 byte UTF-8).
+npm.cmd run demo:data:provision
+npm.cmd run demo:dev
+```
+
+Database demo riêng tên `fashionhaven_demo_v1`. Script chỉ tạo database mới hoặc dùng marker sở hữu phù hợp; không reset/ghi đè dữ liệu và không đổi mật khẩu khi chạy lại. API demo dùng port 4000 mặc định: dừng API cửa hàng ở port đó trước khi chạy demo, hoặc cấu hình port/API URL riêng cho FE/admin. Đăng nhập lại sau khi chuyển môi trường. Khách: `demo.customer001@example.invalid` đến `demo.customer060@example.invalid`. Admin demo: `demo.admin@example.invalid`; nhân viên: `demo.staff002@example.invalid` đến `demo.staff060@example.invalid`. Mật khẩu lấy từ cấu hình local, không có mật khẩu cố định trong Git. Không gửi email/thu tiền/giao hàng thật cho bộ demo; dữ liệu tiền, vận đơn và hình minh họa đều được gắn DEMO. Cài đặt là singleton, nhật ký theo sự kiện, không ép 60 bản ghi kỹ thuật/reset token. Bộ demo hiện chưa được cấp trên máy do thiếu cấu hình mật khẩu của người vận hành.
+
+
+### Web khách hàng đã khôi phục tại cổng 8081
+
+Expo/Metro process cũ trả `/status` nhưng request trang chủ timeout. Đã dừng đúng process Expo trong FE đã xác minh, dùng bản Expo web export vừa build thành công và phục vụ tại `http://localhost:8081`. Trang chủ, explore, cart, product trả HTTP 200; Edge headless 390×844 đã tìm và hiển thị sản phẩm thật qua API, không pageerror. Script: `cd BE; npm.cmd run preview:customer`. Sau khi sửa FE cần chạy lại `cd FE; npx.cmd expo export --platform web` để cập nhật bản preview. Native/Metro chưa được nghiệm thu trong lượt khôi phục này. Backend 4000 và admin Vite 5173 giữ process đang chạy; không tạo dữ liệu nghiệp vụ khi kiểm tra. Ảnh FE local ngoài Git: `BE/test-artifacts/customer-runtime-restored-2026-10-08.png`.

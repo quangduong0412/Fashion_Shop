@@ -9,7 +9,7 @@
     "predev": "npm run db:prepare",
     "dev": "nodemon src/server.ts",
     "db:migrate-orders": "ts-node migrate_order_tables.ts",
-    "db:prepare": "npm run db:migrate-orders && npm run db:migrate-inventory && npm run db:migrate-order-safety && npm run db:migrate-accounts-media && npm run db:migrate-store-settings && npm run db:migrate-customer-shopping && prisma generate",
+    "db:prepare": "npm run db:migrate-orders && npm run db:migrate-inventory && npm run db:migrate-order-safety && npm run db:migrate-accounts-media && npm run db:migrate-store-settings && npm run db:migrate-customer-shopping && npm run db:migrate-vouchers && prisma generate",
     "db:migrate-inventory": "ts-node migrate_inventory.ts",
     "seed:catalog": "ts-node seed_catalog.ts",
     "seed:samples": "ts-node add_sample_data.ts",
@@ -23,7 +23,12 @@
     "test:db:list": "ts-node scripts/cleanup-test-databases.ts --list",
     "test:db:cleanup": "ts-node scripts/cleanup-test-databases.ts",
     "db:migrate-store-settings": "ts-node migrate_store_settings.ts",
-    "db:migrate-customer-shopping": "ts-node migrate_customer_shopping.ts"
+    "db:migrate-customer-shopping": "ts-node migrate_customer_shopping.ts",
+    "demo:data:plan": "ts-node scripts/provision-demo-data.ts --plan",
+    "demo:data:provision": "ts-node scripts/provision-demo-data.ts --apply",
+    "demo:dev": "ts-node scripts/run-demo-server.ts",
+    "db:migrate-vouchers": "ts-node migrate_vouchers.ts",
+    "preview:customer": "node scripts/serve-customer-web.cjs"
   },
   "keywords": [],
   "author": "",

@@ -125,3 +125,8 @@ Nêu actor/state/money/stock/validation/errors; nối UI→API→DB thật; tran
 ## Thứ tự mới theo yêu cầu 06/10
 
 Đợt 1 đã kiểm tra API/MySQL và web 390×844/1440×1000. Tiếp theo đợt 2 voucher → đợt 3 gateway sandbox → đợt 4 return/refund → đợt 5 review/notifications → đợt 6 vận hành/ledger. Native Android/iOS chưa nghiệm thu; không phát hành hoặc dùng tiền thật. Chi tiết tiếp tục ở docs/IMPLEMENTATION_PROGRESS.md.
+
+
+### Chỉ đạo vận hành 08/10/2026
+
+Ưu tiên khôi phục website: đã áp dụng migration voucher thêm cột/bảng, API/admin chạy lại. Voucher: API và nghiệp vụ đạt kiểm tra, UI đã build nhưng chưa nghiệm thu browser riêng; không đánh dấu hoàn tất Đợt 2. Dữ liệu demo 60 mỗi phân hệ: script/kiểm tra sẵn, chờ mật khẩu local trước khi cấp thật vào database demo riêng. Chi tiết và lệnh chạy trong BE/README.md và docs/IMPLEMENTATION_PROGRESS.md. Dừng mở rộng tính năng trong lượt khôi phục này.

@@ -30,11 +30,15 @@ export default function CartScreen() {
   const [shippingAddress, setShippingAddress] = useState({ name: '', phone: '', address: '' });
   const addressEdited = useRef(false);
   const [note, setNote] = useState('');
+  const [voucherDraft,setVoucherDraft]=useState('');
+  const [voucherCode,setVoucherCode]=useState('');
+  const [voucherError,setVoucherError]=useState('');
+  const [voucherAttempt,setVoucherAttempt]=useState(0);
   const selectedCart = cart.filter(item => item.selected !== false);
 
   useFocusEffect(useCallback(() => {
     let active = true;
-    setCart([]);setQuote(null);setCartLoading(true);setCheckoutError('');setAddresses([]);setAddressId(null);setShippingAddress({name:'',phone:'',address:''});addressEdited.current=false;
+    setCart([]);setVoucherDraft('');setVoucherCode('');setVoucherError('');setQuote(null);setCartLoading(true);setCheckoutError('');setAddresses([]);setAddressId(null);setShippingAddress({name:'',phone:'',address:''});addressEdited.current=false;
     void readCart().then(next => { if (active) {setCart(next);setCartVersion(getAccountCartVersion());setCheckoutError(getCartMergeWarning());} }).catch(cause => {
       if (active) setCheckoutError(cause instanceof Error?cause.message:'Không thể đọc giỏ hàng. Vui lòng thử lại.');
     }).finally(()=>{if(active)setCartLoading(false);});
@@ -76,13 +80,13 @@ export default function CartScreen() {
       if (!user || user.role !== 'user') { if (active) setNeedsLogin(true); return; }
       if (active) setHasPendingRequest(!!await AsyncStorage.getItem(`checkout_pending_${user.id}`));
       if (!shippingAddress.name.trim() || !shippingAddress.phone.trim() || !shippingAddress.address.trim()) { setCheckoutError(getCartMergeWarning()); return; }
-      const next = await apiRequest('/orders/quote', { method: 'POST', body: JSON.stringify({ items: itemsForApi(quoteItems), shipping: shippingAddress, shippingMethod: 'STANDARD', paymentMethod: 'COD', note, cartVersion, ...(addressId?{addressId}:{}) }) });
+      const next = await apiRequest('/orders/quote', { method: 'POST', body: JSON.stringify({ items: itemsForApi(quoteItems), shipping: shippingAddress, shippingMethod: 'STANDARD', paymentMethod: 'COD', note, ...(voucherCode?{voucherCode}:{}), cartVersion, ...(addressId?{addressId}:{}) }) });
       if (active) { setQuote(next); setCheckoutError(''); setNeedsLogin(false); }
     })().catch(cause => {
       if (active) { setCheckoutError(cause instanceof Error ? cause.message : 'Không thể cập nhật giá/tồn kho.'); setNeedsLogin(cause instanceof ApiError && [401, 403].includes(cause.status)); }
     }).finally(() => { if (active) setQuoting(false); });
     return () => { active = false; };
-  }, [cart, shippingAddress, note, cartVersion, addressId]);
+  }, [cart, shippingAddress, note, cartVersion, addressId, voucherCode, voucherAttempt]);
 
   const changeQuantity = async (lineKey: string, amount: number) => {
     if (checkoutLock.current) return;
@@ -142,7 +146,7 @@ export default function CartScreen() {
         }
 
         if (!quote || quoting) { setCheckoutError('Cần cập nhật tổng tiền từ cửa hàng trước khi đặt.'); return; }
-        pending = { cart: selectedCart, payload: { paymentMethod: 'COD', shipping: shippingAddress, shippingMethod: 'STANDARD', note, cartVersion, ...(addressId?{addressId}:{}), items: itemsForApi(selectedCart), quoteHash: quote.quoteHash,
+        pending = { cart: selectedCart, payload: { paymentMethod: 'COD', shipping: shippingAddress, shippingMethod: 'STANDARD', note, ...(voucherCode?{voucherCode}:{}), cartVersion, ...(addressId?{addressId}:{}), items: itemsForApi(selectedCart), quoteHash: quote.quoteHash,
           requestKey: `checkout_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}` } };
         await AsyncStorage.setItem(storageKey, JSON.stringify(pending));
       }
@@ -153,7 +157,7 @@ export default function CartScreen() {
         // A timeout/server failure is ambiguous: preserve the same request for replay.
         if (cause instanceof ApiError && [400, 409, 422].includes(cause.status)) {
           await AsyncStorage.removeItem(storageKey); setHasPendingRequest(false);
-          const updatedQuote = await apiRequest('/orders/quote', { method: 'POST', body: JSON.stringify({ items: itemsForApi(selectedCart), shipping: shippingAddress, shippingMethod: 'STANDARD', paymentMethod: 'COD', note, cartVersion, ...(addressId?{addressId}:{}) }) }).catch(() => null);
+          const updatedQuote = await apiRequest('/orders/quote', { method: 'POST', body: JSON.stringify({ items: itemsForApi(selectedCart), shipping: shippingAddress, shippingMethod: 'STANDARD', paymentMethod: 'COD', note, ...(voucherCode?{voucherCode}:{}), cartVersion, ...(addressId?{addressId}:{}) }) }).catch(() => null);
           setQuote(updatedQuote);
         }
         throw cause;
@@ -278,6 +282,13 @@ export default function CartScreen() {
             </View>
 
             <View style={styles.card}><Text style={styles.cardTitle}>Ghi chú giao hàng</Text><TextInput accessibilityLabel="Ghi chú đơn hàng" placeholder="Hướng dẫn giao hàng (không bắt buộc)" value={note} editable={!isCheckingOut} onChangeText={setNote} maxLength={500} multiline style={styles.shippingInput} /></View>
+            <View style={styles.card}><Text style={styles.cardTitle}>Voucher</Text><Text style={styles.summaryLabel}>Một mã cho các dòng đang chọn. Phí giao không được giảm.</Text>
+              <TextInput accessibilityLabel="Mã voucher" placeholder="Nhập mã ưu đãi" value={voucherDraft} maxLength={40} autoCapitalize="characters" editable={!isCheckingOut&&!hasPendingRequest} onChangeText={value=>{setVoucherDraft(value);setVoucherError('');}} style={styles.shippingInput}/>
+              <View style={{flexDirection:'row',flexWrap:'wrap',gap:12}}><Pressable accessibilityRole="button" accessibilityLabel="Áp dụng voucher" disabled={isCheckingOut||hasPendingRequest||quoting} style={styles.loginButton} onPress={()=>{const code=voucherDraft.trim().toUpperCase();if(!/^[A-Z0-9_-]{3,40}$/.test(code)){setVoucherError('Mã cần 3–40 chữ/số, dấu gạch ngang hoặc gạch dưới.');return;}setVoucherError('');setQuote(null);setVoucherCode(code);setVoucherAttempt(value=>value+1);}}><Text style={styles.loginButtonText}>Áp dụng voucher</Text></Pressable>
+              {!!voucherCode&&<Pressable accessibilityRole="button" accessibilityLabel="Bỏ voucher" disabled={isCheckingOut||hasPendingRequest} style={styles.loginButton} onPress={()=>{setQuote(null);setVoucherCode('');setVoucherDraft('');setVoucherError('');}}><Text style={styles.loginButtonText}>Bỏ voucher</Text></Pressable>}</View>
+              {!!voucherError&&<Text accessibilityRole="alert" style={styles.checkoutError}>{voucherError}</Text>}
+              {!!voucherCode&&<Text style={styles.summaryLabel}>{quoting?'Đang kiểm tra mã…':quote?.voucher?`Đã áp dụng ${quote.voucher.code} · giảm ${formatPrice(quote.discount)}`:`Chưa áp dụng được ${voucherCode}; xem thông báo hoặc bỏ mã để tiếp tục.`}</Text>}
+            </View>
             {/* Summary */}
             <View style={[styles.card, { marginBottom: 0 }]}>
               <Text style={styles.summaryTitle}>Chi tiết đơn hàng</Text>

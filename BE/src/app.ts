@@ -11,6 +11,7 @@ import orderRoutes from './routes/orderRoutes';
 import productRoutes from './routes/productRoutes';
 import categoryRoutes from './routes/categoryRoutes';
 import shoppingRoutes from './routes/shoppingRoutes';
+import voucherRoutes from './routes/voucherRoutes';
 import { authenticateToken, requireAdmin, requireStaff } from './middlewares/authMiddleware';
 
 const app = express();
@@ -46,6 +47,7 @@ app.post('/api/users/reset-password', loginThrottle);
 app.use('/api/users', userRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/shopping', shoppingRoutes);
+app.use('/api/vouchers', voucherRoutes);
 
 import { getPublicSettings, getInternalSettings, saveSettings } from './controllers/settingsController';
 import { getRetailReport } from './controllers/reportController';

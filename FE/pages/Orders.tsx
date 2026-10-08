@@ -11,6 +11,7 @@ type OrderItem = {
   SoLuong: number;
   DonGiaBan?: number;
   ThanhTien?: number;
+  GiamGiaDong?: number | null;
   KichCo?: string | null;
   MauSac?: string | null;
   SKU?: string | null;
@@ -21,6 +22,7 @@ type Order = {
   MaPhieuXuat: number;
   NgayXuat: string;
   TongTien: number;
+  VoucherCode?: string | null;
   TienHang?: number | null; GiamGiaDon?: number | null; PhiGiaoHang?: number | null; ShippingLabel?: string | null; GhiChuDonHang?: string | null;
   TrangThai: string;
   PhuongThucThanhToan?: string | null;
@@ -203,13 +205,14 @@ export default function OrdersScreen() {
                         <View style={styles.detailItemCopy}>
                           <Text style={styles.detailProductName}>{item.sanPham?.TenSanPham || 'Sản phẩm'}</Text>
                           {(item.KichCo || item.MauSac || item.SKU) && <Text style={styles.detailProductMeta}>{[item.KichCo, item.MauSac, item.SKU].filter(Boolean).join(' · ')}</Text>}
-                          <Text style={styles.detailProductMeta}>{item.SoLuong} × {formatPrice(Number(item.DonGiaBan || 0))}</Text>
+                          <Text style={styles.detailProductMeta}>{item.SoLuong} × {formatPrice(Number(item.DonGiaBan || 0))}</Text>{!!item.GiamGiaDong && <Text style={styles.detailProductMeta}>Giảm {formatPrice(item.GiamGiaDong)}</Text>}
                         </View>
                         <Text style={styles.detailSubtotal}>{formatPrice(Number(item.ThanhTien ?? (Number(item.DonGiaBan || 0) * item.SoLuong)))}</Text>
                       </View>
                     ))}
                     <View style={styles.detailPayment}>
                       {!!order.DiaChiNhan && <Text style={styles.detailPaymentValue}>{order.TenNguoiNhan} · {order.DienThoaiNhan}{'\n'}{order.DiaChiNhan}</Text>}
+                      {!!order.VoucherCode && <Text style={styles.detailPaymentValue}>Voucher đã dùng: {order.VoucherCode}</Text>}
                       {order.TienHang != null && <Text style={styles.detailPaymentValue}>Tiền hàng {formatPrice(order.TienHang)} + giao hàng {formatPrice(order.PhiGiaoHang ?? 0)} − giảm giá {formatPrice(order.GiamGiaDon ?? 0)} = {formatPrice(order.TongTien)}</Text>}
                       {!!order.ShippingLabel && <Text style={styles.detailPaymentValue}>Phương thức: {order.ShippingLabel}</Text>}
                       {!!order.GhiChuDonHang && <Text style={styles.detailPaymentValue}>Ghi chú: {order.GhiChuDonHang}</Text>}

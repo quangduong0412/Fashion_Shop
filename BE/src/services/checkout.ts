@@ -4,6 +4,7 @@ import { ApiError, positiveId, textValue } from './apiErrors';
 import { normalizeSaleStatus } from './productVariants';
 import { money } from './orderRules';
 import { readSettings } from './storeSettings';
+import { quoteVoucher, voucherCode } from './vouchers';
 
 export type CartInput = { id: number; variantId: number | null; quantity: number; size: string; color: string };
 export function cartInput(value: unknown): CartInput[] {
@@ -63,16 +64,18 @@ export function checkoutContext(body: any) {
   const shipping = shippingInput(body?.shipping);
   const shippingMethod = body?.shippingMethod ?? 'STANDARD';
   if (shippingMethod !== 'STANDARD') throw new ApiError(400, 'INVALID_SHIPPING_METHOD', 'Phương thức giao hàng không khả dụng.');
-  if (body?.voucherCode) throw new ApiError(400, 'VOUCHER_UNAVAILABLE', 'Voucher chưa được cấu hình tại cửa hàng.');
-  return { shipping, shippingMethod, paymentMethod: 'COD', note: textValue(body?.note, 'Ghi chú', 500, false) };
+  const code = voucherCode(body?.voucherCode);
+  return { shipping, shippingMethod, paymentMethod: 'COD', note: textValue(body?.note, 'Ghi chú', 500, false), ...(code ? { voucherCode: code } : {}) };
 }
-export async function quoteCheckout(tx: Prisma.TransactionClient, items: CartInput[], context: ReturnType<typeof checkoutContext>) {
+export async function quoteCheckout(tx: Prisma.TransactionClient, items: CartInput[], context: ReturnType<typeof checkoutContext>, customerId = 0, lockVoucher = false) {
   const quote = await priceCart(tx, items);
   const config = await readSettings(tx);
   if (!config.settings.shipping.enabled) throw new ApiError(409, 'SHIPPING_UNAVAILABLE', 'Cửa hàng đang tạm ngưng tiếp nhận đơn giao hàng.');
   const method = config.settings.shipping;
   const shippingFee = method.freeFrom !== null && quote.subtotal >= method.freeFrom ? 0 : method.fee;
-  const total = money(quote.subtotal + shippingFee);
-  const quoteHash = hash({ prices: quote.quoteHash, context, settingsVersion: config.version, shippingFee, shippingLabel: method.label });
-  return { ...quote, quoteHash, shippingFee, total, shippingLabel: method.label, publicQuote: { ...quote.publicQuote, quoteHash, shippingFee, total, shippingLabel: method.label, shippingMethod: context.shippingMethod, settingsVersion: config.version } };
+  const promotion = await quoteVoucher(tx, context.voucherCode ?? '', customerId, quote.lines, lockVoucher);
+  const total = money(quote.subtotal + shippingFee - promotion.discount);
+  // Preserve hashes for non-voucher clients/receipts issued before this feature.
+  const quoteHash = hash({ prices: quote.quoteHash, context, settingsVersion: config.version, shippingFee, shippingLabel: method.label, ...(promotion.snapshot ? { voucher: promotion.snapshot } : {}) });
+  return { ...quote, ...promotion, quoteHash, shippingFee, total, shippingLabel: method.label, publicQuote: { ...quote.publicQuote, quoteHash, discount: promotion.discount, voucher: promotion.snapshot, shippingFee, total, shippingLabel: method.label, shippingMethod: context.shippingMethod, settingsVersion: config.version } };
 }

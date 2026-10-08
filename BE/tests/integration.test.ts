@@ -468,8 +468,12 @@ test('Real HTTP API and isolated MySQL', async t => {
   const { testSettingsFlows } = await import('./settings-flow');
   await testSettingsFlows(t, request, adminToken, staffToken);
   const { runReportFlow } = await import('./report-flow');
+  const { checkDemoDataset } = await import('./demo-data-flow');
+  await checkDemoDataset(t);
   const { testShoppingFlows } = await import('./shopping-flow');
   await testShoppingFlows(t,request,staffToken,{warehouseId:warehouse.MaKho,supplierId:supplier.MaNCC});
+  const { testVoucherFlows } = await import('./voucher-flow');
+  await testVoucherFlows(t,request,adminToken,staffToken,{warehouseId:warehouse.MaKho,secondWarehouseId:secondWarehouse.MaKho,supplierId:supplier.MaNCC,categoryId:category.MaLoaiHang});
   await t.test('reports aggregate all orders with explicit UTC+7 boundaries and scoped permissions', () => runReportFlow({request,adminToken,customerToken,prisma}));
   if (process.env.PLAYWRIGHT_MODULE) {
     await t.test('customer web checkout and admin fulfillment in a real browser', async () => {
