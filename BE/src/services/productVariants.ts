@@ -5,13 +5,38 @@ export type VariantAttributeDefinition = {
   key: string;
   label: string;
   type: 'select' | 'suggest' | 'text' | 'number';
+  role?: 'auto' | 'sku' | 'spec' | 'filter' | 'internal';
+  roleSource?: 'configured' | 'inferred';
   options?: string[];
   unit?: string;
   placeholder?: string;
+  description?: string;
   defaultValue?: string | number;
   required?: boolean;
   requiredGroup?: string;
+  position?: number;
 };
+
+const specificationKeys = new Set([
+  'footLengthCm', 'headCircumferenceCm', 'ringCircumferenceMm', 'dialDiameterMm',
+  'strapWidthMm', 'strapLength', 'lensWidthMm', 'bridgeWidthMm', 'templeLengthMm',
+  'lengthCm', 'heightCm', 'widthCm', 'volumeLiters', 'usSize', 'ukSize'
+]);
+const legacyLabels: Record<string, string> = {
+  dialDiameterMm: 'Đường kính mặt', strapWidthMm: 'Độ rộng dây', strapLength: 'Chiều dài dây',
+  lensWidthMm: 'Rộng tròng', bridgeWidthMm: 'Cầu kính', templeLengthMm: 'Chiều dài càng kính',
+  ringSize: 'Cỡ nhẫn', ringCircumferenceMm: 'Chu vi ngón tay', footLengthCm: 'Chiều dài bàn chân',
+  headCircumferenceCm: 'Vòng đầu', volumeLiters: 'Dung tích', lengthCm: 'Dài', heightCm: 'Cao', widthCm: 'Rộng'
+};
+const knownLegacyLabels: Record<string, string[]> = {
+  dialDiameterMm: ['Dial diameter', 'Diameter', 'Mặt đồng hồ'], strapWidthMm: ['Strap width'], strapLength: ['Strap length'],
+  lensWidthMm: ['Lens'], bridgeWidthMm: ['Bridge'], templeLengthMm: ['Temple'], ringSize: ['Ring size'],
+  footLengthCm: ['Foot length'], headCircumferenceCm: ['Head circumference'], volumeLiters: ['Volume']
+};
+
+export function defaultAttributeRole(key: string): NonNullable<VariantAttributeDefinition['role']> {
+  return specificationKeys.has(key) ? 'spec' : 'sku';
+}
 
 export type NormalizedVariant = {
   SKU: string;
@@ -42,7 +67,69 @@ export function readVariantAttributeDefinitions(value: unknown): VariantAttribut
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is VariantAttributeDefinition =>
     Boolean(item && typeof item === 'object' && typeof item.key === 'string' && typeof item.label === 'string')
-  );
+  ).map(item => {
+    const configuredRole = item.role === 'auto' || item.role === 'sku' || item.role === 'spec' || item.role === 'filter' || item.role === 'internal' ? item.role : undefined;
+    const role = configuredRole && configuredRole !== 'auto' ? configuredRole : defaultAttributeRole(item.key);
+    return {
+      ...item,
+      label: knownLegacyLabels[item.key]?.includes(item.label) ? legacyLabels[item.key]! : item.label,
+      role,
+      roleSource: configuredRole && configuredRole !== 'auto' ? 'configured' as const : 'inferred' as const
+    };
+  }).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+}
+
+/**
+ * Legacy catalogs placed both sale options and descriptive measurements in the
+ * same JSON field. Keep those values intact, but only promote a defaulted
+ * specification to a purchase choice when it is the only real way to tell
+ * otherwise identical stock rows apart. Explicit category configuration wins.
+ */
+export function resolveProductAttributeDefinitions(
+  definitions: VariantAttributeDefinition[],
+  variants: Array<{ KichCo?: unknown; MauSac?: unknown; ThuocTinh?: unknown }>
+) {
+  const resolved = definitions.map(definition => ({ ...definition }));
+  const eyewearMeasurementKeys = ['lensWidthMm', 'bridgeWidthMm', 'templeLengthMm'];
+  const hasCompleteEyewearTuples = eyewearMeasurementKeys.every(key => resolved.some(definition => definition.key === key))
+    && variants.every(variant => {
+      const attributes = variant.ThuocTinh && typeof variant.ThuocTinh === 'object' && !Array.isArray(variant.ThuocTinh)
+        ? variant.ThuocTinh as Record<string, unknown> : {};
+      return eyewearMeasurementKeys.every(key => attributes[key] !== undefined && attributes[key] !== null && String(attributes[key]).trim() !== '');
+    })
+    && new Set(variants.map(variant => {
+      const attributes = variant.ThuocTinh && typeof variant.ThuocTinh === 'object' && !Array.isArray(variant.ThuocTinh)
+        ? variant.ThuocTinh as Record<string, unknown> : {};
+      return [String(variant.MauSac ?? '').trim().toLocaleLowerCase('vi'), ...eyewearMeasurementKeys.map(key => String(attributes[key]).trim().toLocaleLowerCase('vi'))].join('|');
+    })).size === variants.length;
+  const hasDuplicates = () => {
+    const seen = new Set<string>();
+    for (const variant of variants) {
+      const attributes = variant.ThuocTinh && typeof variant.ThuocTinh === 'object' && !Array.isArray(variant.ThuocTinh)
+        ? variant.ThuocTinh as Record<string, unknown> : {};
+      const signature = JSON.stringify([
+        String(variant.MauSac ?? '').trim().toLocaleLowerCase('vi'),
+        String(variant.KichCo ?? '').trim().toLocaleLowerCase('vi'),
+        resolved.filter(definition => definition.role === 'sku').map(definition => [definition.key, String(attributes[definition.key] ?? '').trim().toLocaleLowerCase('vi')])
+      ]);
+      if (seen.has(signature)) return true;
+      seen.add(signature);
+    }
+    return false;
+  };
+
+  for (const definition of resolved) {
+    if (!hasDuplicates()) break;
+    if (definition.role !== 'spec' || definition.roleSource !== 'inferred') continue;
+    if (hasCompleteEyewearTuples && eyewearMeasurementKeys.includes(definition.key)) continue;
+    const values = variants.map(variant => {
+      const attrs = variant.ThuocTinh && typeof variant.ThuocTinh === 'object' && !Array.isArray(variant.ThuocTinh)
+        ? variant.ThuocTinh as Record<string, unknown> : {};
+      return String(attrs[definition.key] ?? '');
+    });
+    if (new Set(values).size > 1) definition.role = 'sku';
+  }
+  return { definitions: resolved, selectionAmbiguous: variants.length > 1 && hasDuplicates() };
 }
 
 export function normalizeVariants(

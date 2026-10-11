@@ -7,7 +7,25 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addCartItem, formatPrice, fetchProductById, Product, ProductVariant, VariantAttributeDefinition } from '../../components/fashion-data';
+import { initialVariantSelection, matchesVariantSelection, reconcileVariantSelection, selectionOptionValues, selectionRole } from '../../components/product-variant-selection';
 
+const legacyLabels: Record<string, string> = {
+  size: 'Kích cỡ', dialDiameterMm: 'Đường kính mặt', strapWidthMm: 'Độ rộng dây', strapLength: 'Chiều dài dây',
+  lensWidthMm: 'Rộng tròng', bridgeWidthMm: 'Cầu kính', templeLengthMm: 'Chiều dài càng kính',
+  ringSize: 'Cỡ nhẫn', ringCircumferenceMm: 'Chu vi ngón tay', footLengthCm: 'Chiều dài bàn chân',
+  headCircumferenceCm: 'Vòng đầu', volumeLiters: 'Dung tích', lengthCm: 'Dài', heightCm: 'Cao', widthCm: 'Rộng'
+};
+
+function definitionsFor(product: Product): VariantAttributeDefinition[] {
+  const definitions = [...(product.categoryAttributes || [])];
+  const observed = new Set((product.variants || []).flatMap(variant => [...Object.keys(variant.attributes || {}), ...(variant.size ? ['size'] : [])]));
+  const category = (product.category || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').toLocaleLowerCase('vi');
+  const sizeLabel = category.includes('dong ho') ? 'Đường kính mặt' : category.includes('kinh') ? 'Cỡ gọng' : category.includes('giay') ? 'Cỡ giày' : 'Kích cỡ';
+  for (const key of observed) {
+    if (!definitions.some(definition => definition.key === key)) definitions.push({ key, label: key === 'size' ? sizeLabel : legacyLabels[key] || key, type: 'select', role: 'sku' });
+  }
+  return definitions.filter(definition => definition.role !== 'internal').sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+}
 
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string | string[] }>();
@@ -33,7 +51,6 @@ export default function ProductDetailScreen() {
   const focused = useRef(false);
   useFocusEffect(useCallback(() => { focused.current = true; return () => { focused.current = false; }; }, []));
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string | number>>({});
   const [selectedImage, setSelectedImage] = useState('');
@@ -46,10 +63,9 @@ export default function ProductDetailScreen() {
         const p = await (validId ? fetchProductById(productId) : Promise.reject(new Error('Mã sản phẩm không hợp lệ.')));
         if (request !== generation.current) return;
         setProduct(p); setError(''); setCartMessage(''); setUnits(1); setSelectedImage('');
-        const firstVariant = p.variants?.find(variant => variant.quantity > 0 && (!variant.status || variant.status === 'Đang mở bán')) || p.variants?.[0];
-        setSelectedVariantId(firstVariant?.id ?? null);
-        setSelectedColor(firstVariant?.color || '');
-        setSelectedAttributes({ ...firstVariant?.attributes, ...(firstVariant?.size ? { size: firstVariant.size } : {}) });
+        const selection = initialVariantSelection(p.variants || [], definitionsFor(p));
+        setSelectedColor(selection.color);
+        setSelectedAttributes(selection.attributes);
       } catch (cause) {
         if (request === generation.current) { setProduct(null); setError(cause instanceof Error ? cause.message : 'Không thể tải sản phẩm.'); }
       } finally { if (request === generation.current) setLoadedKey(loadKey); }
@@ -63,57 +79,48 @@ export default function ProductDetailScreen() {
 
   const variants = product.variants || [];
   const getAttributeValue = (variant: ProductVariant, key: string) => variant.attributes?.[key] ?? (key === 'size' ? variant.size : undefined);
-  const attributeDefinitions: VariantAttributeDefinition[] = [...(product.categoryAttributes || [])];
-  const observedKeys = new Set(variants.flatMap(variant => [...Object.keys(variant.attributes || {}), ...(variant.size ? ['size'] : [])]));
-  for (const key of observedKeys) {
-    if (!attributeDefinitions.some(definition => definition.key === key)) attributeDefinitions.push({ key, label: key === 'size' ? 'Kích thước' : key, type: 'select' });
-  }
+  const attributeDefinitions = definitionsFor(product);
   const allColors = Array.from(new Set(variants.map(variant => variant.color || '')));
-  const getAttributeOptions = (definition: VariantAttributeDefinition) => {
-    const values = variants.map(variant => getAttributeValue(variant, definition.key));
-    if (!values.some(value => value !== undefined && value !== null && value !== '')) return [];
-    return Array.from(new Map(values.map(value => [String(value ?? ''), value ?? ''] as const)).values());
-  };
-  // All observed dimensions must match. A partial selection must never pick the first SKU silently.
-  const matchingVariants = variants.filter(variant => (variant.color || '') === selectedColor && [...observedKeys].every(key => String(getAttributeValue(variant, key) ?? '') === String(selectedAttributes[key] ?? '')));
-  const currentVariant = matchingVariants.length === 1 ? matchingVariants[0] : matchingVariants.find(variant => variant.id === selectedVariantId);
+  const normalizedCategory = (product.category || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').toLocaleLowerCase('vi');
+  const isEyewear = normalizedCategory.includes('kinh');
+  const matchingVariants = matchesVariantSelection(variants, attributeDefinitions, { color: selectedColor, attributes: selectedAttributes });
+  const currentVariant = !product.selectionAmbiguous && matchingVariants.length === 1 ? matchingVariants[0] : null;
   const price = currentVariant?.price ?? product.price;
   const quantity = variants.length ? (currentVariant?.quantity ?? 0) : product.quantity;
   const productStatus = product.status || 'Đang mở bán';
   const variantStatus = currentVariant?.status || 'Đang mở bán';
   const status = productStatus === 'Đang mở bán' ? variantStatus : productStatus;
-  const canPurchase = (!variants.length || !!currentVariant) && quantity > 0 && units <= quantity && productStatus === 'Đang mở bán' && variantStatus === 'Đang mở bán';
+  const canPurchase = !product.selectionAmbiguous && (!variants.length || !!currentVariant) && quantity > 0 && units <= quantity && productStatus === 'Đang mở bán' && variantStatus === 'Đang mở bán';
   const gallery = [
     ...(currentVariant?.image ? [{ url: currentVariant.image, alt: `${product.name} · ${currentVariant.color || currentVariant.sku}` }] : []),
     ...(product.gallery?.length ? product.gallery : product.image ? [{ url: product.image, alt: product.name }] : []),
   ].filter((image, index, all) => all.findIndex(other => other.url === image.url) === index);
   const activeImage = gallery.find(image => image.url === selectedImage) || gallery[0];
   const selectedAttributeSummary = currentVariant
-    ? attributeDefinitions.map(definition => {
+    ? attributeDefinitions.filter(definition => ['spec', 'filter'].includes(selectionRole(definition))).map(definition => {
         const value = getAttributeValue(currentVariant, definition.key);
         return value === undefined ? null : `${definition.label}: ${value}${definition.unit ? ` ${definition.unit}` : ''}`;
       }).filter(Boolean).join(' · ')
     : '';
+  const frameMeasurementKeys = ['lensWidthMm', 'bridgeWidthMm', 'templeLengthMm'] as const;
+  const frameMeasurements = currentVariant && isEyewear ? frameMeasurementKeys.map(key => currentVariant.attributes?.[key]) : [];
+  const frameFitSummary = frameMeasurements.length === 3 && frameMeasurements.every(value => value !== undefined && value !== null && String(value).trim() !== '')
+    ? frameMeasurements.map(String).join('–')
+    : '';
 
-  const chooseVariant = (variant: ProductVariant) => {
-    setSelectedVariantId(variant.id); setSelectedColor(variant.color || '');
-    setSelectedAttributes({ ...variant.attributes, ...(variant.size ? { size: variant.size } : {}) });
-    setUnits(1); setCartMessage(''); setSelectedImage('');
-  };
   const chooseColor = (color: string) => {
-    const matching = variants.filter(variant => (variant.color || '') === color);
-    const next = matching.find(variant => variant.quantity > 0 && (!variant.status || variant.status === 'Đang mở bán')) || matching[0];
-    if (next) chooseVariant(next);
+    const next = reconcileVariantSelection(variants, attributeDefinitions, { color: selectedColor, attributes: selectedAttributes }, { color });
+    setSelectedColor(next.color); setSelectedAttributes(next.attributes); setUnits(1); setCartMessage(''); setSelectedImage('');
   };
   const chooseAttribute = (key: string, value: string | number) => {
-    setSelectedAttributes(current => ({ ...current, [key]: value }));
-    setSelectedVariantId(null); setUnits(1); setCartMessage(''); setSelectedImage('');
+    const next = reconcileVariantSelection(variants, attributeDefinitions, { color: selectedColor, attributes: selectedAttributes }, { key, value });
+    setSelectedColor(next.color); setSelectedAttributes(next.attributes); setUnits(1); setCartMessage(''); setSelectedImage('');
   };
 
   const addSelectedVariantToCart = async (goToCart = false) => {
     if (addingRef.current) return;
     if (!canPurchase) {
-      setCartMessage(variants.length && !currentVariant ? 'Vui lòng chọn một tổ hợp biến thể hợp lệ.' : quantity <= 0 ? 'Sản phẩm đã hết hàng.' : status);
+      setCartMessage(product.selectionAmbiguous ? 'Danh mục chưa phân biệt được các SKU của sản phẩm này. Vui lòng liên hệ cửa hàng để được hỗ trợ.' : variants.length && !currentVariant ? 'Vui lòng chọn phân loại hàng còn bán.' : quantity <= 0 ? 'Sản phẩm đã hết hàng.' : status);
       return;
     }
     const productToAdd = {
@@ -171,17 +178,18 @@ export default function ProductDetailScreen() {
           <View style={styles.brandRow}>
             <FavoriteButton id={product.id} name={product.name}/>
             <Text style={styles.brandText}>{product.brand?.toUpperCase() || product.category?.toUpperCase() || 'FASHION'}</Text>
-            <View style={styles.skuBadge}><Text style={styles.skuText}>{currentVariant?.sku ? `SKU: ${currentVariant.sku}` : `Mã SP: ${product.id}`}</Text></View>
+            <View style={styles.skuBadge}><Text style={styles.skuText}>Mã SP: {product.id}</Text></View>
           </View>
           <Text style={styles.title}>{product.name}</Text>
           {!!cartMessage && <Text accessibilityLiveRegion="polite" style={{ color: Colors.light.primary, marginTop: 8 }}>{cartMessage}</Text>}
           
           <View style={styles.priceBox}>
-            <Text style={styles.currentPrice}>{variants.length && !currentVariant ? 'Chọn biến thể' : formatPrice(price)}</Text>
+            <Text style={styles.currentPrice}>{variants.length && !currentVariant ? 'Chọn phân loại' : formatPrice(price)}</Text>
             <Text style={{ fontFamily: 'Inter', fontSize: 13, color: Colors.light.secondary, marginTop: 4 }}>
-              {variants.length > 0 && !currentVariant ? matchingVariants.length > 1 ? 'Chọn mã SKU để xác định đúng biến thể.' : 'Tổ hợp thuộc tính này chưa có biến thể.' : `Tồn kho: ${quantity} • ${quantity > 0 ? status : 'Hết hàng'}`}
+              {product.selectionAmbiguous ? 'Cửa hàng cần bổ sung cách phân biệt các phân loại hàng.' : variants.length > 0 && !currentVariant ? 'Chọn màu và phân loại để xem giá, tồn kho chính xác.' : `Tồn kho: ${quantity} • ${quantity > 0 ? status : 'Hết hàng'}`}
             </Text>
             {selectedAttributeSummary ? <Text style={{ fontFamily: 'Inter', fontSize: 12, color: Colors.light.secondary, marginTop: 5 }}>{selectedAttributeSummary}</Text> : null}
+          {frameFitSummary ? <View style={styles.sizeHelp}><MaterialIcons name="straighten" size={21} color={Colors.light.secondary} /><View style={{ flex: 1 }}><Text style={styles.frameGuideTitle}>Cỡ gọng: {frameFitSummary} mm</Text><Text style={styles.sizeHelpText}>Rộng tròng – cầu mũi – chiều dài càng kính. Ví dụ 52–18–140 mm; đây là số đo để tham khảo độ vừa.</Text></View></View> : null}
           </View>
 
           {/* Color Selector */}
@@ -189,36 +197,42 @@ export default function ProductDetailScreen() {
             <View style={styles.selectorSection}>
               <Text style={styles.selectorTitle}>Màu sắc: <Text style={styles.selectorValue}>{selectedColor || 'Không phân loại màu'}</Text></Text>
               <View style={styles.row}>
-                {allColors.map(c => (
-                  <Pressable key={c || 'no-color'} accessibilityRole="button" accessibilityLabel={`Màu ${c || 'không phân loại'}`} accessibilityState={{ selected: selectedColor === c, disabled: adding }} disabled={adding} style={[styles.btnOutline, selectedColor === c && styles.btnOutlineActive]} onPress={() => chooseColor(c)}>
-                    <Text style={[styles.btnText, selectedColor === c && styles.btnTextActive]}>{c || 'Không phân loại màu'}</Text>
-                  </Pressable>
-                ))}
+                {allColors.map(c => {
+                  const colorVariants = variants.filter(variant => (variant.color || '') === c);
+                  const images = [...new Set(colorVariants.map(variant => variant.image).filter(Boolean))];
+                  const soldOut = colorVariants.every(variant => variant.quantity <= 0 || variant.status !== 'Đang mở bán');
+                  return <Pressable key={c || 'no-color'} accessibilityRole="button" accessibilityLabel={`Màu ${c || 'không phân loại'}${soldOut ? ', hết hàng' : ''}`} accessibilityState={{ selected: selectedColor === c, disabled: adding }} disabled={adding} style={[styles.variantOption, selectedColor === c && styles.variantOptionActive]} onPress={() => chooseColor(c)}>
+                    {images.length === 1 && <CatalogImage source={images[0]} label={`Ảnh màu ${c || 'không phân loại'}`} fallbackLabel="" style={styles.optionThumbnail} />}
+                    <Text style={[styles.btnText, selectedColor === c && styles.btnTextActive]}>{c || 'Không phân loại màu'}{soldOut ? ' · Hết hàng' : ''}</Text>
+                  </Pressable>;
+                })}
               </View>
             </View>
           )}
 
-          {attributeDefinitions.map(definition => {
-            const options = getAttributeOptions(definition);
+          {attributeDefinitions.filter(definition => selectionRole(definition) === 'sku').map(definition => {
+            const options = selectionOptionValues(variants, attributeDefinitions, { color: selectedColor, attributes: selectedAttributes }, definition.key);
             if (!options.length) return null;
             const selectedValue = selectedAttributes[definition.key];
             return (
               <View key={definition.key} style={styles.selectorSection}>
                 <Text style={styles.selectorTitle}>{definition.label}{definition.unit ? ` (${definition.unit})` : ''}: <Text style={styles.selectorValue}>{selectedValue ?? 'Chọn'}</Text></Text>
+                {!!definition.description && <Text style={styles.stockHint}>{definition.description}</Text>}
                 <View style={styles.row}>
                   {options.map(option => {
-                    const exists = variants.some(variant => (variant.color || '') === selectedColor && String(getAttributeValue(variant, definition.key) ?? '') === String(option));
-                    return <Pressable key={String(option)} accessibilityRole="button" accessibilityLabel={`${definition.label}: ${option === '' ? 'Không áp dụng' : option}${exists ? '' : ', tổ hợp không có'}`} accessibilityState={{ selected: String(selectedValue ?? '') === String(option), disabled: adding || !exists }} disabled={adding || !exists} style={[styles.btnOutline, String(selectedValue ?? '') === String(option) && styles.btnOutlineActive, !exists && styles.disabled]} onPress={() => chooseAttribute(definition.key, option)}>
-                      <Text style={[styles.btnText, String(selectedValue ?? '') === String(option) && styles.btnTextActive]}>{option === '' ? 'Không áp dụng' : option}{option !== '' && definition.unit ? ` ${definition.unit}` : ''}</Text>
+                    const matchingOption = matchesVariantSelection(variants, attributeDefinitions, { color: selectedColor, attributes: { ...selectedAttributes, [definition.key]: option } });
+                    const exists = matchingOption.length > 0;
+                    const soldOut = exists && matchingOption.every(variant => variant.quantity <= 0 || variant.status !== 'Đang mở bán');
+                    const images = exists && matchingOption.length === 1 ? [matchingOption[0]!.image].filter(Boolean) : [];
+                    return <Pressable key={String(option)} accessibilityRole="button" accessibilityLabel={`${definition.label}: ${option === '' ? 'Không áp dụng' : option}${soldOut ? ', hết hàng' : exists ? '' : ', tổ hợp không có'}`} accessibilityState={{ selected: String(selectedValue ?? '') === String(option), disabled: adding || !exists }} disabled={adding || !exists} style={[styles.variantOption, String(selectedValue ?? '') === String(option) && styles.variantOptionActive, !exists && styles.disabled]} onPress={() => chooseAttribute(definition.key, option)}>
+                      {images.length === 1 && <CatalogImage source={images[0]} label={`Ảnh ${definition.label} ${option}`} fallbackLabel="" style={styles.optionThumbnail} />}
+                      <Text style={[styles.btnText, String(selectedValue ?? '') === String(option) && styles.btnTextActive]}>{option === '' ? 'Không áp dụng' : option}{option !== '' && definition.unit ? ` ${definition.unit}` : ''}{soldOut ? ' · Hết hàng' : ''}</Text>
                     </Pressable>;
                   })}
                 </View>
               </View>
             );
           })}
-          {matchingVariants.length > 1 && <View style={styles.selectorSection}>
-            <Text style={styles.selectorTitle}>Chọn mã biến thể</Text><View style={styles.row}>{matchingVariants.map(variant => <Pressable key={variant.id} accessibilityRole="button" accessibilityLabel={`Biến thể ${variant.sku}`} accessibilityState={{ selected: currentVariant?.id === variant.id, disabled: adding }} disabled={adding} style={[styles.btnOutline, currentVariant?.id === variant.id && styles.btnOutlineActive]} onPress={() => chooseVariant(variant)}><Text style={[styles.btnText, currentVariant?.id === variant.id && styles.btnTextActive]}>{variant.sku}</Text></Pressable>)}</View>
-          </View>}
           <View style={styles.selectorSection}>
             <Text style={styles.selectorTitle}>Số lượng</Text>
             <View style={styles.quantityRow}>
@@ -234,7 +248,7 @@ export default function ProductDetailScreen() {
             {!!product.material && <Text style={styles.descriptionText}><Text style={styles.descriptionLabel}>Chất liệu: </Text>{product.material}</Text>}
             {!!product.brand && <Text style={styles.descriptionText}><Text style={styles.descriptionLabel}>Thương hiệu: </Text>{product.brand}</Text>}
             <Text style={styles.descriptionText}>{product.description || 'Cửa hàng đang bổ sung mô tả chi tiết. Liên hệ tư vấn nếu bạn cần thông tin trước khi đặt hàng.'}</Text>
-            {observedKeys.has('size') && <View style={styles.sizeHelp}><MaterialIcons name="straighten" size={21} color={Colors.light.secondary} /><Text style={styles.sizeHelpText}>Chọn size theo thông số cửa hàng cung cấp. Nếu chưa rõ kích thước, hãy liên hệ tư vấn trước khi đặt.</Text></View>}
+            {attributeDefinitions.some(definition => ['spec', 'filter'].includes(selectionRole(definition))) && <View style={styles.sizeHelp}><MaterialIcons name="straighten" size={21} color={Colors.light.secondary} /><Text style={styles.sizeHelpText}>Thông số hiển thị theo dữ liệu sản phẩm. Chỉ phân loại có SKU, giá và tồn riêng mới ảnh hưởng đơn hàng.</Text></View>}
           </View>
         </View>
         </View>
@@ -292,6 +306,9 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   btnOutline: { paddingHorizontal: 16, height: 40, borderRadius: 8, borderWidth: 1, borderColor: Colors.light.outline, alignItems: 'center', justifyContent: 'center' },
   btnOutlineActive: { borderColor: Colors.light.primary, backgroundColor: Colors.light.primary },
+  variantOption: { minHeight: 40, maxWidth: '100%', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 9, borderWidth: 1, borderColor: Colors.light.outline, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+  variantOptionActive: { borderColor: Colors.light.primary, backgroundColor: Colors.light.primary },
+  optionThumbnail: { width: 34, height: 34, borderRadius: 6 },
   btnText: { fontFamily: 'Inter', fontSize: 14, fontWeight: '500', color: Colors.light.onSurface },
   btnTextActive: { color: Colors.light.onPrimary, fontWeight: '700' },
   chatBtn: { width: 50, height: 44, borderRadius: 8, backgroundColor: Colors.light.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
@@ -315,6 +332,7 @@ const styles = StyleSheet.create({
   descriptionLabel: { fontWeight: '600', color: Colors.light.onSurface },
   sizeHelp: { marginTop: 8, backgroundColor: Colors.light.surfaceContainerHigh, padding: 14, borderRadius: 12, flexDirection: 'row', gap: 10 },
   sizeHelpText: { flex: 1, fontFamily: 'Inter', fontSize: 12, lineHeight: 19, color: Colors.light.secondary },
+  frameGuideTitle: { fontFamily: 'Inter', fontSize: 13, lineHeight: 18, fontWeight: '700', color: Colors.light.onSurface },
   errorText: { fontFamily: 'Inter', fontSize: 16, color: Colors.light.error, marginBottom: 16 },
   backBtn: { paddingHorizontal: 20, paddingVertical: 10, backgroundColor: Colors.light.primary, borderRadius: 8 },
   backText: { color: Colors.light.onPrimary, fontWeight: '600' }

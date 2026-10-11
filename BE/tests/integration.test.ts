@@ -259,6 +259,27 @@ test('Real HTTP API and isolated MySQL', async t => {
     const restored = (await request('/categories')).body.find((c: any) => c.id === category.MaLoaiHang); assert.equal(restored.image, gallery[0]!.url);
   });
 
+  await t.test('category attribute roles are validated, configurable and hide internal fields from customers', async () => {
+    const created = await request('/categories', 'POST', { name: 'Eyewear role fixture', variantAttributes: [
+      { key: 'frameColor', label: 'Màu gọng', type: 'select', role: 'sku', options: ['Đen', 'Nâu'], required: true, position: 0 },
+      { key: 'lensWidthMm', label: 'Rộng tròng', type: 'number', role: 'spec', unit: 'mm', description: 'Đo ngang một tròng', position: 1 },
+      { key: 'staffMemo', label: 'Ghi chú kho', type: 'text', role: 'internal', position: 2 }
+    ] }, adminToken);
+    assert.equal(created.status, 201);
+    const id = created.body.id;
+    const customerCategories = await request('/categories');
+    const publicCategory = customerCategories.body.find((item: any) => item.id === id);
+    assert.deepEqual(publicCategory.variantAttributes.map((item: any) => item.role), ['sku', 'spec']);
+    assert.ok(!JSON.stringify(publicCategory).includes('staffMemo'));
+    assert.ok(!JSON.stringify((await request(`/categories/${id}/variant-attributes`)).body).includes('staffMemo'));
+    const internal = await request('/categories/internal/list', 'GET', undefined, adminToken);
+    assert.equal(internal.body.find((item: any) => item.id === id).variantAttributes[2].role, 'internal');
+    assert.equal((await request(`/categories/${id}`, 'PUT', { variantAttributes: [{ key: 'bad key', label: 'Sai', type: 'text', role: 'sku' }] }, adminToken)).status, 400);
+    const preserved = await request(`/categories/${id}/variant-attributes`);
+    assert.equal(preserved.body.attributes[0].key, 'frameColor');
+    assert.equal(preserved.body.attributes[1].unit, 'mm');
+  });
+
   await t.test('quote and checkout recalculate variant prices and reserve actual inventory', async () => {
     const priced = await quote(items); assert.equal(priced.status, 200); assert.equal(priced.body.total, 240000);
     const result = await submit(items, randomUUID(), priced.body.quoteHash); assert.equal(result.status, 201); orderId = result.body.order.MaPhieuXuat;

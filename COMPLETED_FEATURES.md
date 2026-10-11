@@ -2,6 +2,16 @@
 
 Checkpoint **06/10/2026**. Đây là các luồng đã triển khai và phạm vi kiểm tra, không phải tuyên bố toàn hệ thống hoàn chỉnh hay sẵn sàng production. Bảng yêu cầu → màn hình → API → dữ liệu → nghiệp vụ → nghiệm thu → trạng thái ở [PLAN.md](PLAN.md); cách chạy từ clone ở [README.md](README.md), API/cấu hình ở [BE/README.md](BE/README.md).
 
+## Checkpoint 11/10/2026 — phân loại thuộc tính SKU
+
+- FE chỉ hiển thị thuộc tính vai trò `sku` như lựa chọn mua. Tổ hợp màu và thuộc tính đó phải khớp đúng một biến thể; không tự chọn dòng đầu tiên khi còn nhiều lựa chọn. Giá, ảnh và tồn đi theo SKU đã khớp; SKU hết hàng không thể thêm giỏ. Cấu hình mơ hồ chặn mua và giải thích cho khách. Lựa chọn có ảnh SKU riêng hiển thị thumbnail khi xác định được một ảnh; giá trị thuộc tính rỗng không hiện thành lựa chọn giả.
+- Backend phân loại các thuộc tính hiện có thành lựa chọn mua, thông số, dùng để lọc hoặc nội bộ. Metadata được lưu kèm cấu hình danh mục; giá trị SKU hiện hữu không bị viết lại. API công khai loại thuộc tính nội bộ; API quản trị vẫn trả cấu hình để sửa.
+- Với kính legacy không có KichCo nhưng có đủ bộ lens/bridge/temple duy nhất, API tạo lựa chọn “Cỡ gọng” chỉ trong response; database không thay đổi. Nếu bộ số đo thiếu hoặc trùng, checkout UI không đoán. FE giải thích thứ tự rộng tròng–cầu mũi–dài càng bằng mm. Với giày, EU là lựa chọn SKU; US/UK và chiều dài bàn chân chỉ là tham khảo, không bắt khách chọn lại hệ size tương đương.
+- Quản trị danh mục có thể thêm/sửa/xóa/sắp thứ tự thuộc tính và chọn vai trò; backend giới hạn/kiểm tra key, loại, lựa chọn và trùng key. ProductVariantEditor hiện nhãn vai trò để tránh nhầm tồn/SKU với số đo.
+- Ca kiểm tra: backend unit + API/MySQL **106/106**, 0 fail/skip; ba database do các lượt test trong phiên này tạo đều đã được dọn trong `finally`: `fashionhaven_test_1791720102342_0adf1f97` (lượt đầu bắt được assertion sai và không đạt), `fashionhaven_test_1791720396503_c4ab98b0`, `fashionhaven_test_1791722755525_12547499` (lượt cuối đạt). BE typecheck, FE typecheck/lint/Expo web export (24 route), admin typecheck/lint/Vite build đều đạt. Backend thật khởi động bằng `npm.cmd run dev`; `/api/health` trả `ok`, catalog trả 80 sản phẩm; API thực tế trả `euSize:sku`, `usSize/ukSize:spec` cho giày và lựa chọn `__frameSize` cho kính legacy. Trang FE `/product/94` và admin `/` trả HTTP 200. Không có browser automation surface (Edge launch approval timeout; IAB unavailable), nên tương tác UI/mobile và native chưa xác minh.
+- Đối chiếu chỉ đọc database cửa hàng ở checkpoint trước thay đổi: 22 danh mục, 82 sản phẩm, 393 biến thể. Lát cắt này không sửa catalog, giá, SKU, tồn, khách hay đơn. Khi xác nhận runtime, `npm.cmd run dev` chạy lại `db:prepare`; từng script báo schema hiện hữu đã sẵn sàng/up to date và bảo toàn nghiệp vụ. Không chạy FashionHeaven.sql, seed hoặc reset database.
+- Còn mở: bộ lọc listing tổng quát theo các thuộc tính `filter`, nghiệm thu browser/native sau thay đổi, luồng đơn hàng/voucher/đổi trả và các mục trong backlog của PLAN. Đây là một lát cắt, không phải tuyên bố hoàn chỉnh toàn hệ thống.
+
 ## Nguồn và dữ liệu thực
 
 - Khách: `FE`, Expo SDK 57 / React Native / Expo Router. Admin: `admin_web`, React/Vite. Backend: `BE`, Express/TypeScript/Prisma/**MySQL**.

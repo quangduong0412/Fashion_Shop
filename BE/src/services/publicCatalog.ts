@@ -3,7 +3,7 @@ import { Request } from 'express';
 import prisma from '../db';
 import { ApiError, positiveId, textValue } from './apiErrors';
 import { pagination } from './pagination';
-import { normalizeSaleStatus, readVariantAttributeDefinitions, serializeVariant } from './productVariants';
+import { normalizeSaleStatus, readVariantAttributeDefinitions, resolveProductAttributeDefinitions, serializeVariant } from './productVariants';
 import { readGallery } from './catalogMedia';
 
 export function publicProduct(product: any) {
@@ -12,11 +12,43 @@ export function publicProduct(product: any) {
   const variants = (product.bienThes || []).filter((v: any) => active(v.TrangThai));
   if (product.bienThes?.length && !variants.length) return null;
   const prices=variants.map((v:any)=>v.DonGia??product.DonGiaBan);
+  const configuration = resolveProductAttributeDefinitions(readVariantAttributeDefinitions(product.loaiHang.ThuocTinhBienThe), variants);
+  const hidden = new Set(configuration.definitions.filter(definition => definition.role === 'internal').map(definition => definition.key));
+  let publicVariants = variants.map((variant: any) => {
+    const serialized = serializeVariant(variant, product.DonGiaBan);
+    return { ...serialized, attributes: Object.fromEntries(Object.entries(serialized.attributes || {}).filter(([key]) => !hidden.has(key))) };
+  });
+  let categoryAttributes = configuration.definitions.filter(definition => definition.role !== 'internal');
+  let selectionAmbiguous = configuration.selectionAmbiguous;
+
+  // Older eyewear rows sometimes kept frame measurements as the only identity
+  // because the legacy size column was blank. Present that existing tuple as
+  // one readable fit-size choice instead of asking customers to choose three
+  // correlated measurements separately. This value exists only in the DTO.
+  const isEyewear = /kính/i.test(product.loaiHang.TenLoaiHang || '');
+  const hasLegacySize = variants.some((variant: any) => String(variant.KichCo || '').trim());
+  if (isEyewear && !hasLegacySize && variants.length > 1 && configuration.selectionAmbiguous) {
+    const measurementKeys = ['lensWidthMm', 'bridgeWidthMm', 'templeLengthMm'];
+    const tuples = variants.map((variant: any) => {
+      const attributes = variant.ThuocTinh && typeof variant.ThuocTinh === 'object' ? variant.ThuocTinh : {};
+      const values = measurementKeys.map(key => attributes[key]);
+      return values.every(value => value !== undefined && value !== null && value !== '') ? values.map(String).join('–') : '';
+    });
+    const complete = tuples.every(Boolean);
+    const uniqueTuples = new Set(variants.map((variant: any, index: number) => `${String(variant.MauSac || '').toLocaleLowerCase('vi')}|${tuples[index]}`));
+    if (complete && uniqueTuples.size === variants.length) {
+      const definition = { key: '__frameSize', label: 'Cỡ gọng', type: 'select' as const, unit: 'mm', role: 'sku' as const, position: 0 };
+      categoryAttributes = [definition, ...categoryAttributes];
+      publicVariants = publicVariants.map((variant: any, index: number) => ({ ...variant, attributes: { ...variant.attributes, __frameSize: tuples[index] } }));
+      selectionAmbiguous = false;
+    }
+  }
+
   return { id: product.MaSanPham, name: product.TenSanPham, price: prices.length?Math.min(...prices):product.DonGiaBan, priceMax:prices.length?Math.max(...prices):product.DonGiaBan, image: product.Anh,
     gallery: readGallery(product.Gallery, product.Anh), description: product.GhiChu, material: product.ChatLieu, brand: product.ThuongHieu,
-    category: product.loaiHang.TenLoaiHang, categoryId: product.MaLoaiHang, categoryAttributes: readVariantAttributeDefinitions(product.loaiHang.ThuocTinhBienThe),
+    category: product.loaiHang.TenLoaiHang, categoryId: product.MaLoaiHang, categoryAttributes, selectionAmbiguous,
     quantity: product.bienThes?.length ? variants.reduce((n: number, v: any) => n + v.SoLuong, 0) : product.SoLuong,
-    status: 'Đang mở bán', variants: variants.map((v: any) => serializeVariant(v, product.DonGiaBan)) };
+    status: 'Đang mở bán', variants: publicVariants };
 }
 
 const selling = Prisma.sql`('Đang mở bán','Hết hàng')`;

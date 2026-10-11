@@ -3,9 +3,12 @@ export type AttributeDefinition = {
   key: string;
   label: string;
   type: 'select' | 'suggest' | 'text' | 'number';
+  role?: 'auto' | 'sku' | 'spec' | 'filter' | 'internal';
+  roleSource?: 'configured' | 'inferred';
   options?: string[];
   unit?: string;
   placeholder?: string;
+  description?: string;
   defaultValue?: string | number;
   required?: boolean;
   requiredGroup?: string;
@@ -85,7 +88,7 @@ export default function ProductVariantEditor({ definitions, productPrice, initia
                 const listId = `variant-${variant.id ?? variant.clientKey}-${definition.key}`;
                 return (
                   <label key={definition.key} className="text-xs font-semibold text-gray-600 space-y-1">
-                    <span>{definition.label}{definition.unit ? ` (${definition.unit})` : ''}{definition.required ? ' *' : ''}</span>
+                    <span>{definition.label}{definition.unit ? ` (${definition.unit})` : ''} · {{ sku: 'Lựa chọn mua', spec: 'Thông số', filter: 'Dùng để lọc', internal: 'Nội bộ', auto: 'Tự nhận diện' }[definition.role || 'sku']}{definition.required ? ' *' : ''}</span>
                     {definition.type === 'select' && definition.options?.length ? (
                       <select className={fieldClass} value={value} required={definition.required} onChange={event => setAttribute(event.target.value)}>
                         <option value="">Chọn {definition.label.toLocaleLowerCase('vi')}</option>

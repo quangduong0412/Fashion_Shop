@@ -1,7 +1,8 @@
 import { apiRequest, SERVER_URL } from './api';
 
 export type GalleryImage = { url: string; alt?: string };
-export type CatalogCategory = { id: number; name: string; image?: string | null; icon?: string | null; isActive?: boolean; position?: number };
+export type CategoryAttribute = { key: string; label: string; type: 'select' | 'suggest' | 'text' | 'number'; role?: 'auto' | 'sku' | 'spec' | 'filter' | 'internal'; options?: string[]; unit?: string; placeholder?: string; description?: string; defaultValue?: string | number; required?: boolean; requiredGroup?: string; position?: number; roleSource?: 'configured' | 'inferred' };
+export type CatalogCategory = { id: number; name: string; image?: string | null; icon?: string | null; isActive?: boolean; position?: number; variantAttributes?: CategoryAttribute[] };
 export const categoryIcons = [
   ['all', 'Tổng hợp'], ['dress', 'Váy / Đầm'], ['shirt', 'Áo'], ['pants', 'Quần'], ['skirt', 'Chân váy'],
   ['jacket', 'Áo khoác'], ['shoes', 'Giày dép'], ['bag', 'Túi xách'], ['accessories', 'Phụ kiện'], ['traditional', 'Trang phục truyền thống'],

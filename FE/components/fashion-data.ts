@@ -27,12 +27,16 @@ export type Product = {
   status?: string;
   categoryAttributes?: VariantAttributeDefinition[];
   variants?: ProductVariant[];
+  selectionAmbiguous?: boolean;
 };
 
 export type VariantAttributeDefinition = {
   key: string;
   label: string;
   type: 'select' | 'suggest' | 'text' | 'number';
+  role?: 'auto' | 'sku' | 'spec' | 'filter' | 'internal';
+  description?: string;
+  position?: number;
   options?: string[];
   unit?: string;
   placeholder?: string;

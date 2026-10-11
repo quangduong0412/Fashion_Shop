@@ -1,5 +1,19 @@
 # Checkpoint triển khai — 06/10/2026
 
+## Checkpoint tiếp tục — thuộc tính danh mục và chọn SKU (11/10/2026)
+
+| Yêu cầu | FE/admin | API | Dữ liệu | Quy tắc | Nghiệm thu | Trạng thái |
+| --- | --- | --- | --- | --- | --- | --- |
+| Lựa chọn đúng SKU theo danh mục | Product detail, CategoriesView, ProductVariantEditor | `publicCatalog`, `productVariants`, category CRUD | Category metadata + SKU/JSON legacy | SKU/spec/filter/internal; không đoán lựa chọn; chặn mơ hồ/hết hàng | Unit/API test, typecheck, lint, builds | 105/105 test; BE/FE/admin kiểm tra đạt; browser chưa chạy |
+
+Kết quả: thuộc tính mua được chọn theo màu và role `sku`; thông số hiển thị riêng, `internal` bị loại khỏi API công khai, `filter` không được coi là SKU. Kính cũ có đủ ba số đo sẽ có lựa chọn cỡ gọng dẫn xuất trong response. Cấu hình danh mục sửa được mà không rewrite các dòng SKU cũ. Giày dùng EU làm lựa chọn; US/UK là tham khảo và không tạo nút chọn rỗng. Lựa chọn có một ảnh SKU được hiển thị thumbnail; số đo kính giải thích theo thứ tự rộng tròng–cầu mũi–dài càng.
+
+Không ghi thuộc tính vào database shop và không sửa catalog, SKU, tồn, giá, khách hay đơn. Để xác nhận khởi động API, `npm.cmd run dev` chạy `db:prepare`; output báo các bảng/migration sẵn sàng, đơn cũ/tồn/tiền được bảo toàn. Không chạy FashionHeaven.sql, seed hoặc reset. Ba database test do các lượt test trong phiên này tạo đều được runner xóa: `fashionhaven_test_1791720102342_0adf1f97` (lượt assertion fail đã sửa), `fashionhaven_test_1791720396503_c4ab98b0`, `fashionhaven_test_1791722755525_12547499` (lượt cuối 106/106). Thư mục `BaoCao/`, `report_work/`, `USECASE.md` được giữ nguyên.
+
+Kiểm tra: `BE npm.cmd run typecheck`; `BE npm.cmd test` 106/106; `FE npx.cmd tsc --noEmit`, `npm.cmd run lint`, `npx.cmd expo export --platform web` (24 routes); `admin_web npm.cmd run typecheck`, `npm.cmd run lint`, `npm.cmd run build`; `git diff --check`. Backend `/api/health` trả `ok`; endpoint sản phẩm xác nhận vai trò size giày và lựa chọn kính trên DB hiện tại; FE product route và admin home trả HTTP 200. Browser automation không khả dụng trong môi trường này, nên UI tương tác/native chưa xác minh.
+
+Việc tiếp theo chính xác: chạy browser acceptance cho áo/quần, giày, đồng hồ, kính và túi; sau đó hoàn thiện bộ lọc tùy biến nếu cần. Tiếp tục luồng checkout→đơn quản trị/voucher và đổi trả; giữ trạng thái từng ca trong PLAN.
+
 ## Trạng thái kế thừa
 
 Nguồn chính FE (Expo 57), admin_web (Vite), BE (Express/Prisma/MySQL). Kế thừa commit b9eb8d9 và phần checkout của QuangDuong đã có trong ancestry; không clone một bản frontend khác. BaoCao/ và report_work/ của người dùng giữ nguyên, không sửa Word. Không phát hành, không dùng tiền thật, không reset/seed database cửa hàng.
