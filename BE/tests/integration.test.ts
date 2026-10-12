@@ -25,6 +25,12 @@ test('Real HTTP API and isolated MySQL', async t => {
     const response = await fetch(base + route, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     return { status: response.status, body: await response.json() as any };
   };
+  const uploadReturnImage = async (route: string, token: string | undefined, bytes: Buffer) => {
+    const form = new FormData();
+    form.append('image', new Blob([new Uint8Array(bytes)], { type: 'image/png' }), 'return-proof.png');
+    const response = await fetch(base + route, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form });
+    return { status: response.status, body: await response.json() as any };
+  };
   const login = async (email: string, password: string) => request('/users/login', 'POST', { email, password });
   const adminSession = await login('test-admin', 'TestPassword1!');
   assert.equal(adminSession.status, 200);
@@ -344,6 +350,84 @@ test('Real HTTP API and isolated MySQL', async t => {
     const history = await request(`/orders/${orderId}`, 'GET', undefined, customerToken); assert.equal(history.body.history.length, 5);
     assert.equal((await prisma.sanPham.findUniqueOrThrow({ where: { MaSanPham: product.MaSanPham } })).SoLuong, 4);
   });
+  await t.test('return inspection restocks once and refund reconciliation is exact and idempotent', async () => {
+    const returnProduct = await prisma.sanPham.create({ data: { TenSanPham: 'Return flow fixture', MaLoaiHang: category.MaLoaiHang, MaKho: warehouse.MaKho, MaNCC: supplier.MaNCC, DonGiaNhap: 50000, DonGiaBan: 120000, SoLuong: 5 } });
+    const returnItems = [{ id: returnProduct.MaSanPham, quantity: 2 }];
+    const priced = await quote(returnItems); assert.equal(priced.status, 200);
+    const created = await submit(returnItems, randomUUID(), priced.body.quoteHash); assert.equal(created.status, 201);
+    const id = created.body.order.MaPhieuXuat;
+    const orderLineId = created.body.order.ctDonHangs[0].STT;
+    assert.equal((await request(`/returns/orders/${id}`, 'POST', { requestKey: 'return_not_delivered_01', reason: 'Not delivered yet', lines: [{ orderLineId, quantity: 1 }] }, customerToken)).status, 409);
+    const other = await request('/users/register', 'POST', { name: 'Return owner check', email: 'return-owner@example.invalid', password: 'ReturnOwnerPass1!' });
+    const advance = (expectedStatus: string, status: string, extra: Record<string, unknown> = {}) => request(`/orders/${id}/status`, 'PUT', { expectedStatus, status, reason: 'Synthetic delivery step', ...extra }, adminToken);
+    assert.equal((await advance('PENDING', 'PROCESSING')).status, 200);
+    assert.equal((await advance('PROCESSING', 'SHIPPING', { shippingProvider: 'Synthetic courier', trackingCode: 'RET-001' })).status, 200);
+    assert.equal((await advance('SHIPPING', 'DELIVERED')).status, 200);
+    const requestReturn = (requestKey: string, reason: string, token = customerToken, quantity = 1) => request(`/returns/orders/${id}`, 'POST', { requestKey, reason, lines: [{ orderLineId, quantity }] }, token);
+    const cancelled = await requestReturn('return_cancel_request_01', 'Changed my mind'); assert.equal(cancelled.status, 201);
+    assert.equal((await request(`/returns/${cancelled.body.request.id}/cancel`, 'POST', { expectedVersion: 1, reason: 'No longer required' }, customerToken)).status, 200);
+    const first = await requestReturn('return_flow_request_0001', 'Wrong size', customerToken, 2); assert.equal(first.status, 201);
+    const returnId = first.body.request.id, returnLineId = first.body.request.lines[0].id;
+    assert.equal(first.body.request.lines[0].requestedQuantity, 2);
+    const proofImage = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jN3cAAAAASUVORK5CYII=', 'base64');
+    assert.equal((await uploadReturnImage(`/returns/${returnId}/evidence`, undefined, proofImage)).status, 401, 'evidence requires authentication');
+    assert.equal((await uploadReturnImage(`/returns/${returnId}/evidence`, staffToken, proofImage)).status, 403, 'staff without return permission cannot attach evidence');
+    assert.equal((await uploadReturnImage(`/returns/${returnId}/evidence`, other.body.token, proofImage)).status, 404, 'another customer cannot attach evidence');
+    const invalidEvidence = await uploadReturnImage(`/returns/${returnId}/evidence`, customerToken, Buffer.from('<html>not an image</html>'));
+    assert.equal(invalidEvidence.status, 415);
+    const evidenceUpload = await uploadReturnImage(`/returns/${returnId}/evidence`, customerToken, proofImage);
+    assert.equal(evidenceUpload.status, 201);
+    assert.match(evidenceUpload.body.evidence.url, new RegExp(`^/returns/${returnId}/evidence/`));
+    const retryEvidence = await uploadReturnImage(`/returns/${returnId}/evidence`, customerToken, proofImage);
+    assert.equal(retryEvidence.status, 200, 'same evidence bytes are deduplicated on upload retry');
+    assert.equal(retryEvidence.body.evidence.id, evidenceUpload.body.evidence.id);
+    const refreshedReturn = await request(`/returns/${returnId}`, 'GET', undefined, customerToken);
+    assert.equal(refreshedReturn.body.evidence.length, 1);
+    const evidencePath = `/returns/${returnId}/evidence/${evidenceUpload.body.evidence.id}`;
+    const evidenceFetch = async (token?: string) => fetch(base + evidencePath, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    assert.equal((await evidenceFetch()).status, 401);
+    assert.equal((await evidenceFetch(other.body.token)).status, 404, 'another customer cannot view private evidence');
+    assert.equal((await evidenceFetch(staffToken)).status, 403, 'staff without return permission cannot view private evidence');
+    const privateEvidence = await evidenceFetch(customerToken);
+    assert.equal(privateEvidence.status, 200);
+    assert.equal(privateEvidence.headers.get('content-type'), 'image/png');
+    assert.equal(Buffer.compare(Buffer.from(await privateEvidence.arrayBuffer()), proofImage), 0);
+    assert.equal((await requestReturn('return_flow_request_0001', 'Wrong size', customerToken, 2)).status, 200);
+    assert.equal((await requestReturn('return_flow_request_0001', 'Different reason')).status, 409);
+    assert.equal((await requestReturn('return_other_owner_0001', 'Wrong size', other.body.token)).status, 404);
+    assert.equal((await request(`/returns/${returnId}`, 'GET', undefined, other.body.token)).status, 404);
+    assert.equal((await request(`/returns/${returnId}`, 'GET', undefined, staffToken)).status, 403);
+    assert.equal((await request(`/returns/${returnId}/status`, 'PUT', { expectedVersion: 1, status: 'APPROVED', reason: 'Review accepted' }, staffToken)).status, 403);
+    const change = (status: string, expectedVersion: number, extra: Record<string, unknown> = {}) => request(`/returns/${returnId}/status`, 'PUT', { expectedVersion, status, reason: 'Synthetic inspection record', ...extra }, adminToken);
+    assert.equal((await change('APPROVED', 2)).status, 200);
+    assert.equal((await change('APPROVED', 2)).status, 409, 'stale transition cannot overwrite a newer return state');
+    assert.equal((await change('RECEIVED', 3, { receivedLines: [{ lineId: returnLineId, receivedQuantity: 1 }] })).status, 200);
+    assert.equal((await change('INSPECTED', 4, { inspectionLines: [{ lineId: returnLineId, saleableQuantity: 1 }] })).status, 200);
+    assert.equal((await prisma.sanPham.findUniqueOrThrow({ where: { MaSanPham: returnProduct.MaSanPham } })).SoLuong, 4, 'only the inspected saleable unit is restocked');
+    assert.equal(await prisma.dieuChinhTonKho.count({ where: { MaSanPham: returnProduct.MaSanPham, Loai: 'RETURN_RESTOCK' } }), 1);
+    const refund = (key: string, reference: string) => request(`/returns/${returnId}/refund`, 'POST', { idempotencyKey: key, method: 'BANK_TRANSFER', reference }, adminToken);
+    assert.equal((await refund('return_refund_first_01', 'BANK-RET-001')).status, 409, 'cannot refund a COD order before collected payment is reconciled');
+    assert.equal((await request(`/orders/${id}/status`, 'PUT', { expectedStatus: 'DELIVERED', paymentStatus: 'PAID', reason: 'Synthetic COD receipt' }, adminToken)).status, 200);
+    assert.equal((await refund('return_refund_first_01', 'BANK-RET-001')).status, 201);
+    assert.equal((await refund('return_refund_first_01', 'BANK-RET-001')).status, 200, 'retry returns the original refund ledger row');
+    assert.equal((await refund('return_refund_first_01', 'DIFFERENT-REFERENCE')).status, 409);
+    assert.equal(await prisma.returnRefund.count({ where: { ReturnId: returnId } }), 1);
+
+    const second = await requestReturn('return_flow_request_0002', 'Second unit also wrong'); assert.equal(second.status, 201);
+    const secondId = second.body.request.id, secondLineId = second.body.request.lines[0].id;
+    const advanceReturn = (status: string, expectedVersion: number, extra: Record<string, unknown> = {}) => request(`/returns/${secondId}/status`, 'PUT', { expectedVersion, status, reason: 'Second unit inspection', ...extra }, adminToken);
+    assert.equal((await advanceReturn('APPROVED', 1)).status, 200);
+    assert.equal((await advanceReturn('RECEIVED', 2, { receivedLines: [{ lineId: secondLineId, receivedQuantity: 1 }] })).status, 200);
+    assert.equal((await advanceReturn('INSPECTED', 3, { inspectionLines: [{ lineId: secondLineId, saleableQuantity: 0 }] })).status, 200);
+    assert.equal((await prisma.sanPham.findUniqueOrThrow({ where: { MaSanPham: returnProduct.MaSanPham } })).SoLuong, 4, 'unsaleable returned unit is not put back into inventory');
+    const secondRefund = await request(`/returns/${secondId}/refund`, 'POST', { idempotencyKey: 'return_refund_second_01', method: 'CASH', reference: 'CASH-RET-002' }, adminToken);
+    assert.equal(secondRefund.status, 201); assert.equal(secondRefund.body.refund.amount, 120000);
+    assert.equal((await prisma.phieuXuat.findUniqueOrThrow({ where: { MaPhieuXuat: id } })).TrangThaiThanhToan, 'REFUNDED');
+    assert.equal(await prisma.returnRefund.count({ where: { request: { OrderId: id } } }), 2);
+    const returnList = await request('/returns?page=1&pageSize=5&status=&search=', 'GET', undefined, adminToken);
+    assert.equal(returnList.status, 200); assert.ok(returnList.body.total >= 2);
+    assert.equal((await request('/returns', 'GET', undefined, staffToken)).status, 403);
+  });
   await t.test('concurrent cancellation retries restore parent and variant only once', async () => {
     const priced = await quote(items), result = await submit(items, randomUUID(), priced.body.quoteHash), id = result.body.order.MaPhieuXuat;
     const results = await Promise.all([request(`/orders/${id}/cancel`, 'POST', { reason: 'Synthetic cancellation' }, customerToken), request(`/orders/${id}/cancel`, 'POST', { reason: 'Synthetic cancellation' }, customerToken)]);
@@ -501,7 +585,7 @@ test('Real HTTP API and isolated MySQL', async t => {
   if (process.env.PLAYWRIGHT_MODULE) {
     await t.test('customer web checkout and admin fulfillment in a real browser', async () => {
       const { runBrowser } = require('./browser.cjs');
-      await runBrowser({ base, productId: product.MaSanPham, adminId: admin.MaNhanVien, customerId, prisma });
+      await runBrowser({ base, productId: product.MaSanPham, adminId: admin.MaNhanVien, adminToken, customerId, customerToken, prisma });
     });
   }
 });

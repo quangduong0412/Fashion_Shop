@@ -2,7 +2,6 @@ require('dotenv').config();
 const net = require('node:net');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { clientIsCurrent } = require('./ensure-prisma-client.cjs');
 
 async function portIsFree(port) {
   const probeAddress = host => new Promise((resolve, reject) => {
@@ -24,14 +23,17 @@ async function existingShop(port) {
     return body.service === 'fashion-haven-api' && body.mode === 'shop' && body.status === 'ok';
   } catch { return false; }
 }
+async function startupPlan(port) {
+  if (await portIsFree(port)) return 'start';
+  if (await existingShop(port)) return 'reuse';
+  throw new Error(`Cổng ${port} đang được tiến trình khác sử dụng. Dừng đúng dịch vụ đó rồi chạy lại npm run dev.`);
+}
 async function main() {
   const port = Number(process.env.PORT || 4000);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT không hợp lệ.');
-  if (!await portIsFree(port)) {
-    if (await existingShop(port) && clientIsCurrent()) {
-      console.log(`Backend cửa hàng đã chạy: http://localhost:${port}. Không mở thêm process hoặc ghi lại Prisma engine. Muốn restart watcher: dừng phiên backend hiện tại trước.`); return;
-    }
-    throw new Error(`Cổng ${port} đang được sử dụng hoặc client cần cập nhật. Dừng đúng phiên backend cũ rồi chạy lại npm run dev.`);
+  const plan = await startupPlan(port);
+  if (plan === 'reuse') {
+    console.log(`Backend cửa hàng đã chạy: http://localhost:${port}. Không mở thêm process hoặc ghi lại Prisma engine.`); return;
   }
   const cwd = path.resolve(__dirname, '..');
   const npmCli = process.env.npm_execpath;
@@ -49,5 +51,5 @@ async function main() {
     process.exitCode = await run([require.resolve('nodemon/bin/nodemon.js'), '--watch', 'src', '--ext', 'ts,json', 'src/server.ts']);
   } finally { process.off('SIGINT', stop); process.off('SIGTERM', stop); }
 }
-module.exports = { portIsFree, existingShop };
+module.exports = { portIsFree, existingShop, startupPlan };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

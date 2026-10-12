@@ -288,7 +288,7 @@ export async function apiRequest(path: string, options: RequestInit = {}) {
   try {
     const response = await fetch(`${API_URL}${path}`, {
       ...options, signal: options.signal || controller.signal,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers }
+      headers: { ...(typeof FormData !== 'undefined' && options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers }
     });
     const data = await response.json().catch(() => null);
     if (!response.ok) {
@@ -306,6 +306,8 @@ export async function apiRequest(path: string, options: RequestInit = {}) {
     clearTimeout(timeout);
   }
 }
+
+export async function getSessionToken() { return AsyncStorage.getItem('token'); }
 
 export async function setSession(user: unknown, token: string, isAdmin: boolean) {
   await queueCart(async () => {

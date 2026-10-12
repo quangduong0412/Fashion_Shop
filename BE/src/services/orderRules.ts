@@ -27,5 +27,6 @@ export function paymentStatus(value: string | null) {
   if (!value || ['UNPAID', 'Chưa thanh toán'].includes(value)) return 'UNPAID';
   if (['PAID', 'Đã thanh toán'].includes(value)) return 'PAID';
   if (['REFUNDED', 'Đã hoàn tiền'].includes(value)) return 'REFUNDED';
+  if (value === 'PARTIALLY_REFUNDED') return 'PARTIALLY_REFUNDED';
   throw new ApiError(409, 'UNKNOWN_PAYMENT_STATUS', 'Trạng thái thanh toán cũ cần được đối soát.');
 }

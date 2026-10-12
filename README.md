@@ -1,6 +1,6 @@
 # Fashion Haven
 
-Hệ thống bán lẻ thời trang gồm ứng dụng khách hàng, trang quản trị và API dùng chung. Tình trạng triển khai và kiểm chứng ngày **06/10/2026** được ghi trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md); các hạng mục tiếp theo nằm trong [PLAN.md](PLAN.md).
+Hệ thống bán lẻ thời trang gồm ứng dụng khách hàng, trang quản trị và API dùng chung. [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md) ghi các checkpoint có ngày, trong đó checkpoint mới nhất là **12/10/2026**; [PLAN.md](PLAN.md) giữ bảng yêu cầu ban đầu và checkpoint nghiệm thu mới hơn.
 
 ## Nguồn đang sử dụng
 
@@ -68,7 +68,7 @@ npm.cmd run web
 
 Test backend tạo database **mới** dạng `fashionhaven_test_<timestamp>_<random>` trên MySQL local. Runner đóng tiến trình/kết nối và dọn đúng database do lần chạy đó tạo trong `finally`, kể cả setup/test lỗi. `KEEP_TEST_DB=true` giữ lại có chủ đích để debug. Cần quyền CREATE/DROP DATABASE; không tạo fixtures trong database cửa hàng. Lệnh liệt kê trước khi dọn: `cd BE; npm.cmd run test:db:list`. Xem [quy tắc cleanup và danh sách đã dọn](BE/TEST_DATABASE_CLEANUP.md).
 
-Kiểm tra trình duyệt tùy chọn dùng bản build thật `FE/dist`, `admin_web/dist`, Express và MySQL kiểm tra. Lượt mới nhất đạt **79/79** (52 integration API/MySQL, 25 unit, 1 browser và nhóm cha). Phạm vi web và giới hạn thiết bị native nằm trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md); không dùng kết quả checkpoint cũ để nghiệm thu mã mới.
+Kiểm tra trình duyệt dùng bản build thật `FE/dist`, `admin_web/dist`, Express và MySQL test biệt lập. Ngày 12/10/2026, full browser + API/unit suite đạt **108/108**; riêng Reports đạt **108/108**, đổi trả đạt **1/1**; BE typecheck, FE typecheck/lint/Expo web export và admin typecheck/lint/build đều đạt. Runner xóa đúng database do test tạo; hai schema legacy chưa có provenance vẫn được giữ. Phạm vi và giới hạn native nằm trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md).
 
 ### Khách hàng thử nghiệm riêng
 
@@ -97,7 +97,7 @@ Seed tài khoản không chạy tự động: `BE/prisma/seed.ts` và `BE/add_sa
 4. Khách chỉ hủy khi đơn còn PENDING; tồn khả dụng hoàn đúng một lần. Nhập kho dùng DRAFT → RECEIVED, không cộng tồn lúc tạo nháp.
 5. Admin quản lý trạng thái tài khoản/audit, đăng bài để FE đọc chi tiết; xem báo cáo aggregate theo ngày tạo đơn UTC+7, xuất CSV. Phân biệt giá trị đơn đã giao với tiền đã đối soát.
 
-Phí giao lấy từ database và chia vào các đơn theo kho, tổng không đổi; retry dùng snapshot cũ. Chỉ COD; **voucher, đổi trả/hoàn tiền, đánh giá, thông báo và CMS nháp/lịch xuất bản bài viết còn thiếu**. Banner đã có trạng thái/lịch hiển thị riêng. Không bật thanh toán online giả hoặc tự sửa chứng từ cũ. Bảng theo dõi đầy đủ ở [PLAN.md](PLAN.md).
+Phí giao lấy từ database và chia vào các đơn theo kho, tổng không đổi; retry dùng snapshot cũ. Chỉ COD. Voucher có màn quản trị, form áp dụng ở giỏ và kiểm tra phía server; browser đã xác minh tạo/sửa/tạm ngưng, áp dụng và từ chối theo điều kiện. Đổi trả có luồng yêu cầu, ảnh minh chứng riêng tư, duyệt, nhận/kiểm hàng, cập nhật tồn đủ điều kiện và ghi sổ hoàn COD; không tự chuyển tiền qua ngân hàng. Báo cáo aggregate toàn kỳ, gồm snapshot giảm giá/phí giao, sổ ghi hoàn, phân tích danh mục/brand và tồn hiện tại; không gọi đây là lợi nhuận/doanh thu thuần. Đánh giá, thông báo và CMS nháp/lịch xuất bản bài viết còn thiếu. Banner đã có trạng thái/lịch hiển thị riêng. Không bật thanh toán online giả hoặc tự sửa chứng từ cũ. Đọc trạng thái theo ngày trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md) trước backlog nền ở [PLAN.md](PLAN.md).
 
 ## Mô hình dữ liệu cốt lõi
 
@@ -143,3 +143,13 @@ Checkpoint khôi phục trước chưa thêm dữ liệu. Người vận hành s
 `cd BE`, `npm.cmd run dev`: đã sửa EPERM do generate lại DLL Prisma đang được sử dụng. Client khớp schema/version được giữ nguyên; nếu backend shop đang chạy thì lệnh báo URL và không tạo process trùng. Khi đổi schema thật, dừng backend/test trước `npm.cmd run db:generate`.
 
 Database gốc hiện có **82 sản phẩm / 393 biến thể**, gồm 66 sản phẩm mới có ảnh minh họa, giá và tồn từng SKU; 16 sản phẩm cũ giữ nguyên. FE công khai 80 sản phẩm theo điều kiện hiển thị. Đơn và tài khoản cũ không đổi; đăng nhập admin cũ vẫn hoạt động. Lệnh nhập có dry-run/transaction/chống trùng và nguồn ảnh: [BE/README.md](BE/README.md), [docs/CATALOG_IMPORT.md](docs/CATALOG_IMPORT.md).
+
+## Nghiệm thu giao dịch — 12/10/2026
+
+Playwright chạy trên ứng dụng đã build tại `FE/dist` và `admin_web/dist`; request API được chuyển tới Express thật và database integration tạm, không ghi vào database cửa hàng. Browser Edge headless kiểm tra FE 390×844 và admin 1440×1000: checkout COD, đơn phía admin, chuyển trạng thái giao hàng/nhập mã vận đơn/đối soát COD, cập nhật tồn theo biến thể; admin tạo/sửa/tạm ngưng voucher; FE áp mã hợp lệ, xem quote và đặt COD; mã hết hạn hoặc dưới giá trị tối thiểu bị từ chối. Đổi trả được nghiệm thu riêng qua FE/admin tới ghi nhận hoàn COD; tồn chỉ tăng cho lượng đã nhận và đủ bán lại, đúng một lần.
+
+Kết quả thực tế: `BE` API/integration/unit **107/107**; reports browser riêng **108/108**; đổi trả browser riêng **1/1**; full browser + API/unit **108/108**. Luồng đổi trả nghiệm thu tải/xem ảnh riêng tư, nhận/kiểm, cộng tồn một lần và ghi nhận refund COD. Mọi run DB do runner tạo đã cleanup trong `finally`. Ảnh nghiệm thu local (không commit) ở `BE/test-artifacts/customer-return-request-mobile.png`, `admin-return-refunded.png`, `admin-vouchers-desktop.png`.
+
+Ảnh minh chứng đổi trả được upload vào vùng riêng tư, giới hạn PNG/JPEG/WebP 5 MB/ảnh và tối đa ba ảnh; API chỉ trả metadata và endpoint xem kiểm tra chủ sở hữu hoặc admin. Browser đã kiểm tra upload/view phía khách và view phía admin. Hoàn tiền là sổ ghi nhận chuyển khoản/tiền mặt với mã biên nhận, chưa tích hợp gateway để thực chuyển tiền. Email khôi phục và vận chuyển ngoài cũng cần dịch vụ/cấu hình thật. Vì vậy checkout COD và đổi trả đã kiểm tra chưa đồng nghĩa toàn bộ sản phẩm đã hoàn tất.
+
+Database phát triển trong `.env` đã xác minh là MySQL local `FashionHeaven`; migration đổi trả chỉ tạo bốn bảng additive. Sau khi restart đúng backend đang giữ cổng 4000, smoke check đạt `/api/health` 200 và `/api/returns/me` trả 401 khi không có token (route đã nạp, từ chối đúng quyền); FE `localhost:8081` và admin `localhost:5173` đều trả 200. Gọi lại `npm.cmd run dev` khi backend shop đang chạy cũng exit 0, không generate lại Prisma DLL.

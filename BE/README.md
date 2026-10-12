@@ -107,7 +107,7 @@ Quote **và** checkout nhận `items: [{ id, variantId, quantity }]`, `shipping:
 
 Quote trả tiền hàng, phí giao, giảm giá và tổng. Phí STANDARD lấy từ `StoreSettings`, tính **một lần cho toàn checkout**; ngưỡng miễn phí tùy chọn xét tiền hàng. Phí chia vào các đơn theo tỷ lệ tiền hàng bằng phép tính số nguyên và phân bổ phần dư xác định; tổng các đơn bằng tổng đã xác nhận. Quote hash xét dòng hàng/giá, địa chỉ, phương thức, ghi chú, version cài đặt, phí/nhãn giao. Fingerprint request xét đầy đủ nội dung khách gửi; retry trả snapshot đã lưu kể cả cấu hình mới thay đổi hoặc tắt giao hàng. Receipt cũ được hỗ trợ cho STANDARD không ghi chú; nội dung khác bị từ chối.
 
-Backend tự chọn giá biến thể/giá sản phẩm, kiểm tra trạng thái bán và tồn, gộp dòng trùng, tính lại tổng. Tiền hiện là **số nguyên VND an toàn**; từ chối số lẻ/ngoài giới hạn. Cột database còn là `Float`, chuyển sang Decimal cần một đợt migration riêng được rà soát. Hiện giảm giá bằng 0 và voucher chưa hỗ trợ (`VOUCHER_UNAVAILABLE`); phí giao lấy từ cài đặt, mặc định 0 để giữ hành vi cũ. Không tự cộng VAT hoặc tích hợp cổng thanh toán giả.
+Backend tự chọn giá biến thể/giá sản phẩm, kiểm tra trạng thái bán và tồn, gộp dòng trùng, tính lại tổng. Tiền hiện là **số nguyên VND an toàn**; từ chối số lẻ/ngoài giới hạn. Cột database còn là `Float`, chuyển sang Decimal cần một đợt migration riêng được rà soát. Voucher hiện hỗ trợ mã tiền/phần trăm, trần giảm, đơn tối thiểu, hiệu lực, giới hạn tổng/lượt khách, phạm vi SKU/danh mục; API tính lại, khóa transaction, snapshot điều khoản/giảm giá, từ chối với lý do và hoàn lượt khi hủy toàn bộ đơn hợp lệ. Phí giao lấy từ cài đặt, mặc định 0 để giữ hành vi cũ. Không tự cộng VAT hoặc tích hợp cổng thanh toán giả.
 
 Trong một transaction, backend khóa khách hàng và sản phẩm theo thứ tự, giữ tồn sản phẩm/biến thể và lưu request đã xử lý. Gửi lại cùng key/nội dung trả các đơn cũ, không trừ tồn lần nữa; tái dùng key với nội dung khác bị từ chối. Nếu giá, địa chỉ/ghi chú hoặc cấu hình ảnh hưởng quote thay đổi, trả `PRICE_CHANGED` để khách xem và xác nhận tổng mới. Giỏ thuộc nhiều kho tạo nhiều đơn trong cùng transaction; tổng các đơn bằng quote.
 
@@ -169,9 +169,11 @@ Runner còn chạy unit test giỏ hàng, limiter, validation CMS/settings và l
 - Products có ordered gallery (tối đa 8, ảnh đầu là ảnh chính), description/material/brand; biến thể có image riêng. Bỏ qua trường ảnh khi chỉ sửa giá/tồn giữ ảnh đã có; null/rỗng khi xóa có chủ đích. Upload thật; lỗi ảnh dùng fallback trung tính, không lấy ảnh khác làm ảnh sản phẩm.
 - GET `/posts?paginated=true&page&pageSize&search&type`, GET `/posts/:id`; ADMIN CRUD payload `title/description/image/type`, validation và giữ ảnh bị bỏ qua. Legacy GET `/posts` còn trả array tối đa 100. Bài viết hiện công khai, **chưa có draft/schedule bài**. GET `/contacts` ADMIN có phân trang/tìm; POST contact validation/ack không echo PII. Inbox chưa có trạng thái xử lý/reply/audit.
 - GET `/settings` public chỉ banner active trong lịch; GET `/settings/internal` ADMIN thêm history; PUT `/settings` ADMIN `{expectedVersion,settings,reason}` CAS version + audit. Cấu hình gồm storeName/contact/policies, STANDARD fee/freeFrom/enabled, tối đa 5 banner image/link/title/subtitle/button/start/end/order. FE Home/Contact/Policies và quote dùng dữ liệu này. Nếu chưa có row: default read-only, phí 0, không tạo địa chỉ/hotline giả hay seed.
-- GET `/reports?from=YYYY-MM-DD&to=YYYY-MM-DD` ADMIN: hai ngày bao gồm, UTC+7, tối đa 366 ngày; mặc định 30 ngày. RepeatableRead aggregate toàn bộ đơn trong kỳ **theo ngày tạo**, trạng thái hiện tại. Giá trị đơn đã giao khác tiền đối soát; gồm phí giao, chưa trừ hoàn trả. Top 20 hàng đã giao, tồn khả dụng catalog đang bán/biến thể active và cảnh báo <=5; tồn là hiện tại, không theo kỳ. Chưa có sổ tiền theo ngày thu; giảm giá/hoàn tiền/đổi trả trả null với giới hạn rõ. CSV frontend escape công thức và UTF-8.
+- GET `/reports?from=YYYY-MM-DD&to=YYYY-MM-DD` ADMIN: hai ngày bao gồm theo `Asia/Bangkok` (UTC+7), tối đa 366 ngày; mặc định 30 ngày. RepeatableRead aggregate toàn bộ đơn trong kỳ **theo ngày tạo** và trạng thái hiện tại; trả số đơn/trạng thái, tổng đơn đã giao, tiền hàng, phí giao, giảm giá (null nếu thiếu snapshot cũ), COD gắn cờ đã đối soát, đơn hủy/chờ, refund ledger/return count theo ngày tương ứng. Top 20 sản phẩm, danh mục/brand từ dòng đã giao; tồn hiện tại chỉ cho catalog đang bán và cảnh báo từng SKU <=5. Không phải ledger thu tiền theo ngày, lợi nhuận hay doanh thu thuần; COD gồm trạng thái paid/partial-refund/refunded và không có timestamp nhận tiền riêng. Hoàn tiền là ghi nhận thủ công, không xác nhận chuyển khoản. CSV frontend khớp bộ lọc/chỉ số, escape công thức và UTF-8.
 
-Voucher, hoàn/đổi/hoàn tiền, review/notifications, phân quyền kho riêng và ledger thanh toán chưa có luồng hoàn chỉnh; xem bảng nghiệm thu [PLAN.md](../PLAN.md). Không đổi dữ liệu cũ để giả lập tính năng.
+- Đổi trả: tối đa 3 tệp/request, mỗi tệp 5 MB; chữ ký PNG/JPEG/WebP được xác minh, lưu dưới `BE/private-uploads/return-evidence` (hoặc `RETURN_EVIDENCE_DIR`) ngoài static files với quyền file hạn chế. POST `/returns/:id/evidence` chỉ khách sở hữu khi REQUESTED/APPROVED; nội dung trùng SHA-256 không tạo attachment/version lặp. GET `/returns/:id/evidence/:evidenceId` chỉ chủ sở hữu hoặc ADMIN; `private,no-store`. DTO không lộ đường dẫn lưu hay hash. Production cần cấu hình volume riêng và chính sách backup/retention.
+
+Voucher và đổi trả/refund COD đã có luồng backend/FE/admin được kiểm tra trong phạm vi ghi nhận. Review/notifications, draft/schedule CMS, brand CRUD, trạng thái xử lý/reply inbox, phân quyền kho riêng và ledger thanh toán độc lập vẫn chưa có luồng hoàn chỉnh; xem bảng nghiệm thu [PLAN.md](../PLAN.md). Không đổi dữ liệu cũ để giả lập tính năng.
 
 ## Mua sắm theo tài khoản — đợt 1
 
@@ -245,7 +247,7 @@ Nguyên nhân đăng nhập admin cũ bị từ chối: phiên vận hành trư�
 
 ## Windows: đã sửa EPERM khi npm run dev (08/10/2026)
 
-API/test đang dùng Prisma có thể giữ `query_engine-windows.dll.node`; Windows không cho generate ghi đè DLL đang được nạp. Trước đây predev generate lại mọi lần, dù schema chỉ khác formatter. Nay `npm run dev` kiểm tra cả cổng IPv4/IPv6 trước: shop đúng đang chạy/client khớp thì báo URL và kết thúc thành công; process lạ/demo/client cũ thì yêu cầu dừng đúng phiên, không kill toàn bộ Node. Cổng rảnh mới chạy các migration tương thích, chuẩn bị client nếu cần và mở nodemon watch src.
+API/test đang dùng Prisma có thể giữ `query_engine-windows.dll.node`; Windows không cho generate ghi đè DLL đang được nạp. Trước đây predev generate lại mọi lần, dù schema chỉ khác formatter. Nay `npm run dev` kiểm tra cổng IPv4/IPv6 và health service trước: nếu đúng API shop đang chạy thì báo URL/exit thành công mà không sinh thêm process hoặc ghi lại DLL. Chỉ khi cổng rảnh mới chạy các migration tương thích, chuẩn bị client nếu cần và mở nodemon watch src. Muốn cập nhật schema/client: dừng đúng backend đang giữ engine rồi chạy `npm.cmd run dev`; không chạy generate ép buộc khi process đang dùng client.
 
 Lệnh dùng hàng ngày vẫn là `npm.cmd run dev`. Nếu thay schema thật hoặc cần generate cưỡng bức: dừng backend/test đang dùng BE, chạy `npm.cmd run db:generate`, rồi `npm.cmd run dev`. Không xóa node_modules hoặc reset database để chữa lỗi DLL. `/api/health` là liveness process, chỉ trả service/status/mode, không lộ DATABASE_URL; chưa phải kiểm tra kết nối DB.
 
@@ -262,3 +264,33 @@ npm.cmd run catalog:append
 ```
 
 Script chỉ chạy có chủ đích; chặn production, database hệ thống/test/demo/remote; xác minh ảnh local, admin, kho, NCC/danh mục. Backup catalog trước khi ghi ở private-maintenance (ignored). Transaction/mutex và SKU cố định giúp chạy lại giữ nguyên dữ liệu người vận hành đã sửa; nếu SKU thiếu hoặc xung đột thì dừng thay vì seed lại. Không reset database hoặc thay tài khoản/mật khẩu. Chi tiết nguồn ảnh và phạm vi tại `../docs/CATALOG_IMPORT.md`.
+
+## Nghiệm thu browser và đổi trả — 11/10/2026
+
+`npm.cmd test` tạo schema riêng theo lần chạy, đồng bộ schema rồi xóa đúng schema đó trong `finally`. `KEEP_TEST_DB=true npm.cmd test` giữ schema có chủ đích để debug. `npm.cmd run test:db:list` chỉ liệt kê/dry-run; database không có provenance sẽ được giữ. Gần nhất, suite API/MySQL đạt **107/107** và tự xóa `fashionhaven_test_1791735809240_c4ae2752`.
+
+Browser cần Playwright/Edge và các bản build FE/admin. Chạy nghiệm thu voucher:
+
+```powershell
+$env:BROWSER_ONLY_MODULES='vouchers'
+npm.cmd run test:browser
+Remove-Item Env:BROWSER_ONLY_MODULES
+```
+
+Run này đạt **108/108**: FE checkout áp voucher/quote/COD; admin tạo/sửa/tạm ngưng; đơn admin giao hàng/vận đơn/đối soát và inventory editor. Request gọi API thật qua DB test riêng. `BROWSER_ONLY_MODULES=returns` chạy acceptance đổi trả FE/admin độc lập; lượt gần nhất đạt **1/1**, tới refund ledger COD và cập nhật tồn có kiểm tra. Kích thước browser: FE 390×844, admin 1440×1000.
+
+Ảnh minh chứng đổi trả chưa được tải lên: `Evidence` chưa có endpoint riêng tư và app chưa có image picker. Refund hiện là đối soát biên nhận thủ công; chưa có gateway. Hai database cũ chưa có provenance vẫn được giữ; xem `TEST_DATABASE_CLEANUP.md`.
+
+Migration `db:migrate-returns` đã áp dụng lên MySQL phát triển local `FashionHeaven`; chỉ tạo bốn bảng `returnrequest`, `returnline`, `returnevent`, `returnrefund`, giữ nguyên dữ liệu catalog/đơn/tồn. Backend 4000 hiện trả health 200 và route `/api/returns/me` 401 khi chưa có token; FE 8081/admin 5173 trả 200. Gọi lại `npm.cmd run dev` khi service này đang chạy đạt exit 0 và không mở process thứ hai.
+
+## 12/10/2026 — ảnh đổi trả, báo cáo và E2E tích hợp
+
+Đã thêm endpoint upload/xem ảnh riêng tư theo hợp đồng ở phần trên; ảnh upload không nằm dưới static `/uploads`. FE/Admin browser test upload, retrieval đúng quyền và flow tiếp nhận/kiểm tra/refund COD đạt 1/1. BE typecheck và suite API/integration/unit 107/107 đạt. `BROWSER_ONLY_MODULES=reports npm.cmd run test:browser` đạt 108/108, gồm API/unit và browser report: lọc tuần/tháng/năm, ngày tùy chỉnh, validation khoảng ngày, CSV UTF-8, empty state và viewport 390 px. Full `npm.cmd run test:browser` cũng đạt 108/108 trên FE/admin build thật, Express và MySQL riêng; runner dọn DB test trong finally. FE Orders hiển thị lịch sử sau API orders và không đợi request đổi trả phụ. Test đổi trả chờ phản hồi login/orders/returns trước khi thao tác và duyệt lịch sử theo phân trang.
+
+Chạy riêng browser báo cáo:
+
+```powershell
+$env:BROWSER_ONLY_MODULES='reports'
+npm.cmd run test:browser
+Remove-Item Env:BROWSER_ONLY_MODULES
+```

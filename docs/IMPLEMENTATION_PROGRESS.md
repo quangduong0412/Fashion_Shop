@@ -114,3 +114,33 @@ Expo/Metro process cũ trả `/status` nhưng request trang chủ timeout. Đã 
 - Database test cuối `fashionhaven_test_1791423949477_6b59e005` đã dọn trong finally. Lượt 99/99 trước đó và lượt fail selector/port/assert thứ tự cũng đều dọn; không fixture trong shop.
 - Browser Edge headless: admin 1440×1000 đăng nhập cũ và catalog mới; FE 390×844 tìm 6 bomber, mở sản phẩm mới #52, ảnh hiển thị; không pageerror/API 500 hoặc tràn ngang trong ca đã chạy. Đã xem ảnh. Bằng chứng ignored: catalog-live-acceptance-2026-10-08.json, catalog-expanded-browser-2026-10-08.json và PNG trong BE/test-artifacts. Runtime Playwright đã đổi thư mục; discovery runtime mới và chạy lại đạt, không sửa dependency app.
 - FE/admin source không sửa, không chạy lại build của hai ứng dụng. Native, thanh toán online, đổi trả/hoàn tiền, thông báo và đánh giá còn backlog; lượt này không tuyên bố toàn bộ sản phẩm hoàn chỉnh. BaoCao/report_work được giữ nguyên.
+
+## Giao dịch: browser voucher và đổi trả — 11/10/2026
+
+| Yêu cầu | Màn hình | API | Dữ liệu | Nghiệp vụ | Nghiệm thu | Trạng thái |
+|---|---|---|---|---|---|---|
+| Checkout và theo dõi đơn COD | FE cart/orders; admin order view | quote/checkout/order transition | PhieuXuat/CTDonHang/OrderEvent | Quote server-side; chỉ mua dòng chọn; cần vận đơn trước SHIPPING; đối soát COD riêng | Browser build thật, FE 390×844/admin 1440×1000 | Đạt trong scope COD |
+| Voucher | FE checkout; admin voucher view | vouchers/quote/checkout | Voucher/usage/order snapshots | expiry/minimum, VND nguyên, snapshot, retry | Browser create/edit/pause/apply/reject và checkout | Đạt trong ca đã chạy |
+| Đổi trả/hoàn | FE Orders; admin ReturnsView | `/api/returns` | ReturnRequest/Line/Event/Refund, adjustment journal | Đơn đã giao; 7 ngày; nhận/kiểm trước restock; hoàn không quá đã thu | 107/107 integration; browser returns 1/1 | Còn thiếu ảnh minh chứng/gateway |
+| Báo cáo | admin Reports | aggregate API | đơn/dòng/refund/tồn | UTC+7, không lấy từ trang đã phân trang | integration aggregate/quyền | API đã kiểm tra; browser chưa nghiệm thu |
+| DB test | không áp dụng | isolated runner | schema theo run ID | finally cleanup; KEEP_TEST_DB opt-in | 107/107 và 108/108 tự cleanup | Đạt; hai DB cũ chưa xác minh giữ lại |
+
+`npm.cmd test` đạt **107/107**. `BROWSER_ONLY_MODULES=vouchers npm.cmd run test:browser` đạt **108/108**, gồm UI build thật và API/MySQL test riêng. Đổi trả browser kiểm tra đến REFUNDED và inventory adjustment một lần, **1/1**. DB test vừa tạo đã dọn; dry-run còn hai schema cũ 22 bảng rỗng nhưng thiếu provenance, nên không xóa.
+
+Không đánh dấu đổi trả hoàn tất: Evidence JSON chưa có upload/xem ảnh riêng tư; refund chưa kết nối gateway. Toàn dự án chưa đạt tiêu chí hoàn thành. Bước tiếp theo: thiết kế upload minh chứng có phân quyền sở hữu, giới hạn file và endpoint xem ảnh có xác thực; sau đó nghiệm thu UI khách/admin, rồi tiếp tục review đánh giá sau mua, thông báo, CMS draft/schedule/publish, brand, kho và quyền theo kho.
+
+Database phát triển trong `.env` đã xác minh là `localhost/FashionHeaven`; áp dụng migration additive bốn bảng return. Sau restart listener API cũ, smoke check: API health 200, `/api/returns/me` 401 nếu chưa đăng nhập, FE 8081/admin 5173 đều 200. Gọi lại `npm run dev` exit 0, không sinh server hay Prisma DLL thứ hai. Không reset database và không cập nhật số dư hay chứng từ.
+
+## Ảnh minh chứng, báo cáo và trạng thái loading — 12/10/2026
+
+| Yêu cầu | FE/admin | API | Dữ liệu | Nghiệp vụ | Ca nghiệm thu | Trạng thái |
+| --- | --- | --- | --- | --- | --- | --- |
+| Ảnh đổi trả | FE Orders picker/modal; admin ReturnsView modal | upload multipart + protected evidence GET | `ReturnRequest.Evidence` metadata và private file UUID | PNG/JPEG/WebP signature, <=5 MB, <=3/request, owner hoặc ADMIN read, duplicate content idempotent | Browser build thật 1/1: upload/view customer+admin, nhận/kiểm hàng, restock 1 lần, refund COD | Đạt phạm vi local COD; STAFF không được cấp quyền riêng |
+| Báo cáo | ReportsView | GET `/reports?from&to` ADMIN | aggregate order/lines/refund/current inventory + category/brand | ngày tạo UTC+7, hiện trạng status, thiếu snapshot là null, không gọi gross là net | API/unit 107; reports browser riêng 108/108 và full E2E 108/108, filters/validation/CSV/390 px | Đạt phạm vi báo cáo; chưa có ledger thu theo ngày/lợi nhuận |
+| Orders loading | FE Orders | `/orders/me`, `/returns/me` | danh sách đơn và yêu cầu trả độc lập | lịch sử đơn hiển thị ngay sau request chính; API phụ không giữ spinner toàn trang | FE typecheck/lint/export; return browser và report browser | Đã sửa trạng thái UI; request phụ vẫn báo lỗi riêng |
+
+- Báo cáo API xác định timezone `Asia/Ho_Chi_Minh`; frontend CSV ghi rõ UTC+7. Tổng đơn đã giao, tiền hàng, phí giao, snapshot giảm, COD đã đối soát, refund ghi sổ, return count, top sản phẩm/danh mục/brand, tồn hiện tại và cảnh báo SKU được aggregate toàn bộ dữ liệu, không từ trang phân trang.
+- Private evidence không được phục vụ static/public; mặc định lưu tại `BE/private-uploads/return-evidence`, production phải cấp volume riêng và thiết lập backup/retention. Refund là ghi sổ thủ công, không xác nhận ngân hàng đã chuyển tiền.
+- Kết quả môi trường: BE typecheck đạt; backend API/integration/unit 107 test con đạt trong report browser suite **108/108** và full browser + API/unit **108/108**; returns browser **1/1**. FE tsc/lint/Expo web export 24 routes đạt; admin typecheck/lint/build đạt. Expo export có cảnh báo `NO_COLOR`/`FORCE_COLOR` và “Something prevented Expo from exiting”, nhưng exit code 0 và export tĩnh hoàn tất. Native Android/iOS chưa chạy.
+- DB do các run tạo đều DROP trong `finally`, gồm lượt đạt full E2E mới nhất `fashionhaven_test_1791819251673_28937eea` (108/108); các lượt selector/login/expectation fail cũng đã cleanup. `npm.cmd run test:db:list` chỉ liệt kê hai DB cũ `fashionhaven_test_1790947556855_6730d9c6` và `fashionhaven_test_1790947607214_dfda8761`, mỗi DB 22 bảng rỗng/0 kết nối nhưng không có ownership provenance nên giữ lại. Không ghi fixtures vào DB cửa hàng.
+- Còn mở: review sau mua, thông báo, CMS nháp/lịch/reply inbox, brand CRUD, workflow yêu cầu/duyệt/chuyển kho, scope quyền kho/nhân viên, ledger thu tiền và gateway/email/vận chuyển thật, native E2E; báo cáo lợi nhuận/doanh thu thuần chỉ sau khi có giá vốn/ledger đáng tin.

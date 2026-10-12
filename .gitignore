@@ -38,6 +38,7 @@ yarn-error.*
 !.env.example
 BE/test-artifacts/
 BE/uploads/
+BE/private-uploads/
 
 # typescript
 *.tsbuildinfo

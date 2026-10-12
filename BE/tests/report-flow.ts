@@ -23,8 +23,10 @@ export async function runReportFlow({ request, adminToken, customerToken, prisma
   const employee = await prisma.nhanVien.findFirstOrThrow({ orderBy: { MaNhanVien: 'asc' } });
   const ids: number[] = [];
   let inventoryProductId: number | undefined;
-  const add = async (date: Date, status: string, payment: string, total: number, quantity: number) => {
+  let returnId: number | undefined;
+  const add = async (date: Date, status: string, payment: string, total: number, quantity: number, snapshot = { itemValue: total, shipping: 0, discount: 0 }) => {
     const order = await prisma.phieuXuat.create({ data: { MaNhanVien: employee.MaNhanVien, MaKhachHang: customer.MaKhachHang, MaKho: product.MaKho, NgayXuat: date, TrangThai: status, TrangThaiThanhToan: payment, PhuongThucThanhToan: 'COD', TongTien: total,
+      TienHang: snapshot.itemValue, PhiGiaoHang: snapshot.shipping, GiamGiaDon: snapshot.discount,
       ctDonHangs: { create: { MaSanPham: product.MaSanPham, SoLuong: quantity, DonGiaBan: total / quantity, ThanhTien: total, TenSanPham: 'Synthetic report historical snapshot' } } } });
     ids.push(order.MaPhieuXuat);
   };
@@ -34,22 +36,32 @@ export async function runReportFlow({ request, adminToken, customerToken, prisma
     inventoryProductId = stockFixture.MaSanPham;
     // More records than the admin bootstrap's 50-row order preview prove full aggregates.
     for (let i = 0; i < 51; i++) await add(period.start, 'DELIVERED', 'UNPAID', 1000, 1);
-    for (let i = 0; i < 2; i++) await add(new Date(period.start.getTime() + 1000), 'DELIVERED', 'PAID', 5000, 2);
+    await add(new Date(period.start.getTime() + 1000), 'DELIVERED', 'PAID', 5000, 2, { itemValue: 4500, shipping: 700, discount: 200 });
+    await add(new Date(period.start.getTime() + 1000), 'DELIVERED', 'PAID', 5000, 2);
     await add(period.start, 'Đã giao', 'Đã thanh toán', 4000, 1);
     await add(period.start, 'CANCELLED', 'UNPAID', 8000, 1);
     await add(period.start, 'PENDING', 'UNPAID', 9000, 1);
     await add(new Date(period.start.getTime() - 1), 'DELIVERED', 'PAID', 99000, 1);
     await add(period.end, 'DELIVERED', 'PAID', 99000, 1);
+    const returnRequest = await prisma.returnRequest.create({ data: { OrderId: ids[51]!, CustomerId: customer.MaKhachHang, RequestKey: 'report-return-fixture', Fingerprint: 'a'.repeat(64), Status: 'REFUNDED', Reason: 'Synthetic report return', RefundDue: 500, CreatedAt: period.start, UpdatedAt: period.start } });
+    returnId = returnRequest.Id;
+    await prisma.returnRefund.create({ data: { ReturnId: returnId, IdempotencyKey: 'report-refund-fixture', Fingerprint: 'b'.repeat(64), Amount: 500, Method: 'BANK_TRANSFER', Reference: 'REPORT-REFUND-001', ActorId: employee.MaNhanVien, CreatedAt: period.start } });
     const result = await request('/reports?from=2021-02-02&to=2021-02-02', 'GET', undefined, adminToken);
     assert.equal(result.status, 200);
-    assert.equal(result.body.period.timeZone, 'Asia/Bangkok'); assert.equal(result.body.period.days, 1);
+    assert.equal(result.body.period.timeZone, 'Asia/Ho_Chi_Minh'); assert.equal(result.body.period.days, 1);
     assert.equal(result.body.summary.orderCount, 56);
     assert.equal(result.body.summary.deliveredRevenue, 65000);
     assert.equal(result.body.summary.collectedTotal, 14000);
+    assert.equal(result.body.summary.itemValue, 64500);
+    assert.equal(result.body.summary.shippingTotal, 700);
+    assert.equal(result.body.summary.discountTotal, 200);
+    assert.equal(result.body.summary.refundTotal, 500);
+    assert.equal(result.body.summary.returnCount, 1);
     assert.equal(result.body.summary.cancelledCount, 1);
     assert.equal(result.body.summary.awaitingFulfillmentCount, 1);
-    assert.equal(result.body.summary.discountTotal, null); assert.equal(result.body.summary.refundTotal, null); assert.equal(result.body.summary.returnCount, null);
     assert.equal(result.body.topProducts[0].id, product.MaSanPham); assert.equal(result.body.topProducts[0].units, 56); assert.equal(result.body.topProducts[0].lineValue, 65000);
+    assert.equal(result.body.topCategories[0].id, product.MaLoaiHang); assert.equal(result.body.topCategories[0].units, 56);
+    assert.equal(result.body.topBrands[0].units, 56);
     assert.equal(result.body.inventory.scope, 'CURRENT_SELLING_CATALOG'); assert.equal(result.body.inventory.lowStockThreshold, 5);
     const [variantSum, simpleSum] = await Promise.all([
       prisma.bienTheSanPham.aggregate({ where: { TrangThai: 'Đang mở bán', sanPham: { TrangThai: 'Đang mở bán', loaiHang: { IsActive: true } } }, _sum: { SoLuong: true } }),
@@ -65,6 +77,7 @@ export async function runReportFlow({ request, adminToken, customerToken, prisma
     assert.equal(empty.status, 200); assert.equal(empty.body.summary.orderCount, 0); assert.deepEqual(empty.body.topProducts, []);
     assert.equal(empty.body.inventory.availableUnits, result.body.inventory.availableUnits);
   } finally {
+    if (returnId) { await prisma.returnRefund.deleteMany({ where: { ReturnId: returnId } }); await prisma.returnRequest.delete({ where: { Id: returnId } }); }
     await prisma.cTDonHang.deleteMany({ where: { MaPhieuXuat: { in: ids } } });
     await prisma.phieuXuat.deleteMany({ where: { MaPhieuXuat: { in: ids } } });
     if (inventoryProductId) await prisma.sanPham.delete({ where: { MaSanPham: inventoryProductId } });

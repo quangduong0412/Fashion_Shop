@@ -8,13 +8,14 @@
     "start": "ts-node src/server.ts",
     "dev": "node scripts/run-dev.cjs",
     "db:migrate-orders": "ts-node migrate_order_tables.ts",
-    "db:prepare": "npm run db:migrate-orders && npm run db:migrate-inventory && npm run db:migrate-order-safety && npm run db:migrate-accounts-media && npm run db:migrate-store-settings && npm run db:migrate-customer-shopping && npm run db:migrate-vouchers && node scripts/ensure-prisma-client.cjs",
+    "db:prepare": "npm run db:migrate-orders && npm run db:migrate-inventory && npm run db:migrate-order-safety && npm run db:migrate-accounts-media && npm run db:migrate-store-settings && npm run db:migrate-customer-shopping && npm run db:migrate-vouchers && npm run db:migrate-returns && node scripts/ensure-prisma-client.cjs",
     "db:migrate-inventory": "ts-node migrate_inventory.ts",
     "seed:catalog": "ts-node seed_catalog.ts",
     "seed:samples": "ts-node add_sample_data.ts",
     "db:extend-product-variants": "ts-node update_variant_schema.ts",
     "data:seed-category-attributes": "ts-node update_category_attributes.ts",
     "test": "ts-node tests/run-integration.ts",
+    "test:browser": "node scripts/run-browser-tests.cjs",
     "typecheck": "tsc --noEmit --ignoreDeprecations 6.0",
     "db:migrate-order-safety": "ts-node migrate_order_safety.ts",
     "db:migrate-accounts-media": "ts-node migrate_accounts_media.ts",
@@ -27,6 +28,7 @@
     "demo:data:provision": "ts-node scripts/provision-demo-data.ts --apply",
     "demo:dev": "ts-node scripts/run-demo-server.ts",
     "db:migrate-vouchers": "ts-node migrate_vouchers.ts",
+    "db:migrate-returns": "ts-node migrate_returns.ts",
     "preview:customer": "node scripts/serve-customer-web.cjs",
     "catalog:images:plan": "ts-node scripts/repair-catalog-images.ts --plan",
     "catalog:images:repair": "ts-node scripts/repair-catalog-images.ts --apply",
@@ -59,6 +61,7 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.10"
+    "@types/jsonwebtoken": "^9.0.10",
+    "playwright": "^1.64.0"
   }
 }

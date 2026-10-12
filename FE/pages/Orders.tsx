@@ -1,9 +1,10 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ApiError, apiRequest, clearSession, currentUser, formatPrice } from '@/components/fashion-data';
+import { API_URL, ApiError, apiRequest, clearSession, currentUser, formatPrice, getSessionToken } from '@/components/fashion-data';
 
 type OrderItem = {
   STT?: number;
@@ -35,6 +36,9 @@ type Order = {
   MaVanDon?: string | null;
   history?: { id: number; to: string; at: string; note: string }[];
 };
+type ReturnEvidence = { id: string; url: string; createdAt: string };
+type ReturnRequest = { id: number; orderId: number; status: string; reason: string; evidence?: ReturnEvidence[]; refundDue: number; version: number; requestedAt: string; lines: { orderLineId: number; requestedQuantity: number; receivedQuantity: number }[] };
+const returnStatusLabels: Record<string, string> = { REQUESTED: 'Chờ cửa hàng duyệt', APPROVED: 'Đã duyệt, chờ gửi hàng', REJECTED: 'Cửa hàng từ chối', CANCELLED: 'Bạn đã hủy', RECEIVED: 'Cửa hàng đã nhận hàng', INSPECTED: 'Đã kiểm tra, chờ hoàn tiền', REFUNDED: 'Đã hoàn tiền', CLOSED_NO_REFUND: 'Đã đóng, không phát sinh hoàn tiền' };
 
 const statusColors: Record<string, { background: string; foreground: string }> = {
   PENDING: { background: '#f7f0dc', foreground: '#8a6217' },
@@ -61,6 +65,15 @@ export default function OrdersScreen() {
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
   const [cancellingOrderId, setCancellingOrderId] = useState<number | null>(null);
   const [actionError, setActionError] = useState('');
+  const [actionNotice, setActionNotice] = useState('');
+  const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
+  const [returnFormOrderId, setReturnFormOrderId] = useState<number | null>(null);
+  const [returnQuantities, setReturnQuantities] = useState<Record<number, number>>({});
+  const [returnReason, setReturnReason] = useState('');
+  const [returnSaving, setReturnSaving] = useState(false);
+  const [returnEvidenceFiles, setReturnEvidenceFiles] = useState<ImagePicker.ImagePickerAsset[]>([]);
+  const [evidenceBusyId, setEvidenceBusyId] = useState<number | null>(null);
+  const [evidencePreview, setEvidencePreview] = useState<{ uri: string; title: string } | null>(null);
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -74,7 +87,14 @@ export default function OrdersScreen() {
           return;
         }
         const result = await apiRequest(`/orders/me?page=${page}&pageSize=10&_refresh=${reload}`);
-        if (active) { setOrders(result.items); setTotalPages(result.totalPages); }
+        if (active) { setOrders(result.items); setTotalPages(result.totalPages); setLoading(false); }
+        try {
+          const returns = await apiRequest('/returns/me?page=1&pageSize=100');
+          if (active) setReturnRequests(returns.items);
+        } catch (returnError) {
+          // Keep order history usable if the optional return migration is not available yet.
+          if (active) setActionError(returnError instanceof Error ? `Chức năng đổi trả chưa sẵn sàng: ${returnError.message}` : 'Chức năng đổi trả chưa sẵn sàng.');
+        }
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) { await clearSession(); router.replace('/login' as never); return; }
         if (active) setError(error instanceof Error ? error.message : 'Chưa thể tải đơn hàng. Vui lòng thử lại sau.');
@@ -93,6 +113,7 @@ export default function OrdersScreen() {
     try {
       setCancellingOrderId(order.MaPhieuXuat);
       setActionError('');
+      setActionNotice('');
       const result = await apiRequest(`/orders/${order.MaPhieuXuat}/cancel`, { method: 'POST', body: JSON.stringify({ reason: 'Khách yêu cầu hủy trước khi xác nhận' }) });
       setOrders(current => current.map(item => item.MaPhieuXuat === order.MaPhieuXuat
         ? { ...item, ...(result.order || {}), TrangThai: result.order?.TrangThai || 'Đã hủy' }
@@ -102,6 +123,101 @@ export default function OrdersScreen() {
     } finally {
       setCancellingOrderId(null);
     }
+  };
+
+  const pickEvidence = async (limit = 3) => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: limit, quality: 0.85 });
+      if (result.canceled) return [];
+      const valid = result.assets.filter(asset => (!asset.fileSize || asset.fileSize <= 5 * 1024 * 1024)
+        && (!asset.mimeType || ['image/jpeg', 'image/png', 'image/webp'].includes(asset.mimeType)));
+      if (valid.length !== result.assets.length) setActionError('Ảnh minh chứng cần là PNG, JPEG hoặc WebP, tối đa 5 MB mỗi ảnh.');
+      return valid.slice(0, Math.max(0, limit));
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Không mở được thư viện ảnh.'); return []; }
+  };
+
+  const uploadEvidence = async (returnId: number, asset: ImagePicker.ImagePickerAsset) => {
+    const name = asset.fileName || `return-evidence-${Date.now()}.jpg`;
+    const form = new FormData();
+    if (Platform.OS === 'web') {
+      const file = asset.file || new File([await (await fetch(asset.uri)).blob()], name, { type: asset.mimeType || 'image/jpeg' });
+      form.append('image', file, name);
+    } else {
+      (form as any).append('image', { uri: asset.uri, name, type: asset.mimeType || 'image/jpeg' });
+    }
+    return apiRequest(`/returns/${returnId}/evidence`, { method: 'POST', body: form });
+  };
+
+  const addEvidence = async (item: ReturnRequest) => {
+    if (evidenceBusyId !== null || !['REQUESTED', 'APPROVED'].includes(item.status)) return;
+    const remaining = 3 - (item.evidence?.length || 0);
+    if (remaining <= 0) return;
+    const selected = await pickEvidence(remaining);
+    if (!selected.length) return;
+    setEvidenceBusyId(item.id); setActionError(''); setActionNotice('');
+    try {
+      for (const asset of selected) await uploadEvidence(item.id, asset);
+      const updated = await apiRequest(`/returns/${item.id}`);
+      setReturnRequests(current => current.map(row => row.id === item.id ? updated : row));
+      setActionNotice('Đã tải ảnh minh chứng riêng tư lên yêu cầu đổi trả.');
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Không tải được ảnh minh chứng.'); }
+    finally { setEvidenceBusyId(null); }
+  };
+
+  const viewEvidence = async (item: ReturnEvidence) => {
+    setActionError('');
+    try {
+      const token = await getSessionToken();
+      const response = await fetch(`${API_URL}${item.url}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!response.ok) throw new Error(response.status === 404 ? 'Ảnh minh chứng không tồn tại hoặc bạn không có quyền xem.' : 'Không tải được ảnh minh chứng.');
+      const blob = await response.blob();
+      const uri = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Ảnh không đọc được.'));
+        reader.onerror = () => reject(new Error('Ảnh không đọc được.'));
+        reader.readAsDataURL(blob);
+      });
+      setEvidencePreview({ uri, title: `Ảnh minh chứng · ${new Date(item.createdAt).toLocaleDateString('vi-VN')}` });
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Không tải được ảnh minh chứng.'); }
+  };
+
+  const submitReturn = async (order: Order) => {
+    if (returnSaving) return;
+    const lines = (order.ctDonHangs || []).filter(item => item.STT && (returnQuantities[item.STT] || 0) > 0)
+      .map(item => ({ orderLineId: item.STT!, quantity: returnQuantities[item.STT!]! }));
+    if (!lines.length) { setActionError('Chọn ít nhất một sản phẩm và số lượng cần trả.'); return; }
+    if (returnReason.trim().length < 3) { setActionError('Nhập lý do đổi trả tối thiểu 3 ký tự.'); return; }
+    setReturnSaving(true); setActionError(''); setActionNotice('');
+    const requestKey = `ret_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
+    try {
+      const result = await apiRequest(`/returns/orders/${order.MaPhieuXuat}`, { method: 'POST', headers: { 'Idempotency-Key': requestKey }, body: JSON.stringify({ lines, reason: returnReason.trim(), requestKey }) });
+      setReturnRequests(current => [result.request, ...current.filter(item => item.id !== result.request.id)]);
+      setReturnFormOrderId(null); setReturnReason(''); setReturnQuantities({});
+      let uploadFailed = false;
+      for (const asset of returnEvidenceFiles) {
+        try { await uploadEvidence(result.request.id, asset); }
+        catch { uploadFailed = true; }
+      }
+      if (returnEvidenceFiles.length && !uploadFailed) {
+        const updated = await apiRequest(`/returns/${result.request.id}`);
+        setReturnRequests(current => current.map(item => item.id === updated.id ? updated : item));
+      }
+      setReturnEvidenceFiles([]);
+      setActionNotice(uploadFailed ? 'Yêu cầu đã gửi. Một số ảnh chưa tải lên được; bạn có thể thử lại từ mục ảnh minh chứng.' : 'Đã gửi yêu cầu đổi trả. Theo dõi trạng thái tại chi tiết đơn hàng.');
+      if (uploadFailed) setActionError('Không tải được một hoặc nhiều ảnh. Hãy kiểm tra kết nối rồi bổ sung ảnh trong yêu cầu.');
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Không thể gửi yêu cầu đổi trả. Vui lòng thử lại.'); }
+    finally { setReturnSaving(false); }
+  };
+
+  const cancelReturn = async (item: ReturnRequest) => {
+    if (returnSaving) return;
+    setReturnSaving(true); setActionError(''); setActionNotice('');
+    try {
+      const result = await apiRequest(`/returns/${item.id}/cancel`, { method: 'POST', body: JSON.stringify({ expectedVersion: item.version, reason: 'Khách không còn nhu cầu trả hàng' }) });
+      setReturnRequests(current => current.map(row => row.id === item.id ? result.request : row));
+      setActionNotice('Đã hủy yêu cầu trả hàng.');
+    } catch (cause) { setActionError(cause instanceof Error ? cause.message : 'Không thể hủy yêu cầu trả hàng.'); }
+    finally { setReturnSaving(false); }
   };
 
   const confirmCancelOrder = (order: Order) => {
@@ -149,11 +265,25 @@ export default function OrdersScreen() {
       ) : (
         <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 30 }]} showsVerticalScrollIndicator={false}>
           {!!actionError && <Text accessibilityRole="alert" style={styles.emptyTitle}>{actionError}</Text>}
+          {!!actionNotice && <Text accessibilityLiveRegion="polite" style={styles.noticeText}>{actionNotice}</Text>}
           {orders.map(order => {
             const statusStyle = statusColors[order.TrangThai] || statusColors.PENDING;
             const itemSummary = order.ctDonHangs?.map(item => `${item.sanPham?.TenSanPham || 'Sản phẩm'} × ${item.SoLuong}`).join(' · ');
             const canCancel = ['PENDING', 'Chờ xác nhận'].includes(order.TrangThai);
             const isExpanded = expandedOrderId === order.MaPhieuXuat;
+            const orderReturns = returnRequests.filter(item => item.orderId === order.MaPhieuXuat);
+            const reservedQuantities = new Map<number, number>();
+            for (const request of orderReturns) {
+              const finalInspection = ['INSPECTED', 'REFUNDED', 'CLOSED_NO_REFUND'].includes(request.status);
+              const stillPending = ['REQUESTED', 'APPROVED', 'RECEIVED'].includes(request.status);
+              if (!finalInspection && !stillPending) continue;
+              for (const line of request.lines) {
+                const quantity = finalInspection ? line.receivedQuantity ?? 0 : line.requestedQuantity;
+                reservedQuantities.set(line.orderLineId, (reservedQuantities.get(line.orderLineId) || 0) + quantity);
+              }
+            }
+            const deliveredAt = order.history?.filter(event => event.to === 'DELIVERED' || event.to === 'Đã giao').slice(-1)[0]?.at;
+            const canReturn = ['DELIVERED', 'Đã giao'].includes(order.TrangThai) && !!deliveredAt && Date.now() <= new Date(deliveredAt).getTime() + 7 * 24 * 60 * 60 * 1000;
             return (
               <View key={order.MaPhieuXuat} style={styles.orderRow}>
                 <View style={styles.orderHeading}>
@@ -221,6 +351,25 @@ export default function OrdersScreen() {
                       {!!order.MaVanDon && <Text style={styles.detailPaymentValue}>Vận chuyển: {order.DonViVanChuyen} · {order.MaVanDon}</Text>}
                       {order.history?.map(event => <Text key={event.id} style={styles.detailProductMeta}>{new Date(event.at).toLocaleString('vi-VN')} · {event.note || event.to}</Text>)}
                     </View>
+                    {!!orderReturns.length && <View style={styles.returnPanel}><Text style={styles.detailsTitle}>Yêu cầu đổi trả</Text>{orderReturns.map(item => <View key={item.id} style={styles.returnRow}>
+                      <View style={styles.detailItemCopy}><Text style={styles.returnCopy}>#{item.id} · {returnStatusLabels[item.status] || item.status} · {formatPrice(item.refundDue)}{`\n`}{new Date(item.requestedAt).toLocaleDateString('vi-VN')}</Text>
+                        {!!item.evidence?.length && <View style={styles.evidenceLinks}>{item.evidence.map(evidence => <Pressable key={evidence.id} accessibilityRole="button" onPress={() => void viewEvidence(evidence)} style={styles.evidenceLink}><Text style={styles.evidenceLinkText}>Xem ảnh minh chứng</Text></Pressable>)}</View>}
+                      </View>
+                      <View style={styles.evidenceActions}>{['REQUESTED', 'APPROVED'].includes(item.status) && (item.evidence?.length || 0) < 3 && <Pressable disabled={evidenceBusyId !== null} accessibilityRole="button" accessibilityLabel={`Bổ sung ảnh minh chứng yêu cầu ${item.id}`} onPress={() => void addEvidence(item)} style={styles.returnCancelButton}><Text style={styles.returnCancelText}>{evidenceBusyId === item.id ? 'Đang tải…' : 'Thêm ảnh'}</Text></Pressable>}{item.status === 'REQUESTED' && <Pressable disabled={returnSaving} accessibilityRole="button" accessibilityLabel={`Hủy yêu cầu trả hàng ${item.id}`} onPress={() => void cancelReturn(item)} style={styles.returnCancelButton}><Text style={styles.returnCancelText}>Hủy yêu cầu</Text></Pressable>}</View>
+                    </View>)}</View>}
+                    {canReturn && <View style={styles.returnPanel}>
+                      {returnFormOrderId !== order.MaPhieuXuat ? <Pressable accessibilityRole="button" onPress={() => { setReturnFormOrderId(order.MaPhieuXuat); setReturnQuantities({}); setReturnReason(''); setReturnEvidenceFiles([]); setActionError(''); }} style={styles.returnButton}><MaterialIcons name="assignment-return" size={18} color="#fffaf1" /><Text style={styles.returnButtonText}>Yêu cầu đổi trả</Text></Pressable> : <>
+                        <Text style={styles.detailsTitle}>Chọn hàng cần trả · trong 7 ngày từ khi giao</Text>
+                        {(order.ctDonHangs || []).map(item => {
+                          const lineId = item.STT ?? 0;
+                          const available = Math.max(0, item.SoLuong - (reservedQuantities.get(lineId) || 0));
+                          return <View key={lineId} style={styles.returnLine}><View style={styles.detailItemCopy}><Text style={styles.detailProductName}>{item.sanPham?.TenSanPham || 'Sản phẩm'}</Text><Text style={styles.detailProductMeta}>{[item.SKU, item.KichCo, item.MauSac].filter(Boolean).join(' · ')} · còn được yêu cầu trả {available}</Text></View><TextInput accessibilityLabel={`Số lượng trả dòng ${lineId}`} accessibilityRole="none" keyboardType="number-pad" editable={available > 0 && !returnSaving} maxLength={4} placeholder="0" value={String(returnQuantities[lineId] || '')} onChangeText={value => setReturnQuantities(current => ({ ...current, [lineId]: Math.min(available, Math.max(0, Number(value) || 0)) }))} style={styles.returnQuantityInput} /> </View>;
+                        })}
+                        <TextInput accessibilityLabel="Lý do đổi trả" multiline maxLength={500} placeholder="Lý do đổi/trả (bắt buộc)" value={returnReason} onChangeText={setReturnReason} style={styles.returnReasonInput} />
+                        <View style={styles.evidencePicker}><Text style={styles.detailProductMeta}>Ảnh minh chứng · tối đa 3 ảnh PNG/JPEG/WebP, 5 MB mỗi ảnh</Text><Pressable accessibilityRole="button" disabled={returnSaving || returnEvidenceFiles.length >= 3} onPress={async () => { const selected = await pickEvidence(3 - returnEvidenceFiles.length); setReturnEvidenceFiles(current => [...current, ...selected].slice(0, 3)); }} style={styles.returnCancelButton}><Text style={styles.returnCancelText}>Chọn ảnh</Text></Pressable>{returnEvidenceFiles.map((asset, index) => <Text key={`${asset.assetId || asset.uri}-${index}`} style={styles.detailProductMeta}>{asset.fileName || `Ảnh ${index + 1}`} · {asset.fileSize ? `${(asset.fileSize / 1024 / 1024).toFixed(1)} MB` : 'sẽ được kiểm tra khi tải lên'}</Text>)}</View>
+                        <View style={styles.returnActions}><Pressable accessibilityRole="button" disabled={returnSaving} onPress={() => { setReturnFormOrderId(null); setReturnReason(''); setReturnQuantities({}); setReturnEvidenceFiles([]); }} style={styles.detailsButton}><Text style={styles.detailsButtonText}>Đóng</Text></Pressable><Pressable accessibilityRole="button" disabled={returnSaving} onPress={() => void submitReturn(order)} style={[styles.returnButton, returnSaving && styles.disabled]}><Text style={styles.returnButtonText}>{returnSaving ? 'Đang gửi…' : 'Gửi yêu cầu'}</Text></Pressable></View>
+                      </>}
+                    </View>}
                   </View>
                 )}
               </View>
@@ -233,6 +382,9 @@ export default function OrdersScreen() {
           </View>
         </ScrollView>
       )}
+      <Modal transparent visible={!!evidencePreview} animationType="fade" onRequestClose={() => setEvidencePreview(null)}>
+        <View style={styles.evidencePreviewOverlay}><View style={styles.evidencePreviewCard}><View style={styles.evidencePreviewHeader}><Text style={styles.detailsTitle}>{evidencePreview?.title || 'Ảnh minh chứng'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Đóng ảnh minh chứng" onPress={() => setEvidencePreview(null)} style={styles.returnCancelButton}><Text style={styles.returnCancelText}>Đóng</Text></Pressable></View>{evidencePreview && <Image accessibilityLabel="Ảnh minh chứng đổi trả" source={{ uri: evidencePreview.uri }} resizeMode="contain" style={styles.evidencePreviewImage} />}</View></View>
+      </Modal>
     </View>
   );
 }
@@ -277,4 +429,26 @@ const styles = StyleSheet.create({
   detailPayment: { gap: 3, paddingTop: 10 },
   detailPaymentLabel: { color: '#898078', fontFamily: 'Inter', fontSize: 10 },
   detailPaymentValue: { color: '#514840', fontFamily: 'Inter', fontSize: 11, fontWeight: '600' },
+  noticeText: { backgroundColor: '#edf7ef', borderColor: '#cce5d1', borderRadius: 10, borderWidth: 1, color: '#27643b', fontFamily: 'Inter', fontSize: 12, lineHeight: 18, padding: 11 },
+  returnPanel: { backgroundColor: '#fffefa', borderColor: '#e9e2d9', borderRadius: 12, borderWidth: 1, gap: 8, marginTop: 12, padding: 12 },
+  returnRow: { alignItems: 'center', borderTopColor: '#eee9e1', borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', gap: 10, justifyContent: 'space-between', paddingTop: 9 },
+  returnCopy: { color: '#514840', flex: 1, fontFamily: 'Inter', fontSize: 11, lineHeight: 17 },
+  evidenceLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 7 },
+  evidenceLink: { minHeight: 32, justifyContent: 'center', paddingRight: 8 },
+  evidenceLinkText: { color: '#8f2639', fontFamily: 'Inter', fontSize: 11, fontWeight: '700', textDecorationLine: 'underline' },
+  evidenceActions: { alignItems: 'flex-end', gap: 7 },
+  evidencePicker: { alignItems: 'flex-start', gap: 7, paddingVertical: 4 },
+  evidencePreviewOverlay: { alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.78)', flex: 1, justifyContent: 'center', padding: 18 },
+  evidencePreviewCard: { backgroundColor: '#fffefa', borderRadius: 14, maxHeight: '90%', maxWidth: 720, padding: 12, width: '100%' },
+  evidencePreviewHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 8 },
+  evidencePreviewImage: { height: 560, maxHeight: '82%', width: '100%' },
+  returnCancelButton: { alignItems: 'center', borderColor: '#ead4d2', borderRadius: 9, borderWidth: 1, justifyContent: 'center', minHeight: 36, paddingHorizontal: 10 },
+  returnCancelText: { color: '#a8323e', fontFamily: 'Inter', fontSize: 11, fontWeight: '700' },
+  returnButton: { alignItems: 'center', alignSelf: 'flex-start', backgroundColor: '#8f2639', borderRadius: 10, flexDirection: 'row', gap: 7, justifyContent: 'center', minHeight: 42, paddingHorizontal: 13 },
+  returnButtonText: { color: '#fffaf1', fontFamily: 'Inter', fontSize: 12, fontWeight: '700' },
+  returnLine: { alignItems: 'center', borderTopColor: '#eee9e1', borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', gap: 10, paddingVertical: 9 },
+  returnQuantityInput: { backgroundColor: '#fff', borderColor: '#d9d1c7', borderRadius: 9, borderWidth: 1, color: '#342a25', fontFamily: 'Inter', fontSize: 14, minHeight: 42, textAlign: 'center', width: 64 },
+  returnReasonInput: { backgroundColor: '#fff', borderColor: '#d9d1c7', borderRadius: 9, borderWidth: 1, color: '#342a25', fontFamily: 'Inter', fontSize: 12, minHeight: 82, padding: 10, textAlignVertical: 'top' },
+  returnActions: { alignItems: 'center', flexDirection: 'row', gap: 14, justifyContent: 'flex-end' },
+  disabled: { opacity: 0.55 },
 });

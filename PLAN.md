@@ -1,6 +1,6 @@
 # Fashion Haven — kế hoạch hoàn thiện
 
-Ngày rà soát: **06/10/2026**. Đây là backlog và tiêu chí nghiệm thu, không phải tuyên bố tính năng đã hoàn thành. Trạng thái có bằng chứng nằm trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md); cách chạy trong [README.md](README.md).
+Ngày rà soát nền: **06/10/2026**. Đây là backlog và tiêu chí nghiệm thu, không phải tuyên bố tính năng đã hoàn thành. Các trạng thái trong bảng phản ánh mốc rà soát đó; trước khi triển khai hãy đối chiếu checkpoint mới nhất ở [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md), đặc biệt voucher, báo cáo và phân loại thuộc tính SKU. Cách chạy ở [README.md](README.md).
 
 ## Phạm vi và kiến trúc
 
@@ -65,11 +65,11 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 
 | ID / Yêu cầu | Màn hình / nguồn | API | Dữ liệu | Quy tắc / quyền | Tiêu chí nghiệm thu | Trạng thái checkpoint |
 | --- | --- | --- | --- | --- | --- | --- |
-| V01 Quản lý voucher | Chưa có screen thật | Chưa có | Chưa có voucher/redemption | ADMIN; validity/limit/min spend; VND hoặc % có cap; rule cần chốt | Tạo/sửa/ngưng, validate thời gian/tiền/giới hạn và audit | Thiếu; không coi CSS voucherBanner là voucher |
-| V02 Áp dụng voucher | `Cart` chưa có form/API voucher | Quote/checkout hiện discount 0 | Chưa có reservation/redemption snapshot | Giá trị tính server, transaction/race/retry, lịch sử discount | Quote đúng; race hết lượt/retry/cancel không dùng hai lần | Thiếu; discount 0 là chính sách hiện tại |
-| R01 Khách yêu cầu trả | Chưa có screen/form | Chưa có | Chưa có return request/lines | Ownership; đã giao, thời hạn/qty đủ điều kiện cần chốt | Không trả quá đã mua; duplicate/race; có lý do/lịch sử | Thiếu; không dùng CANCELLED thay return |
-| R02 Nhận trả / hoàn tiền | Chưa có admin view | Chưa có | Chưa có receipt/refund ledger | ADMIN; nhận hàng khác refund, chỉ hoàn tồn khi đã kiểm nhận | Trạng thái/audit; stock/refund một lần; không refund giả gateway | Thiếu; cần chính sách/kênh đối soát |
-| B01 Báo cáo theo kỳ | ReportsView | GET /reports?from&to | Aggregate toàn bộ order/lines và current selling stock | ADMIN; kỳ tạo đơn UTC+7/current status, collected khác delivered | >50 orders / boundaries / quyền / filters/empty/CSV/mobile | Đạt API + browser phạm vi này; cash ledger/discount/refund/returns chưa khả dụng |
+| V01 Quản lý voucher | Admin voucher view | CRUD `/vouchers` | Voucher, scope, usage, immutable snapshot | ADMIN; validity/min spend/cap/limits; one checkout code | Browser create/edit/pause/use counts | Đạt API + browser theo checkpoint 12/10 |
+| V02 Áp dụng voucher | FE Cart | quote/checkout voucher | VoucherUsage, order snapshot | Giá server-side, transaction/race/retry/cancel; customer scope | Quote, checkout COD, expired/minimum reject | Đạt API + browser; online payments chưa bật |
+| R01 Khách yêu cầu trả | FE Orders | `/api/returns` | ReturnRequest/Line/Event/Evidence | Ownership; delivered window; purchased/unreturned qty; idempotency | Browser request + up to 3 authenticated private images | Đạt local COD; giả định cửa sổ 7 ngày |
+| R02 Nhận trả / hoàn tiền | Admin ReturnsView | return transition/refund | Return ledger + stock adjustment + private evidence | ADMIN; receive/inspect before restock; refund <= collected | Full browser receive/inspect/restock once/refund; API retries | Đạt local COD; gateway/native chưa nghiệm thu |
+| B01 Báo cáo theo kỳ | ReportsView | GET /reports?from&to | Aggregate all orders/lines, refund ledger, current sellable stock | ADMIN; created-date UTC+7/current status; manual COD reconciliation is not net revenue | >50 orders / boundaries / permission / filters/empty/CSV/mobile | Đạt API + full browser checkpoint 12/10; cash ledger/profit/historical stock remain |
 | B02 Cài đặt cửa hàng / banner | SettingsView; FE Home/Contact/Policies | GET public/internal, PUT /settings | StoreSettings version + SettingsAudit, order snapshots | ADMIN CAS/reason/audit; một fee checkout phân bổ exact VND; banner active/lịch/internal link | Admin lưu → FE đọc + checkout; stale/concurrent/fee/retry/snapshot đúng | Đạt API + browser; defaults khi chưa row, không tự seed, chỉ STANDARD |
 | B03 Phân quyền chi nhánh | Menu STAFF hiện 2 nhóm | Middleware role đã có, chưa branch scope | Chưa quan hệ kho–chi nhánh | Quyền server; không suy từ chức danh/ẩn nút | Staff chỉ đúng scope API; admin vẫn quản lý tổng | Đạt role; thiếu branch scope |
 
@@ -168,3 +168,19 @@ Nêu actor/state/money/stock/validation/errors; nối UI→API→DB thật; tran
 - Database test cuối `fashionhaven_test_1791423949477_6b59e005` đã dọn trong finally. Lượt 99/99 trước đó và lượt fail selector/port/assert thứ tự cũng đều dọn; không fixture trong shop.
 - Browser Edge headless: admin 1440×1000 đăng nhập cũ và catalog mới; FE 390×844 tìm 6 bomber, mở sản phẩm mới #52, ảnh hiển thị; không pageerror/API 500 hoặc tràn ngang trong ca đã chạy. Đã xem ảnh. Bằng chứng ignored: catalog-live-acceptance-2026-10-08.json, catalog-expanded-browser-2026-10-08.json và PNG trong BE/test-artifacts. Runtime Playwright đã đổi thư mục; discovery runtime mới và chạy lại đạt, không sửa dependency app.
 - FE/admin source không sửa, không chạy lại build của hai ứng dụng. Native, thanh toán online, đổi trả/hoàn tiền, thông báo và đánh giá còn backlog; lượt này không tuyên bố toàn bộ sản phẩm hoàn chỉnh. BaoCao/report_work được giữ nguyên.
+
+## Checkpoint nghiệm thu giao dịch — 12/10/2026
+
+| Yêu cầu | Màn hình | API | Dữ liệu | Quy tắc đã xác minh | Ca nghiệm thu | Trạng thái |
+|---|---|---|---|---|---|---|
+| Checkout COD + xử lý đơn | FE giỏ/đơn; admin đơn | quote, checkout, đổi trạng thái | PhieuXuat, CTDonHang, OrderEvent, tồn | Tính lại quote; chỉ mua dòng chọn; giao cần vận đơn; COD đối soát riêng | Browser build thật, FE 390×844/admin 1440×1000; API suite | Đạt trong phạm vi COD local |
+| Voucher | FE checkout; admin voucher | CRUD, quote/checkout, usage | Voucher, lượt dùng, snapshot đơn | Hạn dùng, mức tối thiểu, giới hạn, VND nguyên, retry | Browser tạo/sửa/tạm ngưng, áp dụng hợp lệ, từ chối hết hạn/thấp mức tối thiểu | Đạt trong phạm vi đã nêu |
+| Đổi trả/hoàn tiền | FE đơn; admin đổi trả | `/api/returns`, endpoint ảnh riêng tư | ReturnRequest/Line/Event/Refund, nhật ký tồn; file ngoài static | Đơn đã giao, giới hạn số lượng, nhận/kiểm trước nhập tồn, hoàn không quá tiền đã thu; chỉ chủ đơn/admin xem ảnh | 107 API/MySQL; browser upload/view FE, view admin, nhận/kiểm/restock/refund COD | Luồng local COD đạt; chưa có gateway và chưa nghiệm thu native |
+| Báo cáo | admin báo cáo | aggregate API | đơn, dòng hàng, refund, tồn | UTC+7; ngày tạo đơn/trạng thái hiện tại; không tính từ trang phân trang; giới hạn sổ tiền giải thích rõ | Aggregate integration + browser filter, empty, CSV formula/UTF-8, 390 px | Đạt phạm vi API/UI nêu; chưa phải sổ thu tiền/lợi nhuận |
+| Dọn DB test | không áp dụng | runner test cô lập | schema theo run ID | Chỉ xóa DB do chính lượt chạy tạo; KEEP_TEST_DB opt-in | Full browser/API 108/108; dry-run list | Đạt; hai DB legacy chưa xác minh vẫn giữ |
+
+`npm.cmd test`: **107/107**. Reports browser riêng: **108/108**; đổi trả browser riêng: **1/1**; full `npm.cmd run test:browser`: **108/108** trên build FE/admin, Express và MySQL test biệt lập. Hai database cũ `fashionhaven_test_1790947556855_6730d9c6` và `fashionhaven_test_1790947607214_dfda8761` có 22 bảng rỗng, 0 kết nối, nhưng thiếu ownership marker/manifest/fingerprint; dry-run đánh dấu `unverified`, chưa xóa.
+
+Việc tiếp theo: đánh giá sau mua, thông báo in-app, CMS draft/publish/lên lịch, quản lý brand và các chức năng kho/phân quyền còn thiếu. Không bật gateway/email/vận chuyển production khi chưa có sandbox hoặc cấu hình thật. Native Android/iOS chưa kiểm tra trên simulator/thiết bị. Toàn dự án **chưa đạt mức hoàn tất đồ án**.
+
+Runtime dev hiện tại đã nạp source mới: migration bốn bảng returns additive trên `localhost/FashionHeaven`; API 4000 health 200, route returns trả 401 khi thiếu token, FE 8081 và admin 5173 trả 200. Gọi lại `npm run dev` exit 0 vì launcher nhận diện shop đang chạy, không mở process trùng hoặc ghi DLL.

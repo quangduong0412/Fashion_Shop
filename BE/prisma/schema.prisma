@@ -197,6 +197,7 @@ model KhachHang {
   Status        String      @default("ACTIVE") @db.VarChar(20)
   SessionEpoch  Int         @default(0)
   phieuXuats    PhieuXuat[]
+  returnRequests ReturnRequest[]
 
   @@map("khachhang")
 }
@@ -372,6 +373,7 @@ model PhieuXuat {
   DienThoaiNhan        String?       @db.VarChar(50)
   DiaChiNhan           String?       @db.Text
   ctDonHangs           CTDonHang[]
+  returnRequests       ReturnRequest[]
   khachHang            KhachHang     @relation(fields: [MaKhachHang], references: [MaKhachHang], onUpdate: NoAction, map: "FK__PhieuXuat__MaKha__6383C8BA")
   kho                  Kho           @relation(fields: [MaKho], references: [MaKho], onUpdate: NoAction, map: "FK__PhieuXuat__MaKho__6477ECF3")
   nhanVien             NhanVien      @relation(fields: [MaNhanVien], references: [MaNhanVien], onUpdate: NoAction, map: "FK__PhieuXuat__MaNha__619B8048")
@@ -397,6 +399,7 @@ model CTDonHang {
   AnhSanPham  String?   @db.Text
   donHang     PhieuXuat @relation(fields: [MaPhieuXuat], references: [MaPhieuXuat], onUpdate: NoAction, map: "FK__CTPhieuXu__MaPhi__68487DD7")
   sanPham     SanPham   @relation(fields: [MaSanPham], references: [MaSanPham], onUpdate: NoAction, map: "FK__CTPhieuXu__MaSan__693CA210")
+  returnLines ReturnLine[]
 
   @@map("ctdonhang")
 }
@@ -433,6 +436,78 @@ model OrderEvent {
 
   @@index([OrderId, Id])
   @@map("orderevent")
+}
+
+// Returns, inspection and manual refund records are separate from order cancellation/payment collection.
+model ReturnRequest {
+  Id          Int      @id @default(autoincrement())
+  OrderId     Int
+  CustomerId  Int
+  RequestKey  String   @db.VarChar(64)
+  Fingerprint String   @db.VarChar(64)
+  Status      String   @default("REQUESTED") @db.VarChar(24)
+  Reason      String   @db.VarChar(500)
+  Evidence    Json?
+  RefundDue   Decimal  @default(0) @db.Decimal(18, 0)
+  Version     Int      @default(1)
+  CreatedAt   DateTime @default(now()) @db.DateTime(3)
+  UpdatedAt   DateTime @updatedAt @db.DateTime(3)
+  order       PhieuXuat @relation(fields: [OrderId], references: [MaPhieuXuat], onDelete: Restrict, onUpdate: NoAction, map: "FK_ReturnRequest_Order")
+  customer    KhachHang @relation(fields: [CustomerId], references: [MaKhachHang], onDelete: Restrict, onUpdate: NoAction, map: "FK_ReturnRequest_Customer")
+  lines       ReturnLine[]
+  events      ReturnEvent[]
+  refunds     ReturnRefund[]
+  @@unique([CustomerId, RequestKey], map: "returnrequest_CustomerId_RequestKey_key")
+  @@index([OrderId, Status, Id], map: "returnrequest_OrderId_Status_Id_idx")
+  @@index([CustomerId, Id], map: "returnrequest_CustomerId_Id_idx")
+  @@index([Status, Id], map: "returnrequest_Status_Id_idx")
+  @@map("returnrequest")
+}
+
+model ReturnLine {
+  Id             Int      @id @default(autoincrement())
+  ReturnId       Int
+  OrderLineId    Int
+  RequestedQty   Int
+  ReceivedQty    Int      @default(0)
+  RestockQty     Int      @default(0)
+  RefundAmount   Decimal  @default(0) @db.Decimal(18, 0)
+  request        ReturnRequest @relation(fields: [ReturnId], references: [Id], onDelete: Restrict, onUpdate: NoAction, map: "FK_ReturnLine_Request")
+  orderLine      CTDonHang @relation(fields: [OrderLineId], references: [STT], onDelete: Restrict, onUpdate: NoAction, map: "FK_ReturnLine_OrderLine")
+  @@unique([ReturnId, OrderLineId], map: "returnline_ReturnId_OrderLineId_key")
+  @@index([OrderLineId, ReturnId], map: "returnline_OrderLineId_ReturnId_idx")
+  @@map("returnline")
+}
+
+model ReturnEvent {
+  Id         Int      @id @default(autoincrement())
+  ReturnId   Int
+  FromStatus String?  @db.VarChar(24)
+  ToStatus   String   @db.VarChar(24)
+  ActorRole  String   @db.VarChar(20)
+  ActorId    Int
+  Note       String   @db.VarChar(500)
+  Metadata   Json?
+  CreatedAt  DateTime @default(now()) @db.DateTime(3)
+  request    ReturnRequest @relation(fields: [ReturnId], references: [Id], onDelete: Restrict, onUpdate: NoAction, map: "FK_ReturnEvent_Request")
+  @@index([ReturnId, Id], map: "returnevent_ReturnId_Id_idx")
+  @@map("returnevent")
+}
+
+model ReturnRefund {
+  Id             Int      @id @default(autoincrement())
+  ReturnId       Int
+  IdempotencyKey String   @db.VarChar(64)
+  Fingerprint    String   @db.VarChar(64)
+  Amount         Decimal  @db.Decimal(18, 0)
+  Method         String   @db.VarChar(24)
+  Reference      String   @db.VarChar(100)
+  ActorId        Int
+  CreatedAt      DateTime @default(now()) @db.DateTime(3)
+  request        ReturnRequest @relation(fields: [ReturnId], references: [Id], onDelete: Restrict, onUpdate: NoAction, map: "FK_ReturnRefund_Request")
+  @@unique([ReturnId, IdempotencyKey], map: "returnrefund_ReturnId_IdempotencyKey_key")
+  @@index([ReturnId, Id], map: "returnrefund_ReturnId_Id_idx")
+  @@map("returnrefund")
 }
 
 model BaiViet {

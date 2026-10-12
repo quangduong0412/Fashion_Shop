@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const http = require('node:http');
 const { schemaTokens, clientIsCurrent } = require('../scripts/ensure-prisma-client.cjs');
-const { portIsFree, existingShop } = require('../scripts/run-dev.cjs');
+const { portIsFree, existingShop, startupPlan } = require('../scripts/run-dev.cjs');
 
 test('Prisma schema comparison ignores formatter changes but preserves real schema/string changes', () => {
   const a = 'model Item {\n id Int @id\n label String @default("hello world // value")\n}';
@@ -42,8 +42,11 @@ test('dev startup distinguishes the shop, a demo API and unrelated occupied port
   const port = server.address().port;
   try {
     assert.equal(await portIsFree(port), false); assert.equal(await existingShop(port), true);
+    assert.equal(await startupPlan(port), 'reuse', 'an active Fashion Haven shop is reused without touching its loaded Prisma engine');
     mode = 'demo'; assert.equal(await existingShop(port), false);
+    await assert.rejects(startupPlan(port), /tiến trình khác sử dụng/);
     mode = 'shop'; service = 'unrelated'; assert.equal(await existingShop(port), false);
+    await assert.rejects(startupPlan(port), /tiến trình khác sử dụng/);
   } finally { await new Promise(resolve => server.close(resolve)); }
   assert.equal(await portIsFree(port), true);
 });

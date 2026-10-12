@@ -5,7 +5,7 @@ import { recordStockAdjustment } from './inventoryAdjustments';
 type InventoryLine = { MaSanPham: number; MaBienThe?: number | null | undefined; SoLuong: number };
 export const isCancelledOrder = (status: string) => ['CANCELLED', 'Đã hủy'].includes(status);
 
-export async function adjustOrderInventory(tx: Prisma.TransactionClient, lines: InventoryLine[], restore: boolean, actor = 'system', orderId?: number) {
+export async function adjustOrderInventory(tx: Prisma.TransactionClient, lines: InventoryLine[], restore: boolean, actor = 'system', orderId?: number, adjustment?: { kind: string; reason: string }) {
   const products = new Map<number, number>();
   const variants = new Map<number, { productId: number; quantity: number }>();
   for (const line of lines) {
@@ -25,7 +25,7 @@ export async function adjustOrderInventory(tx: Prisma.TransactionClient, lines: 
     });
     if (result.count !== 1) throw new ApiError(409, restore ? 'STOCK_LIMIT' : 'INSUFFICIENT_STOCK', restore ? 'Sản phẩm không tồn tại hoặc tồn sau hoàn vượt giới hạn.' : 'Sản phẩm không còn tồn tại hoặc không đủ tồn kho.');
     if (!lines.some(line => line.MaSanPham === productId && line.MaBienThe)) await recordStockAdjustment(tx, { productId, before: before!.SoLuong,
-      after: before!.SoLuong + (restore ? quantity : -quantity), reason: `Đơn #${orderId ?? ''}: ${restore ? 'hủy, hoàn tồn khả dụng' : 'giữ tồn khả dụng'}`, actor, kind: restore ? 'ORDER_CANCEL' : 'ORDER_RESERVE' });
+      after: before!.SoLuong + (restore ? quantity : -quantity), reason: adjustment?.reason ?? `Đơn #${orderId ?? ''}: ${restore ? 'hủy, hoàn tồn khả dụng' : 'giữ tồn khả dụng'}`, actor, kind: adjustment?.kind ?? (restore ? 'ORDER_CANCEL' : 'ORDER_RESERVE') });
   }
   for (const [variantId, { productId, quantity }] of [...variants].sort(([a], [b]) => a - b)) {
     const before = await tx.bienTheSanPham.findUnique({ where: { MaBienThe: variantId } });
@@ -36,6 +36,6 @@ export async function adjustOrderInventory(tx: Prisma.TransactionClient, lines: 
     // Never restore only the parent stock when the original variant no longer exists.
     if (result.count !== 1) throw new ApiError(409, 'VARIANT_CHANGED', 'Biến thể đã thay đổi hoặc không đủ tồn kho. Cần kiểm tra trước khi hoàn tồn.');
     await recordStockAdjustment(tx, { productId, variantId, sku: before!.SKU, variantName: [before!.KichCo, before!.MauSac].filter(Boolean).join(' · '),
-      before: before!.SoLuong, after: before!.SoLuong + (restore ? quantity : -quantity), reason: `Đơn #${orderId ?? ''}: ${restore ? 'hủy, hoàn tồn khả dụng' : 'giữ tồn khả dụng'}`, actor, kind: restore ? 'ORDER_CANCEL' : 'ORDER_RESERVE' });
+      before: before!.SoLuong, after: before!.SoLuong + (restore ? quantity : -quantity), reason: adjustment?.reason ?? `Đơn #${orderId ?? ''}: ${restore ? 'hủy, hoàn tồn khả dụng' : 'giữ tồn khả dụng'}`, actor, kind: adjustment?.kind ?? (restore ? 'ORDER_CANCEL' : 'ORDER_RESERVE') });
   }
 }

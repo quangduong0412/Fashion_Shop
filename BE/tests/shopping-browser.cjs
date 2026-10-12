@@ -27,11 +27,12 @@ exports.runShoppingBrowser = async ({ browser, customerUrl, base, prisma, direct
     {SKU:'BROWSER-SHOP-M',KichCo:'M',MauSac:'Đen',DonGia:120000,SoLuong:5},
     {SKU:'BROWSER-SHOP-L',KichCo:'L',MauSac:'Trắng',DonGia:240000,SoLuong:5}
   ]}},include:{bienThes:true}});
-  let page;
+  let page, guestPage;
   try {
     console.log('Browser: guest cart merge, wishlist and matching SKU filters');
     page=await createPage();
     await page.goto(`${customerUrl}/product/${product.MaSanPham}`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:'Màu Đen',exact:true}).click();
     await page.getByText('Thêm vào giỏ',{exact:true}).click();
     await page.getByText('Đã thêm sản phẩm vào giỏ hàng.',{exact:true}).waitFor();
     await login(page,'browser-shopping-a@example.invalid');
@@ -74,6 +75,7 @@ exports.runShoppingBrowser = async ({ browser, customerUrl, base, prisma, direct
     await device.getByText('Browser shopping garment',{exact:true}).waitFor();
     assert.equal(await device.getByRole('checkbox',{name:/^Thanh toán Browser shopping garment L Trắng/}).isChecked(),false);
     await page.goto(`${customerUrl}/product/${product.MaSanPham}`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:'Màu Đen',exact:true}).click();
     await page.getByText('Thêm vào giỏ',{exact:true}).click();await page.getByText('Đã thêm sản phẩm vào giỏ hàng.',{exact:true}).waitFor();
     await page.goto(`${customerUrl}/cart`,{waitUntil:'domcontentloaded'});
     await page.getByRole('checkbox',{name:/^Thanh toán Browser shopping garment M Đen/}).waitFor();
@@ -145,14 +147,19 @@ exports.runShoppingBrowser = async ({ browser, customerUrl, base, prisma, direct
     console.log('Browser: rejected guest merge preserves account cart and offers explicit discard');
     await prisma.sanPham.update({where:{MaSanPham:product.MaSanPham},data:{TrangThai:'Đang mở bán'}});
     await page.goto(`${customerUrl}/product/${product.MaSanPham}`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:'Màu Đen',exact:true}).click();
     await page.getByText('Thêm vào giỏ',{exact:true}).click();await page.getByText('Đã thêm sản phẩm vào giỏ hàng.',{exact:true}).waitFor();
     const before=await prisma.customerCart.findUniqueOrThrow({where:{CustomerId:b}});
     const stale=await prisma.sanPham.create({data:{TenSanPham:'Browser stale guest item',MaLoaiHang:category.MaLoaiHang,MaKho:source.MaKho,MaNCC:source.MaNCC,DonGiaNhap:0,DonGiaBan:10000,SoLuong:1}});
-    const guest=await createPage();
+    const guest=await createPage();guestPage=guest;
     await guest.goto(`${customerUrl}/product/${stale.MaSanPham}`,{waitUntil:'domcontentloaded'});
     await guest.getByText('Thêm vào giỏ',{exact:true}).click();await guest.getByText('Đã thêm sản phẩm vào giỏ hàng.',{exact:true}).waitFor();
     await prisma.sanPham.update({where:{MaSanPham:stale.MaSanPham},data:{SoLuong:0}});
+    const mergeResponse=guest.waitForResponse(response=>response.request().url().includes('/api/shopping/cart/merge')&&response.request().method()==='POST');
     await login(guest,'browser-shopping-b@example.invalid');
+    const mergeResult=await mergeResponse;
+    console.log('Browser guest merge response:',mergeResult.status(),(await mergeResult.json()).code||'ok');
+    console.log('Browser guest cart rendered:',(await guest.locator('body').innerText()).slice(0,500).replace(/\s+/g,' '));
     await guest.getByText(/Giỏ khách chưa hợp nhất:/).filter({visible:true}).first().waitFor();
     await guest.getByText('Browser shopping garment',{exact:true}).waitFor();
     assert.deepEqual((await prisma.customerCart.findUniqueOrThrow({where:{CustomerId:b}})).Items,before.Items);
@@ -161,6 +168,6 @@ exports.runShoppingBrowser = async ({ browser, customerUrl, base, prisma, direct
     assert.deepEqual((await prisma.customerCart.findUniqueOrThrow({where:{CustomerId:b}})).Items,before.Items);
     assert.equal(await guest.evaluate(id=>Object.keys(localStorage).filter(key=>key.startsWith(`guest_merge_${id}_`)).length,b),0);
     await guest.screenshot({path:path.join(directory,'customer-rejected-guest-merge-mobile.png'),fullPage:true});
-  } catch(error){if(page)await page.screenshot({path:path.join(directory,'shopping-browser-failure.png'),fullPage:true}).catch(()=>{});throw error;}
+  } catch(error){await Promise.allSettled([page?.screenshot({path:path.join(directory,'shopping-browser-failure.png'),fullPage:true}),guestPage?.screenshot({path:path.join(directory,'shopping-guest-merge-failure.png'),fullPage:true})]);throw error;}
   finally{await prisma.sanPham.update({where:{MaSanPham:product.MaSanPham},data:{TrangThai:'Đang mở bán'}});for(const context of contexts)await context.close();}
 };

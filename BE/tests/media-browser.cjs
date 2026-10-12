@@ -89,7 +89,10 @@ exports.runMediaBrowser = async ({ admin, page, customerUrl, prisma, directory, 
     await page.getByRole('button', { name: 'Xem ảnh 2: Browser created variants', exact: true }).click();
     await imageLoaded(firstImage, 180);
     await page.getByRole('button', { name: 'Màu Trắng', exact: true }).click();
-    await page.getByText('SKU: UI-WHITE-ONE', { exact: true }).waitFor();
+    // Customer-facing product detail shows the selected option and its stock;
+    // the internal SKU is intentionally not rendered as a public field.
+    await page.getByText('Màu sắc: Trắng', { exact: true }).waitFor();
+    await page.getByText('Tồn kho: 3 • Đang mở bán', { exact: true }).waitFor();
     await imageLoaded(variantImage, 180);
     await page.screenshot({ path: path.join(directory, 'customer-media-variant-mobile.png'), fullPage: true });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);

@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { randomBytes, randomUUID } from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
+import fs from 'fs/promises';
 import path from 'path';
 import { configuredDatabases, dropVerifiedDatabase, localSource, recordCreatedDatabase, writeManifest } from './testDatabaseSafety';
 import type { Manifest } from './testDatabaseSafety';
@@ -18,8 +19,9 @@ async function main() {
   const { protectedNames } = await configuredDatabases(path.resolve(__dirname, '../..'), source);
   const provisioner = new PrismaClient();
   const target = new URL(source); target.pathname = `/${database}`;
-  const env = { ...process.env, DATABASE_URL: target.toString(), JWT_SECRET: randomBytes(32).toString('hex'), NODE_ENV: 'test', TEST_DATABASE: database };
   const cwd = path.resolve(__dirname, '..');
+  const evidenceDirectory = path.join(cwd, 'test-artifacts', 'return-evidence', runId);
+  const env = { ...process.env, DATABASE_URL: target.toString(), JWT_SECRET: randomBytes(32).toString('hex'), NODE_ENV: 'test', TEST_DATABASE: database, RETURN_EVIDENCE_DIR: evidenceDirectory };
   let child: ChildProcess | undefined;
   let interrupted = false;
   let created = false;
@@ -53,7 +55,7 @@ async function main() {
         await markerClient.$executeRaw`INSERT INTO __fashion_test_owner (Id, RunId, Project) VALUES (1, ${runId}, 'fashion-haven-integration')`;
       } finally { await markerClient.$disconnect(); }
     },
-    test: () => arg === '--cleanup-probe=test-failure' ? Promise.resolve(2) : runChild(['--test', '-r', 'ts-node/register', 'tests/integration.test.ts', 'tests/cart-state.test.ts', 'tests/product-variants.test.ts', 'tests/request-throttle.test.ts', 'tests/test-database-lifecycle.test.ts', 'tests/content-validation.test.ts', 'tests/store-settings.test.ts', 'tests/development-customer.test.ts', 'tests/demo-data.test.ts', 'tests/vouchers.test.ts', 'tests/startup.test.cjs']),
+    test: () => arg === '--cleanup-probe=test-failure' ? Promise.resolve(2) : runChild(['--test', '-r', 'ts-node/register', ...(process.env.BROWSER_ONLY_MODULES === 'returns' ? ['tests/returns-browser.integration.test.ts'] : ['tests/integration.test.ts', 'tests/cart-state.test.ts', 'tests/product-variants.test.ts', 'tests/request-throttle.test.ts', 'tests/test-database-lifecycle.test.ts', 'tests/content-validation.test.ts', 'tests/store-settings.test.ts', 'tests/development-customer.test.ts', 'tests/demo-data.test.ts', 'tests/vouchers.test.ts', 'tests/startup.test.cjs'])]),
     finish: async () => {
       if (child) {
         const running = child; running.kill();
@@ -63,6 +65,7 @@ async function main() {
     },
     cleanup: async () => {
       await dropVerifiedDatabase(provisioner, database, protectedNames, { runId });
+      await fs.rm(evidenceDirectory, { recursive: true, force: true });
       console.log(`Removed owned test database: ${database}`);
     }
   });

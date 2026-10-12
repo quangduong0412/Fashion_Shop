@@ -16,7 +16,7 @@ async function serveBuild(directory, expo = false) {
   return { url: `http://127.0.0.1:${server.address().port}`, close: () => new Promise(resolve => server.close(resolve)) };
 }
 
-exports.runBrowser = async ({ base, productId, customerId, prisma }) => {
+exports.runBrowser = async ({ base, productId, customerId, customerToken, adminToken, prisma }) => {
   const { chromium } = require(process.env.PLAYWRIGHT_MODULE);
   // Serve real built apps locally; bundler startup is outside the business test.
   const customerWeb = await serveBuild('FE/dist', true);
@@ -38,9 +38,29 @@ exports.runBrowser = async ({ base, productId, customerId, prisma }) => {
   await fs.mkdir(directory, { recursive: true });
   const page = await context.newPage();
   let activePage = page;
+  const moduleFilter = new Set((process.env.BROWSER_ONLY_MODULES || '').split(',').map(value => value.trim()).filter(Boolean));
   page.setDefaultTimeout(30000);
   page.setDefaultNavigationTimeout(60000);
   try {
+    if (moduleFilter.size === 1 && moduleFilter.has('returns')) {
+      await require('./returns-browser.cjs').runReturnsBrowser({ browser, context, customerPage: page, customerUrl: customerWeb.url,
+        adminUrl: adminWeb.url, base, productId, customerId, adminToken, customerToken, prisma, directory });
+      assert.deepEqual(errors, []);
+      return;
+    }
+    if (moduleFilter.size === 1 && moduleFilter.has('reports')) {
+      const admin = await context.newPage();
+      activePage = admin;
+      await admin.setViewportSize({ width: 1440, height: 1000 });
+      await admin.goto(`${adminWeb.url}/login`, { waitUntil: 'domcontentloaded' });
+      await admin.getByLabel('Tên đăng nhập').fill('test-admin');
+      await admin.getByLabel('Mật khẩu', { exact: true }).fill('TestPassword1!');
+      await admin.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
+      await admin.getByRole('button', { name: 'Báo cáo', exact: true }).waitFor();
+      await require('./report-browser.cjs').runReportBrowser({ admin, directory });
+      assert.deepEqual(errors, []);
+      return;
+    }
     console.log('Browser: customer login');
     await page.goto(`${customerWeb.url}/login?returnTo=/cart`, { waitUntil: 'domcontentloaded' });
     await page.getByPlaceholder('Email hoặc Tên đăng nhập').fill('synthetic@example.invalid');
@@ -203,13 +223,24 @@ exports.runBrowser = async ({ base, productId, customerId, prisma }) => {
     await staff.screenshot({ path: path.join(directory, 'staff-catalog-mobile.png'), fullPage: true });
     await staffContext.close();
     activePage = admin;
-    await require('./media-browser.cjs').runMediaBrowser({ admin, page, customerUrl: customerWeb.url, prisma, directory, base });
-    await require('./cms-browser.cjs').checkCmsBrowser({ admin, page, customerUrl: customerWeb.url, prisma, directory });
-    await require('./customer-browser.cjs').runCustomerBrowser({ admin, page, customerUrl: customerWeb.url, prisma, directory });
-    await require('./settings-browser.cjs').checkSettingsBrowser({ admin, page, customerUrl: customerWeb.url, prisma, directory });
-    await require('./report-browser.cjs').runReportBrowser({ admin, directory });
-    await require('./shopping-browser.cjs').runShoppingBrowser({ browser, customerUrl: customerWeb.url, base, prisma, directory, routeApi, errors });
+    const moduleFailures = [];
+    const runModule = async (name, operation) => {
+      if (moduleFilter.size && !moduleFilter.has(name)) return;
+      try { await operation(); }
+      catch (error) { moduleFailures.push({ name, error }); console.error(`Browser acceptance module failed (${name}):`, error.message); }
+    };
+    await runModule('media', () => require('./media-browser.cjs').runMediaBrowser({ admin, page, customerUrl: customerWeb.url, prisma, directory, base }));
+    await runModule('cms', () => require('./cms-browser.cjs').checkCmsBrowser({ admin, page, customerUrl: customerWeb.url, prisma, directory }));
+    await runModule('customers', () => require('./customer-browser.cjs').runCustomerBrowser({ admin, page, customerUrl: customerWeb.url, prisma, directory }));
+    await runModule('settings', () => require('./settings-browser.cjs').checkSettingsBrowser({ admin, page, customerUrl: customerWeb.url, prisma, directory }));
+    await runModule('reports', () => require('./report-browser.cjs').runReportBrowser({ admin, directory }));
+    await runModule('shopping', () => require('./shopping-browser.cjs').runShoppingBrowser({ browser, customerUrl: customerWeb.url, base, prisma, directory, routeApi, errors }));
+    await runModule('vouchers', () => require('./voucher-browser.cjs').runVoucherBrowser({ browser, admin, customerUrl: customerWeb.url, base, productId, prisma, directory, routeApi, errors }));
+    activePage = page;
+    await runModule('returns', () => require('./returns-browser.cjs').runReturnsBrowser({ browser, context, admin, adminUrl: adminWeb.url, base,
+      customerPage: page, customerUrl: customerWeb.url, customerId, customerToken, adminToken, productId, prisma, directory }));
     assert.deepEqual(errors, []);
+    if (moduleFailures.length) throw new AggregateError(moduleFailures.map(result => result.error), `Browser acceptance failed in: ${moduleFailures.map(result => result.name).join(', ')}`);
   } catch (error) {
     await activePage.screenshot({ path: path.join(directory, 'browser-failure.png'), fullPage: true }).catch(() => {});
     throw error;

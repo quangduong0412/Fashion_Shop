@@ -39,6 +39,14 @@
       ],
       "expo-font",
       "expo-image",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Fashion Haven cần truy cập ảnh để gửi minh chứng đổi trả.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
       "expo-status-bar",
       "expo-web-browser"
     ],

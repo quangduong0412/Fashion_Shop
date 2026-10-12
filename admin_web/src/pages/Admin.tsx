@@ -22,6 +22,7 @@ import PostsView from '../components/PostsView';
 import ContactsView from '../components/ContactsView';
 import BranchesView from '../components/BranchesView';
 import RolesView from '../components/RolesView';
+import ReturnsView from '../components/ReturnsView';
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -87,6 +88,7 @@ export default function Admin() {
         {activeTab === 'products' && <ProductsView products={data.products} categories={data.categories} searchProduct={searchProduct} setSearchProduct={setSearchProduct} canManage={isAdmin}
           openProductModal={product => setEditingProduct(product || {})} handleDeleteProduct={id => remove('products', id, 'Xóa sản phẩm chưa có tồn/lịch sử? Có thể chọn Tạm ngừng để giữ dữ liệu.')} />}
         {activeTab === 'orders' && <OrdersView isAdmin={isAdmin} onChanged={() => void loadData()} />}
+        {activeTab === 'returns' && isAdmin && <ReturnsView />}
         {isAdmin && <>
           {activeTab === 'customers' && <CustomersView onChanged={() => void loadData()} />}
           {activeTab === 'categories' && <CategoriesView categories={data.categories} onSaved={() => void loadData()} onError={showError} />}

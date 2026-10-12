@@ -24,7 +24,7 @@ Vite thường dùng `http://localhost:5173`; route `/login` đăng nhập, `/` 
 
 Danh sách sản phẩm/đơn/nhập dùng API phân trang thật. Bootstrap `/api/admin` giới hạn 100 dòng/danh sách và 50 đơn gần nhất; dashboard dùng aggregate toàn database. Mục **Giao hàng** chỉ preview đơn đang giao/đã giao từ danh sách gần nhất, ghi rõ giới hạn; xử lý đơn tại **Quản lý đơn hàng**.
 
-**Reports/Settings chưa hỗ trợ**. Một số form CRUD cũ còn chờ nghiệm thu; không coi mọi menu là nghiệp vụ hoàn chỉnh. Luồng đã kiểm tra và việc còn lại ở [COMPLETED_FEATURES.md](../COMPLETED_FEATURES.md).
+Reports, Settings, Voucher và Returns có màn hình/API. Reports aggregate toàn kỳ theo ngày tạo đơn, trạng thái hiện tại, refund ledger, top sản phẩm/danh mục/brand và tồn khả dụng; không phải sổ tiền theo ngày thu, lợi nhuận hay lịch sử tồn. Voucher có CRUD và áp dụng ở FE. Đổi trả có xem ảnh qua API xác thực, nhận/kiểm hàng, nhập lại lượng bán được và ghi sổ hoàn COD. Full browser + API/unit suite đạt 108/108 ngày 12/10/2026. Một số CRUD ít dùng và native vẫn cần nghiệm thu riêng; xem [COMPLETED_FEATURES.md](../COMPLETED_FEATURES.md) và [PLAN.md](../PLAN.md).
 
 ## Kiểm tra và build
 
