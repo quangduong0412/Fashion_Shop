@@ -67,6 +67,16 @@ export function contactInput(body: unknown) {
   return { HoTen: name, Email: email, NoiDung: message };
 }
 
+export const contactStatuses = ['NEW', 'IN_PROGRESS', 'RESOLVED'] as const;
+
+export function contactWorkflowInput(body: unknown) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new ApiError(400, 'VALIDATION_ERROR', 'Cập nhật hỗ trợ không hợp lệ.');
+  const input = body as Record<string, unknown>;
+  if (typeof input.expectedStatus !== 'string' || !(contactStatuses as readonly string[]).includes(input.expectedStatus)) throw new ApiError(400, 'VALIDATION_ERROR', 'Trạng thái hiện tại không hợp lệ.');
+  if (typeof input.status !== 'string' || !(contactStatuses as readonly string[]).includes(input.status)) throw new ApiError(400, 'VALIDATION_ERROR', 'Trạng thái xử lý không hợp lệ.');
+  return { expectedStatus: input.expectedStatus, status: input.status, note: textValue(input.note, 'Ghi chú xử lý', 1000) };
+}
+
 export const postResponse = (post: BaiViet) => ({ id: post.MaBaiViet, title: post.TieuDe, description: post.MoTa, image: post.Anh, type: post.TheLoai, date: post.NgayTao.toISOString() });
 export const adminPostResponse = (post: BaiViet) => ({ ...postResponse(post), publicationStatus: post.TrangThaiXuatBan, publishAt: post.ThoiGianXuatBan?.toISOString() ?? null });
-export const contactResponse = (contact: LienHe) => ({ id: contact.MaLienHe, name: contact.HoTen, email: contact.Email, message: contact.NoiDung, date: contact.NgayTao.toISOString() });
+export const contactResponse = (contact: LienHe) => ({ id: contact.MaLienHe, name: contact.HoTen, email: contact.Email, message: contact.NoiDung, date: contact.NgayTao.toISOString(), status: contact.TrangThai, updatedAt: contact.UpdatedAt.toISOString() });

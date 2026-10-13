@@ -55,7 +55,7 @@ exports.checkCmsBrowser = async ({ admin, page, customerUrl, prisma, directory }
   await page.getByLabel('Email nhận phản hồi', { exact: true }).fill('browser-contact@example.invalid');
   await page.getByLabel('Nội dung cần hỗ trợ', { exact: true }).fill('Synthetic browser support request');
   await page.getByRole('button', { name: 'Gửi lời nhắn', exact: true }).click();
-  await page.getByText('Đã tiếp nhận yêu cầu. Cửa hàng sẽ phản hồi qua email bạn cung cấp.', { exact: true }).waitFor();
+  await page.getByText(/Đã tiếp nhận yêu cầu hỗ trợ\..*Email chưa được gửi tự động\./, { exact: true }).waitFor();
   const contact = await prisma.lienHe.findFirstOrThrow({ where: { HoTen: 'Browser CMS contact' } });
   assert.equal(contact.Email, 'browser-contact@example.invalid');
   await page.screenshot({ path: path.join(directory, 'customer-contact-mobile.png'), fullPage: true });
@@ -66,6 +66,10 @@ exports.checkCmsBrowser = async ({ admin, page, customerUrl, prisma, directory }
   dialog = admin.getByRole('dialog');
   await dialog.getByText('Synthetic browser support request', { exact: true }).waitFor();
   assert.match(await dialog.getByRole('link', { name: 'Mở email phản hồi' }).getAttribute('href'), /^mailto:/);
+  await dialog.getByLabel('Cập nhật trạng thái', { exact: true }).selectOption('IN_PROGRESS');
+  await dialog.getByLabel('Ghi chú xử lý', { exact: true }).fill('Email mở thủ công; hệ thống không theo dõi việc gửi.');
+  await dialog.getByRole('button', { name: 'Lưu trạng thái / ghi chú', exact: true }).click();
+  await dialog.getByText('Email mở thủ công; hệ thống không theo dõi việc gửi.', { exact: true }).waitFor();
   await admin.screenshot({ path: path.join(directory, 'admin-contact-detail.png'), fullPage: true });
   await dialog.getByRole('button', { name: 'Đóng', exact: true }).click();
 };

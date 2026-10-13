@@ -8,6 +8,10 @@ Nguồn chính: `FE` (khách hàng, Expo SDK 57), `admin_web` (nội bộ, Vite)
 
 Hoàn thành nghĩa là khách xem sản phẩm/biến thể, dùng giỏ, đặt/theo dõi đơn; nhân viên được phân quyền để xử lý đơn; admin quản lý catalog/tồn với dữ liệu thật. Phải kiểm tra API/database và giao diện; tài liệu hoặc nút hiển thị không thay cho bằng chứng.
 
+## Checkpoint 13/10/2026 — CMS và hộp thư hỗ trợ
+
+Đối chiếu `COMPLETED_FEATURES.md`: CMS đã hỗ trợ draft/publish/schedule. Hộp thư `ContactsView` cho ADMIN hỗ trợ phân trang/lọc, trạng thái `NEW → IN_PROGRESS → RESOLVED`, mở lại `RESOLVED → IN_PROGRESS`, ghi chú nội bộ và nhật ký actor/thời điểm. Không gửi email tự động; `mailto` chỉ mở ứng dụng email bên ngoài. API/DB và browser suite đã qua 110/110. Migration `db:migrate-contact-workflow` additive; chưa chạy trên database cửa hàng. Review, notification, FAQ, brand và kho vẫn backlog.
+
 ## Checkpoint 11/10/2026 — chọn biến thể theo nghiệp vụ
 
 | Yêu cầu | Màn hình | API/dữ liệu | Quy tắc | Ca nghiệm thu | Trạng thái |
@@ -37,7 +41,7 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 | C11 Thanh toán online | Chưa có màn hình thật | Chưa có gateway/webhook | Chưa có giao dịch payment provider | Không tin callback/client; đối soát chữ ký | Thanh toán/retry/webhook/refund chạy sandbox thật | Thiếu; COD là luồng đang hỗ trợ |
 | C12 Yêu thích / đánh giá | `/wishlist`, FavoriteButton; review chưa có | `/shopping/wishlist` page/ids/PUT/DELETE | CustomerWishlist unique/customer snapshot; review chưa có | User only; add idempotent; hidden giữ snapshot và cho bỏ lưu | Concurrent unique/owner; FE lưu/reload/danh sách/ẩn→bỏ lưu | Yêu thích đạt API/MySQL + browser web; đánh giá thiếu |
 | C13 Bài viết | `News`, `/article/[id]` | Public GET `/posts`, `/:id`; admin GET `/admin/posts`, CRUD `/posts` | `BaiViet` | Public chỉ đọc PUBLISHED đã tới giờ; bài mới DRAFT; ADMIN quản lý lịch theo UTC+7 | Nháp bị ẩn, admin-only list, publish/schedule và khách đọc sau giờ hẹn | API/unit 108/108 + browser/API 109/109; lưu ý lịch dùng thời gian máy chủ và timezone Asia/Ho_Chi_Minh |
-| C14 Liên hệ / chính sách | `Contact`, `/policies` | POST `/contacts`, GET `/settings` | LienHe, StoreSettings | Validation/throttle; contact/policy thật, không số giả | Loading/error/success, admin inbox; chưa reply workflow | Đạt API/MySQL + browser trong phạm vi nêu |
+| C14 Liên hệ / chính sách | `Contact`, `/policies`, `ContactsView` | POST `/contacts`, GET `/settings`, ADMIN GET `/contacts/:id/events`, PUT `/contacts/:id/status` | LienHe, ContactEvent, StoreSettings | Validation/throttle; status transition có audit; ghi chú nội bộ; không giả gửi email | Khách gửi → ADMIN triage, ghi chú, đổi trạng thái và xem actor/time; xóa sau audit bị chặn | API/unit + browser suite 110/110; outbound email/FAQ chưa có |
 | C15 Thông báo | Chưa có luồng đáp ứng | Chưa có inbox/push | Chưa có notification | Chỉ người nhận; không giả số chưa đọc | Sự kiện đơn → thông báo → đọc/persist; native permission đúng | Thiếu |
 
 ### Quản trị và nhân viên
@@ -59,7 +63,7 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 | A13 Nhập hàng | `ImportsView` | GET/POST `/imports`, PUT `/:id/status` | Phiếu/dòng nhập, snapshot, nhật ký | DRAFT→RECEIVED/CANCELLED; nhận một lần đúng kho/NCC/SKU | Nháp không cộng; receive +3 đúng cha/biến thể, tổng 153000 | Đạt HTTP/browser |
 | A14 Yêu cầu nhập / duyệt | Chưa có màn hình thật | Chưa có luồng request/approve | Có model `YeuCauNhapHang` | STAFF yêu cầu, ADMIN duyệt; không cộng tồn trước receive | Yêu cầu→duyệt→phiếu nháp và lịch sử | Có model, thiếu API/UI |
 | A15 Bài viết/CMS | `PostsView` | GET `/admin/posts`; ADMIN CRUD `/posts` | BaiViet + publication status/time | ADMIN; draft, publish now, schedule; public query time-gated; omitted image giữ | Private draft, invalid timezone/status, schedule hidden until due, publish FE detail | API/unit + browser suite đạt 109/109; chưa có edit audit |
-| A16 Hộp thư liên hệ | `ContactsView` | Paged GET `/contacts`, POST/DELETE | LienHe | ADMIN; không pending giả, await lỗi | FE submit → admin search/read, không fake reply | Đạt API/MySQL + browser trong phạm vi nêu; handled/reply/audit thiếu |
+| A16 Hộp thư liên hệ | `ContactsView` | ADMIN GET `/contacts`, GET `/:id/events`, PUT `/:id/status`; POST public | LienHe, ContactEvent | ADMIN; state machine, optimistic current status, internal note; audit không xóa | Khách submit → lọc/triage → note/status audit; stale/invalid transition bị từ chối; email không tự gửi | Browser/API/unit 110/110; email provider và FAQ còn thiếu |
 
 ### Voucher, đổi/trả, báo cáo và cấu hình
 

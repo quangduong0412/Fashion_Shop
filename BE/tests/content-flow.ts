@@ -47,18 +47,28 @@ export async function testContentFlows(t: TestContext, request: RequestApi, admi
     assert.equal((await request(`/posts/${id}`)).status, 404);
   });
 
-  await t.test('contact validates input, persists real messages and restricts the paged inbox to administrators', async () => {
+  await t.test('contact inbox is admin-only, records triage transitions and preserves the handling audit', async () => {
     assert.equal((await request('/contacts', 'POST', { name: 'Synthetic contact', email: 'bad', message: 'Help' })).status, 400);
     assert.equal((await request('/contacts', 'POST', { name: '', email: 'contact@example.invalid', message: 'Help' })).status, 400);
     assert.equal((await request('/contacts', 'POST', { name: 'Synthetic contact', email: 'contact@example.invalid', message: 'x'.repeat(5001) })).status, 400);
     const created = await request('/contacts', 'POST', { name: 'Synthetic CMS contact', email: 'Contact@Example.invalid', message: 'Synthetic support request' });
-    assert.equal(created.status, 201); assert.ok(created.body.id); assert.equal(created.body.email, undefined);
+    assert.equal(created.status, 201); assert.ok(created.body.id); assert.equal(created.body.email, undefined); assert.match(created.body.message, /Email chưa được gửi tự động/);
     assert.equal((await request('/contacts')).status, 401);
     assert.equal((await request('/contacts', 'GET', undefined, staffToken)).status, 403);
     const list = await request('/contacts?search=Synthetic%20CMS%20contact&pageSize=1', 'GET', undefined, adminToken);
-    assert.equal(list.status, 200); assert.equal(list.body.total, 1); assert.equal(list.body.items[0].id, created.body.id);
+    assert.equal(list.status, 200); assert.equal(list.body.total, 1); assert.equal(list.body.items[0].id, created.body.id); assert.equal(list.body.items[0].status, 'NEW');
     assert.equal(list.body.items[0].email, 'contact@example.invalid'); assert.ok(!Number.isNaN(Date.parse(list.body.items[0].date)));
+    assert.equal((await request(`/contacts/${created.body.id}/events`)).status, 401);
+    assert.equal((await request(`/contacts/${created.body.id}/events`, 'GET', undefined, staffToken)).status, 403);
+    assert.equal((await request(`/contacts/${created.body.id}/status`, 'PUT', { expectedStatus: 'NEW', status: 'IN_PROGRESS', note: 'Triaged' }, staffToken)).status, 403);
+    const triaged = await request(`/contacts/${created.body.id}/status`, 'PUT', { expectedStatus: 'NEW', status: 'IN_PROGRESS', note: 'Contacted customer manually; delivery not tracked here.' }, adminToken);
+    assert.equal(triaged.status, 200); assert.equal(triaged.body.contact.status, 'IN_PROGRESS'); assert.equal(triaged.body.event.kind, 'STATUS');
+    assert.equal((await request(`/contacts/${created.body.id}/status`, 'PUT', { expectedStatus: 'NEW', status: 'RESOLVED', note: 'Stale update' }, adminToken)).status, 409);
+    assert.equal((await request(`/contacts/${created.body.id}/status`, 'PUT', { expectedStatus: 'IN_PROGRESS', status: 'NEW', note: 'Invalid reopen' }, adminToken)).status, 409);
+    assert.equal((await request(`/contacts/${created.body.id}/status`, 'PUT', { expectedStatus: 'IN_PROGRESS', status: 'IN_PROGRESS', note: 'Follow-up note recorded' }, adminToken)).body.event.kind, 'NOTE');
+    const events = await request(`/contacts/${created.body.id}/events`, 'GET', undefined, adminToken);
+    assert.equal(events.status, 200); assert.equal(events.body.length, 2); assert.equal(events.body[0].note, 'Follow-up note recorded'); assert.ok(events.body.every((event: any) => event.actorId));
     assert.equal((await request(`/contacts/${created.body.id}`, 'DELETE', undefined, staffToken)).status, 403);
-    assert.equal((await request(`/contacts/${created.body.id}`, 'DELETE', undefined, adminToken)).status, 200);
+    assert.equal((await request(`/contacts/${created.body.id}`, 'DELETE', undefined, adminToken)).status, 409);
   });
 }

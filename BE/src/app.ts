@@ -63,7 +63,7 @@ app.get('/api/reports', authenticateToken, requireAdmin, getRetailReport);
 
 // New unified routes
 import {
-  getAdminData, getAdminPosts, getPostsData, getPostById, getContacts, createContact, createPost, updatePost, deletePost,
+  getAdminData, getAdminPosts, getPostsData, getPostById, getContacts, getContactEvents, updateContactWorkflow, createContact, createPost, updatePost, deletePost,
   createSupplier, updateSupplier, deleteSupplier, deleteContact,
   createBranch, updateBranch, deleteBranch,
   createRole, updateRole, deleteRole,
@@ -81,6 +81,8 @@ app.put('/api/posts/:id', authenticateToken, requireAdmin, updatePost);
 app.delete('/api/posts/:id', authenticateToken, requireAdmin, deletePost);
 
 app.get('/api/contacts', authenticateToken, requireAdmin, getContacts);
+app.get('/api/contacts/:id/events', authenticateToken, requireAdmin, getContactEvents);
+app.put('/api/contacts/:id/status', authenticateToken, requireAdmin, updateContactWorkflow);
 app.post('/api/contacts', contactThrottle, createContact);
 app.delete('/api/contacts/:id', authenticateToken, requireAdmin, deleteContact);
 

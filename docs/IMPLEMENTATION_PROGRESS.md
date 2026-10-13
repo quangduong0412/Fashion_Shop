@@ -1,5 +1,15 @@
 # Checkpoint triển khai — 06/10/2026
 
+## Tiếp tục — hộp thư hỗ trợ có trạng thái và audit (13/10/2026)
+
+| Yêu cầu | FE/admin | API | Dữ liệu/quy tắc | Nghiệm thu | Trạng thái |
+| --- | --- | --- | --- | --- | --- |
+| Hộp thư liên hệ | `Contact`, `ContactsView` | POST `/contacts`; ADMIN GET `/contacts`, GET `/:id/events`, PUT `/:id/status` | `LienHe`, `ContactEvent`; status chuyển hợp lệ, ghi chú nội bộ có actor/time | API/unit 109/109; browser/API 110/110; cleanup đã qua | Đạt phạm vi triage/audit; email/FAQ chưa có |
+
+Chuyển trạng thái hợp lệ: `NEW → IN_PROGRESS → RESOLVED`, `IN_PROGRESS → RESOLVED`, `RESOLVED → IN_PROGRESS`; API từ chối trạng thái cũ và transition trái phép. Note admin chỉ lưu nội bộ; không gửi email, còn `mailto` là thao tác nhân viên bên ngoài. Xóa liên hệ có lịch sử audit bị database chặn. Migration additive `db:migrate-contact-workflow` chưa chạy trên database cửa hàng.
+
+Kiểm tra: BE typecheck/Prisma validate; API/unit 109/109 (`fashionhaven_test_1791867174709_506420fc`), browser/API/unit 110/110 (`fashionhaven_test_1791867235999_7e0e2f6b`), FE typecheck/lint/Expo web export 24 routes, admin typecheck/lint/build. Hai database test thành công đã cleanup tự động. Dry-run database cũ giữ lại `fashionhaven_test_1790947556855_6730d9c6`, `fashionhaven_test_1790947607214_dfda8761` do thiếu ownership marker/manifest.
+
 ## Tiếp tục — CMS nháp, xuất bản và lịch (13/10/2026)
 
 | Yêu cầu | FE/admin | API | Dữ liệu/quy tắc | Nghiệm thu | Trạng thái |
@@ -10,7 +20,7 @@ Admin tạo bài ở trạng thái nháp mặc định, có thể xuất bản n
 
 Kiểm tra cuối: `BE npm.cmd run typecheck`, Prisma validate, `BE npm.cmd test` 108/108; `admin_web npm.cmd run typecheck/lint/build`; browser/API suite 109/109. DB `fashionhaven_test_1791866640267_47d0782d` và `fashionhaven_test_1791866695696_822519a1` đã được runner dọn. Lượt E2E trước phát hiện selector test sai và cũng được cleanup; đã sửa rồi chạy lại thành công. Không cập nhật database cửa hàng. Chưa native test.
 
-Việc tiếp theo: đánh giá sau mua và notifications; review CMS audit/FAQ/inbox reply, quản lý brand, scope kho/workflow chuyển kho, ngoại tích hợp và native. Giữ riêng `BaoCao/`, `USECASE.md`, `report_work/`.
+Việc tiếp theo: đánh giá sau mua và notifications; email/FAQ cho inbox, quản lý brand, scope kho/workflow chuyển kho, ngoại tích hợp và native. Giữ riêng `BaoCao/`, `USECASE.md`, `report_work/`.
 
 ## Checkpoint tiếp tục — thuộc tính danh mục và chọn SKU (11/10/2026)
 

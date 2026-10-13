@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { contentPage, contactInput, postChanges } from '../src/services/content';
+import { contentPage, contactInput, contactWorkflowInput, postChanges } from '../src/services/content';
 
 test('CMS accepts canonical fields and preserves omitted media in partial updates', () => {
   assert.deepEqual(postChanges({ title: ' Edited title ' }, true), { TieuDe: 'Edited title' });
@@ -31,6 +31,11 @@ test('contact trims input, normalizes email and limits stored message content', 
   assert.throws(() => contactInput({ name: 'Customer', email: 'invalid', message: 'Help' }));
   assert.throws(() => contactInput({ name: 'Customer', email: 'user@example.invalid', message: 'x'.repeat(5001) }));
   assert.throws(() => contactInput({ name: '', email: 'user@example.invalid', message: 'Help' }));
+});
+
+test('support workflow validates triage status and requires a bounded internal note', () => {
+  assert.deepEqual(contactWorkflowInput({ expectedStatus: 'NEW', status: 'IN_PROGRESS', note: ' Reviewed the request ' }), { expectedStatus: 'NEW', status: 'IN_PROGRESS', note: 'Reviewed the request' });
+  for (const input of [{ expectedStatus: 'UNKNOWN', status: 'NEW', note: 'x' }, { expectedStatus: 'NEW', status: 'CLOSED', note: 'x' }, { expectedStatus: 'NEW', status: 'NEW', note: '' }, { expectedStatus: 'NEW', status: 'NEW', note: 'x'.repeat(1001) }]) assert.throws(() => contactWorkflowInput(input));
 });
 
 test('content pagination validates limits and refuses arrays or fractional inputs', () => {

@@ -5,7 +5,7 @@ import { readVariantAttributeDefinitions, serializeVariant } from '../services/p
 import { deleteOrder } from './orderController';
 import { employeeInclude, employeeResponse, saveEmployee, deactivateEmployee } from '../services/employees';
 import { ApiError, positiveId, sendApiError } from '../services/apiErrors';
-import { adminPostResponse, contentPage, contactInput, contactResponse, postChanges, postResponse, postTypes } from '../services/content';
+import { adminPostResponse, contactStatuses, contactWorkflowInput, contentPage, contactInput, contactResponse, postChanges, postResponse, postTypes } from '../services/content';
 
 export const getAdminData = async (req: Request, res: Response) => {
   try {
@@ -218,7 +218,9 @@ export const getPostById = async (req: Request, res: Response) => {
 export const getContacts = async (req: Request, res: Response) => {
   try {
     const { page, pageSize, search } = contentPage(req.query);
-    const where = search ? { OR: [{ HoTen: { contains: search } }, { Email: { contains: search } }, { NoiDung: { contains: search } }] } : {};
+    const status = req.query.status;
+    if (status !== undefined && (typeof status !== 'string' || !(contactStatuses as readonly string[]).includes(status))) throw new ApiError(400, 'VALIDATION_ERROR', 'Trạng thái xử lý không hợp lệ.');
+    const where = { ...(search ? { OR: [{ HoTen: { contains: search } }, { Email: { contains: search } }, { NoiDung: { contains: search } }] } : {}), ...(status ? { TrangThai: String(status) } : {}) };
     const [contacts, total] = await prisma.$transaction([
       prisma.lienHe.findMany({ where, orderBy: [{ NgayTao: 'desc' }, { MaLienHe: 'desc' }], skip: (page - 1) * pageSize, take: pageSize }),
       prisma.lienHe.count({ where })
@@ -227,10 +229,37 @@ export const getContacts = async (req: Request, res: Response) => {
   } catch (error) { sendApiError(res, error); }
 };
 
+export const getContactEvents = async (req: Request, res: Response) => {
+  try {
+    const id = positiveId(req.params.id, 'Mã liên hệ');
+    if (!(await prisma.lienHe.findUnique({ where: { MaLienHe: id }, select: { MaLienHe: true } }))) throw new ApiError(404, 'CONTACT_NOT_FOUND', 'Không tìm thấy liên hệ.');
+    const events = await prisma.contactEvent.findMany({ where: { MaLienHe: id }, orderBy: [{ CreatedAt: 'desc' }, { Id: 'desc' }], take: 100 });
+    res.json(events.map(event => ({ id: event.Id, kind: event.Kind, fromStatus: event.FromStatus, status: event.ToStatus, actorId: event.ActorId, note: event.Note, date: event.CreatedAt.toISOString() })));
+  } catch (error) { sendApiError(res, error); }
+};
+
+export const updateContactWorkflow = async (req: Request, res: Response) => {
+  try {
+    const id = positiveId(req.params.id, 'Mã liên hệ'), input = contactWorkflowInput(req.body), user = (req as any).user;
+    const result = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT MaLienHe FROM lienhe WHERE MaLienHe = ${id} FOR UPDATE`;
+      const contact = await tx.lienHe.findUnique({ where: { MaLienHe: id } });
+      if (!contact) throw new ApiError(404, 'CONTACT_NOT_FOUND', 'Không tìm thấy liên hệ.');
+      if (contact.TrangThai !== input.expectedStatus) throw new ApiError(409, 'CONTACT_STATUS_CONFLICT', 'Liên hệ đã được cập nhật. Hãy tải lại trước khi lưu.');
+      const allowed: Record<string, string[]> = { NEW: ['IN_PROGRESS', 'RESOLVED'], IN_PROGRESS: ['RESOLVED'], RESOLVED: ['IN_PROGRESS'] };
+      if (input.status !== contact.TrangThai && !allowed[contact.TrangThai]?.includes(input.status)) throw new ApiError(409, 'INVALID_CONTACT_TRANSITION', 'Không thể chuyển liên hệ sang trạng thái này.');
+      const updated = input.status === contact.TrangThai ? contact : await tx.lienHe.update({ where: { MaLienHe: id }, data: { TrangThai: input.status } });
+      const event = await tx.contactEvent.create({ data: { MaLienHe: id, Kind: input.status === contact.TrangThai ? 'NOTE' : 'STATUS', FromStatus: contact.TrangThai, ToStatus: input.status, ActorId: user.id, Note: input.note } });
+      return { contact: updated, event };
+    });
+    res.json({ contact: contactResponse(result.contact), event: { id: result.event.Id, kind: result.event.Kind, fromStatus: result.event.FromStatus, status: result.event.ToStatus, actorId: result.event.ActorId, note: result.event.Note, date: result.event.CreatedAt.toISOString() }, message: 'Đã lưu nhật ký xử lý. Không gửi email tự động.' });
+  } catch (error) { sendApiError(res, error); }
+};
+
 export const createContact = async (req: Request, res: Response) => {
   try {
     const contact = await prisma.lienHe.create({ data: contactInput(req.body) });
-    res.status(201).json({ id: contact.MaLienHe, message: 'Đã tiếp nhận yêu cầu. Cửa hàng sẽ phản hồi qua email bạn cung cấp.' });
+    res.status(201).json({ id: contact.MaLienHe, message: `Đã tiếp nhận yêu cầu hỗ trợ. Mã lời nhắn: #${contact.MaLienHe}. Email chưa được gửi tự động.` });
   } catch (error) { sendApiError(res, error); }
 };
 

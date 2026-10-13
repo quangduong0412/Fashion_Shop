@@ -33,7 +33,7 @@ export default function ContactScreen() {
     busy.current = true; setSending(true); setError(''); setSuccess('');
     try {
       const result = await apiRequest('/contacts', { method: 'POST', body: JSON.stringify(payload) });
-      setSuccess(result.message || 'Đã tiếp nhận lời nhắn. Cửa hàng sẽ phản hồi qua email bạn cung cấp.');
+      setSuccess(result.message || 'Đã tiếp nhận lời nhắn. Email chưa được gửi tự động.');
       setForm({ name: '', email: '', message: '' });
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Chưa gửi được lời nhắn. Nội dung nhập vẫn được giữ lại để bạn thử lại.'); }
     finally { busy.current = false; setSending(false); }

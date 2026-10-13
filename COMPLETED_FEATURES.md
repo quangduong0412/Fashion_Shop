@@ -2,6 +2,15 @@
 
 Tài liệu tổng hợp nhiều checkpoint có ngày; checkpoint mới nhất ở đầu file là **13/10/2026**. Các mục lịch sử phía dưới ghi phạm vi tại thời điểm tương ứng, không phải tuyên bố toàn hệ thống hoàn chỉnh hay sẵn sàng production. Backlog nền ở [PLAN.md](PLAN.md) được rà ngày 06/10/2026 và cần đối chiếu các checkpoint mới hơn để không triển khai trùng chức năng; cách chạy từ clone ở [README.md](README.md), API/cấu hình ở [BE/README.md](BE/README.md).
 
+## Checkpoint 13/10/2026 — hộp thư hỗ trợ có trạng thái và audit
+
+- Khách gửi liên hệ qua `POST /contacts`; admin `ContactsView` lọc theo trạng thái, mở yêu cầu, xem nhật ký, chuyển trạng thái `NEW → IN_PROGRESS → RESOLVED`, hoặc mở lại `RESOLVED → IN_PROGRESS`. Ghi chú là nội bộ, lưu actor và thời điểm; cập nhật dùng expected status để từ chối dữ liệu cũ. Cùng trạng thái ghi một sự kiện note; transition trái phép bị từ chối. Liên hệ đã có audit không thể xóa.
+- Không có tích hợp email: phản hồi trong admin chưa được gửi cho khách. FE thông báo rõ email chưa được gửi; mailto chỉ mở phần mềm email ngoài.
+- Migration `db:migrate-contact-workflow` thêm cột trạng thái/ngày sửa và bảng audit theo kiểu additive; liên hệ cũ mặc định `NEW`. Đã thêm vào `db:prepare`; migration chưa chạy trên database cửa hàng.
+- Kiểm tra: BE typecheck + Prisma validate; API/unit **109/109** (`fashionhaven_test_1791867174709_506420fc`); browser + API/unit **110/110** (`fashionhaven_test_1791867235999_7e0e2f6b`); FE typecheck/lint/Expo web export 24 routes; admin typecheck/lint/build. Hai DB kiểm tra thành công đã được runner dọn trong `finally`.
+- `npm run test:db:list` chỉ tìm thấy hai database legacy thiếu provenance (`fashionhaven_test_1790947556855_6730d9c6`, `fashionhaven_test_1790947607214_dfda8761`), không có marker/manifest; dù đang rỗng chúng chưa được xác minh là do runner tạo nên được giữ nguyên. Không đụng database cửa hàng.
+- Giới hạn: chưa có gửi email/FAQ, SLA hoặc phân công nhân viên. Toàn dự án chưa hoàn tất.
+
 ## Checkpoint 13/10/2026 — CMS nháp, xuất bản và lên lịch
 
 - Bài mới qua API quản trị mặc định là `DRAFT`. Chỉ ADMIN đọc danh sách đầy đủ qua `GET /api/admin/posts`; STAFF và khách bị từ chối. API công khai chỉ trả bài `PUBLISHED` đã tới thời điểm xuất bản; trang chi tiết draft/lịch tương lai trả 404.

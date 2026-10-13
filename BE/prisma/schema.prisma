@@ -525,13 +525,31 @@ model BaiViet {
 }
 
 model LienHe {
-  MaLienHe Int      @id @default(autoincrement())
-  HoTen    String   @db.VarChar(255)
-  Email    String   @db.VarChar(255)
-  NoiDung  String   @db.Text
-  NgayTao  DateTime @default(now())
+  MaLienHe  Int            @id @default(autoincrement())
+  HoTen     String         @db.VarChar(255)
+  Email     String         @db.VarChar(255)
+  NoiDung   String         @db.Text
+  NgayTao   DateTime       @default(now())
+  TrangThai String         @default("NEW") @db.VarChar(20)
+  UpdatedAt DateTime       @updatedAt @db.DateTime(3)
+  Events    ContactEvent[]
 
   @@map("lienhe")
+}
+
+model ContactEvent {
+  Id         Int      @id @default(autoincrement())
+  MaLienHe   Int
+  Kind       String   @db.VarChar(20)
+  FromStatus String?  @db.VarChar(20)
+  ToStatus   String   @db.VarChar(20)
+  ActorId    Int
+  Note       String   @db.VarChar(1000)
+  CreatedAt  DateTime @default(now())
+  Contact    LienHe   @relation(fields: [MaLienHe], references: [MaLienHe], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([MaLienHe, Id], map: "ContactEvent_ContactId_Id_idx")
+  @@map("contactevent")
 }
 
 model sysdiagrams {
