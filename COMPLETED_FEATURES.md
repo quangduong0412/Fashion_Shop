@@ -1,6 +1,15 @@
 # Fashion Haven — tiến độ có bằng chứng
 
-Tài liệu tổng hợp nhiều checkpoint có ngày; checkpoint mới nhất ở đầu file là **12/10/2026**. Các mục lịch sử phía dưới ghi phạm vi tại thời điểm tương ứng, không phải tuyên bố toàn hệ thống hoàn chỉnh hay sẵn sàng production. Backlog nền ở [PLAN.md](PLAN.md) được rà ngày 06/10/2026 và cần đối chiếu các checkpoint mới hơn để không triển khai trùng chức năng; cách chạy từ clone ở [README.md](README.md), API/cấu hình ở [BE/README.md](BE/README.md).
+Tài liệu tổng hợp nhiều checkpoint có ngày; checkpoint mới nhất ở đầu file là **13/10/2026**. Các mục lịch sử phía dưới ghi phạm vi tại thời điểm tương ứng, không phải tuyên bố toàn hệ thống hoàn chỉnh hay sẵn sàng production. Backlog nền ở [PLAN.md](PLAN.md) được rà ngày 06/10/2026 và cần đối chiếu các checkpoint mới hơn để không triển khai trùng chức năng; cách chạy từ clone ở [README.md](README.md), API/cấu hình ở [BE/README.md](BE/README.md).
+
+## Checkpoint 13/10/2026 — báo cáo dòng tiền theo thời điểm ghi nhận
+
+- API báo cáo giữ riêng hai trục thời gian: đơn, doanh số giao, giảm giá và trạng thái theo ngày tạo đơn; COD đã đối soát theo sự kiện audit `UNPAID → PAID`; refund theo `ReturnRefund.CreatedAt`. Các giao dịch tiền được group theo ngày `Asia/Ho_Chi_Minh` và trả về tổng, số lượt/số đơn cùng bảng ngày.
+- Tiền COD tính bằng snapshot `TienHang + PhiGiaoHang - GiamGiaDon` dạng Decimal. Nếu thiếu một thành phần snapshot cho bất kỳ sự kiện thu nào, khoản tiền ngày đó và tổng thu kỳ đó là `null`, có ghi chú thay vì suy từ cột Float hoặc trạng thái PAID hiện tại. Bản ghi lịch sử không có sự kiện audit không được tự nhận là tiền đã thu.
+- Admin hiển thị sổ thu/hoàn, dòng tiền ghi sổ và phân biệt gross của đơn giao tạo trong kỳ đang có trạng thái PAID/PARTIALLY_REFUNDED/REFUNDED với sự kiện thu trong kỳ. CSV xuất cả sổ ngày UTC+7; không gọi ghi nhận refund là xác nhận ngân hàng đã chuyển.
+- Nghiệm thu: API/integration/unit **107/107**; reports browser + API/unit trên build thật **108/108**; BE/FE/admin typecheck, FE lint/Expo export 24 routes, admin lint/build đạt. Ca API kiểm tra đơn thu ở kỳ khác ngày tạo, biên cuối kỳ loại trừ đúng, không đếm lặp `PAID→PAID`, tổng hoàn/net và snapshot.
+- Database test `fashionhaven_test_1791865851672_dca356b9` (API suite) và `fashionhaven_test_1791865904265_4a73f91a` (reports browser suite) được runner dọn trong `finally`. Hai database legacy thiếu provenance `fashionhaven_test_1790947556855_6730d9c6`, `fashionhaven_test_1790947607214_dfda8761` được giữ nguyên.
+- Giới hạn: lịch sử thanh toán cũ thiếu `OrderEvent` không thể tái dựng ngày thu; refund vẫn là ghi sổ thủ công; chưa có giá vốn, chuyển tiền xác nhận hoặc lịch sử tồn. Dự án tổng thể chưa hoàn tất.
 
 ## Checkpoint 12/10/2026 — ảnh minh chứng đổi trả, báo cáo và E2E tích hợp
 

@@ -294,3 +294,9 @@ $env:BROWSER_ONLY_MODULES='reports'
 npm.cmd run test:browser
 Remove-Item Env:BROWSER_ONLY_MODULES
 ```
+
+## 13/10/2026 — sổ thu/hoàn theo ngày ghi nhận
+
+`GET /api/reports?from=YYYY-MM-DD&to=YYYY-MM-DD` giữ các chỉ số đơn theo ngày tạo UTC+7 và trả thêm `cashFlow` theo thời điểm ghi sổ: thu COD từ `OrderEvent` chuyển `UNPAID → PAID`, hoàn từ `ReturnRefund.CreatedAt`, tổng lượt/số đơn và nhóm theo ngày. `summary.collectedTotal` nay là tiền từ sự kiện đối soát trong kỳ; `summary.createdPeriodOrdersMarkedPaidGross` là giá trị gộp đơn giao tạo trong kỳ hiện ở trạng thái đã thu/đã hoàn, không thay thế ledger thời gian.
+
+Tiền thu dùng snapshot Decimal `TienHang + PhiGiaoHang - GiamGiaDon`. Nếu thiếu bất kỳ snapshot tiền nào trong ngày, tiền ngày và tổng thu để `null`, kèm giới hạn trong response; sự kiện lịch sử thiếu audit không được suy ra từ trạng thái cuối. Refund là ghi nhận nghiệp vụ thủ công, không xác nhận tiền đã về/đã chuyển qua ngân hàng. ReportsView và CSV xuất cả hai cơ sở thời gian. Kiểm tra: `npm.cmd test` **107/107**; `BROWSER_ONLY_MODULES=reports npm.cmd run test:browser` **108/108**; backend typecheck và admin typecheck/lint/build đạt. Cả hai schema test do run tạo đã được cleanup.

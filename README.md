@@ -1,6 +1,6 @@
 # Fashion Haven
 
-Hệ thống bán lẻ thời trang gồm ứng dụng khách hàng, trang quản trị và API dùng chung. [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md) ghi các checkpoint có ngày, trong đó checkpoint mới nhất là **12/10/2026**; [PLAN.md](PLAN.md) giữ bảng yêu cầu ban đầu và checkpoint nghiệm thu mới hơn.
+Hệ thống bán lẻ thời trang gồm ứng dụng khách hàng, trang quản trị và API dùng chung. [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md) ghi các checkpoint có ngày, trong đó checkpoint mới nhất là **13/10/2026**; [PLAN.md](PLAN.md) giữ bảng yêu cầu ban đầu và checkpoint nghiệm thu mới hơn.
 
 ## Nguồn đang sử dụng
 
@@ -68,7 +68,7 @@ npm.cmd run web
 
 Test backend tạo database **mới** dạng `fashionhaven_test_<timestamp>_<random>` trên MySQL local. Runner đóng tiến trình/kết nối và dọn đúng database do lần chạy đó tạo trong `finally`, kể cả setup/test lỗi. `KEEP_TEST_DB=true` giữ lại có chủ đích để debug. Cần quyền CREATE/DROP DATABASE; không tạo fixtures trong database cửa hàng. Lệnh liệt kê trước khi dọn: `cd BE; npm.cmd run test:db:list`. Xem [quy tắc cleanup và danh sách đã dọn](BE/TEST_DATABASE_CLEANUP.md).
 
-Kiểm tra trình duyệt dùng bản build thật `FE/dist`, `admin_web/dist`, Express và MySQL test biệt lập. Ngày 12/10/2026, full browser + API/unit suite đạt **108/108**; riêng Reports đạt **108/108**, đổi trả đạt **1/1**; BE typecheck, FE typecheck/lint/Expo web export và admin typecheck/lint/build đều đạt. Runner xóa đúng database do test tạo; hai schema legacy chưa có provenance vẫn được giữ. Phạm vi và giới hạn native nằm trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md).
+Kiểm tra trình duyệt dùng bản build thật `FE/dist`, `admin_web/dist`, Express và MySQL test biệt lập. Ngày 13/10/2026, full reports browser + API/unit suite đạt **108/108**, bao gồm đối soát COD theo ngày sự kiện, hoàn tiền theo ngày ghi sổ, CSV và viewport 390 px; BE typecheck, admin typecheck/lint/build đạt. Runner xóa đúng database do test tạo; hai schema legacy chưa có provenance vẫn được giữ. Phạm vi và giới hạn native nằm trong [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md).
 
 ### Khách hàng thử nghiệm riêng
 

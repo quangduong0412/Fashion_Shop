@@ -7,6 +7,7 @@ exports.runReportBrowser = async ({ admin, directory }) => {
   await admin.setViewportSize({ width: 1440, height: 1000 });
   await admin.getByRole('button', { name: /Báo cáo/, exact: false }).click();
   await admin.getByRole('heading', { name: 'Báo cáo bán hàng & tồn kho', exact: true }).waitFor();
+  await admin.getByRole('heading', { name: 'Sổ thu COD và hoàn tiền theo ngày ghi nhận', exact: true }).waitFor();
   await admin.getByText('Định nghĩa chỉ số & giới hạn báo cáo', { exact: true }).waitFor();
   await admin.getByRole('button', { name: '7 ngày', exact: true }).click();
   const weekFrom = await admin.getByLabel('Từ ngày', { exact: true }).inputValue();
@@ -26,7 +27,7 @@ exports.runReportBrowser = async ({ admin, directory }) => {
   const download = await downloaded;
   assert.equal(download.suggestedFilename(), 'fashion-haven-report-2020-01-01-2020-01-01.csv');
   const csv = await fs.readFile(await download.path(), 'utf8');
-  assert.match(csv, /Tổng tiền đơn đã giao/); assert.match(csv, /Tiền COD đã đối soát/); assert.match(csv, /Giảm giá/); assert.match(csv, /Hoàn tiền ghi trong kỳ/); assert.match(csv, /UTC\+7/); assert.match(csv, /Tồn khả dụng hiện tại/);
+  assert.match(csv, /Tổng tiền đơn đã giao/); assert.match(csv, /Tiền COD đã đối soát/); assert.match(csv, /Giảm giá/); assert.match(csv, /Hoàn tiền ghi trong kỳ/); assert.match(csv, /Sổ ghi nhận tiền theo ngày UTC\+7/); assert.match(csv, /Đơn thu/); assert.match(csv, /UTC\+7/); assert.match(csv, /Tồn khả dụng hiện tại/);
   await admin.getByLabel('Từ ngày', { exact: true }).fill('2020-01-02');
   await admin.getByRole('button', { name: 'Xem báo cáo tùy chỉnh', exact: true }).click();
   await admin.getByText('Ngày bắt đầu không được sau ngày kết thúc.', { exact: true }).waitFor();

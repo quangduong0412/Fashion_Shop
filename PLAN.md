@@ -69,7 +69,7 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 | V02 Áp dụng voucher | FE Cart | quote/checkout voucher | VoucherUsage, order snapshot | Giá server-side, transaction/race/retry/cancel; customer scope | Quote, checkout COD, expired/minimum reject | Đạt API + browser; online payments chưa bật |
 | R01 Khách yêu cầu trả | FE Orders | `/api/returns` | ReturnRequest/Line/Event/Evidence | Ownership; delivered window; purchased/unreturned qty; idempotency | Browser request + up to 3 authenticated private images | Đạt local COD; giả định cửa sổ 7 ngày |
 | R02 Nhận trả / hoàn tiền | Admin ReturnsView | return transition/refund | Return ledger + stock adjustment + private evidence | ADMIN; receive/inspect before restock; refund <= collected | Full browser receive/inspect/restock once/refund; API retries | Đạt local COD; gateway/native chưa nghiệm thu |
-| B01 Báo cáo theo kỳ | ReportsView | GET /reports?from&to | Aggregate all orders/lines, refund ledger, current sellable stock | ADMIN; created-date UTC+7/current status; manual COD reconciliation is not net revenue | >50 orders / boundaries / permission / filters/empty/CSV/mobile | Đạt API + full browser checkpoint 12/10; cash ledger/profit/historical stock remain |
+| B01 Báo cáo theo kỳ | ReportsView | GET /reports?from&to | Aggregate orders/lines + OrderEvent collection and ReturnRefund ledgers + current sellable stock | ADMIN; order metrics by created date/current state; COD receipts and refunds by UTC+7 event date; manual ledger is not bank-confirmed net revenue | >50 orders / event-date boundaries / permission / filters/empty/CSV/mobile / prevent duplicate transition counts | Đạt API + reports browser 108/108 ngày 13/10; profit/historical stock remain |
 | B02 Cài đặt cửa hàng / banner | SettingsView; FE Home/Contact/Policies | GET public/internal, PUT /settings | StoreSettings version + SettingsAudit, order snapshots | ADMIN CAS/reason/audit; một fee checkout phân bổ exact VND; banner active/lịch/internal link | Admin lưu → FE đọc + checkout; stale/concurrent/fee/retry/snapshot đúng | Đạt API + browser; defaults khi chưa row, không tự seed, chỉ STANDARD |
 | B03 Phân quyền chi nhánh | Menu STAFF hiện 2 nhóm | Middleware role đã có, chưa branch scope | Chưa quan hệ kho–chi nhánh | Quyền server; không suy từ chức danh/ẩn nút | Staff chỉ đúng scope API; admin vẫn quản lý tổng | Đạt role; thiếu branch scope |
 
@@ -91,7 +91,7 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 - [x] Schema media additive, bộ ảnh/primary/ảnh SKU, danh mục ảnh/icon/ẩn/thứ tự; sửa giá/tồn giữ ảnh; URL validation và fallback trung tính.
 - [x] CMS payload/paging/detail và inbox contact validation thật; bỏ stats/nút giả. Bài viết chưa có draft/publish schedule.
 - [x] Settings version/audit, thông tin/chính sách/banner có lịch; phí một lần checkout, phân bổ exact VND nhiều kho, full quote/request context, giữ snapshot/retry cũ.
-- [x] Reports aggregate kỳ tạo đơn UTC+7, CSV, tồn từng SKU; chỉ số chưa có ledger trả null có lý do, không giả 0.
+- [x] Reports aggregate đơn theo ngày tạo UTC+7, COD thu theo sự kiện đối soát UNPAID→PAID, hoàn theo ngày ghi sổ, CSV và tồn từng SKU; snapshot tiền thiếu để null, không giả 0.
 - [x] 79/79 test đạt: 52 integration API/MySQL, 25 unit, browser thật và nhóm cha; typecheck/lint/build/export đạt.
 - [x] Full browser mới qua giỏ selected/preserve, media, CMS/contact, accounts/recovery, settings/banner/policies, reports/CSV; xem screenshots mobile. Rà diff/stage không secrets/artifacts; không suy native/CRUD ít dùng đạt.
 
@@ -118,7 +118,7 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 - [ ] Phương thức giao bổ sung nếu có nghiệp vụ; timestamp tạo SP chỉ khi có dữ liệu phù hợp.
 - [ ] CMS bài draft/publish/schedule; banner đã có lịch nhưng chưa campaign/voucher. Support handled/reply/audit và FAQ.
 - [ ] Brand management entity; CRUD chức danh/chi nhánh/NCC/nhân sự còn cần validation/paging/browser đủ nhánh; chuyển kho và request nhập→duyệt thiếu.
-- [ ] Ledger tiền theo ngày thu/giảm giá/hoàn tiền/đổi trả để báo cáo đúng và đủ; hiện report theo ngày tạo đơn/trạng thái hiện tại với giới hạn rõ.
+- [ ] Hoàn thiện đối soát tài chính sau bán: ledger COD/refund theo event đã có; giảm giá vẫn gắn kỳ đơn, sự kiện lịch sử thiếu snapshot phải để chưa khả dụng; xác nhận chuyển khoản/ngân hàng, lợi nhuận/giá vốn và lịch sử tồn cần nguồn dữ liệu riêng.
 - [ ] Native Android/iOS thật; mọi form/kích thước/empty/error/success; đo hiệu năng và paginate các bootstrap legacy còn giới hạn.
 - [ ] Email thật cần sender/API key, shipping provider và online payment cần dịch vụ/webhook thật trước khi bật. Tiếp tục việc độc lập khi thiếu cấu hình.
 
