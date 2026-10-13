@@ -1,5 +1,23 @@
 # Checkpoint triển khai — 06/10/2026
 
+## Tiếp tục — thông báo bền vững và sửa diagnostics (13/10/2026)
+
+| Yêu cầu | FE/admin | API | Dữ liệu/quy tắc | Nghiệm thu | Trạng thái |
+| --- | --- | --- | --- | --- | --- |
+| Thông báo khách | `Profile` → `Notifications` | GET `/notifications?page&pageSize`; PUT `/:id/read`, `/read-all` | `CustomerNotification`; event key duy nhất gắn OrderEvent/ReturnEvent; đọc theo CustomerId | API owner/auth/retry + web checkout → read → giao/COD/refund; 390×844 | Đạt web; push/native chưa làm |
+| Compiler lỗi trong ảnh VS Code | FE `ProductCard`/`Products` kiểm tra; BE config | BE TS6 Node16 + integration helpers CommonJS | Không thay đổi dữ liệu nghiệp vụ | BE/FE/admin typecheck; package JSON parse; không có marker trên đĩa | Đạt; Problems panel chưa thể refresh trực tiếp |
+
+Thông báo được ghi trong transaction trạng thái đơn/đổi trả để không lệch nhật ký và không nhân đôi khi retry; admin/staff không đọc inbox khách. Thông báo hoàn tiền chỉ xác nhận đã ghi sổ đối soát. Migration `db:migrate-notifications` additive và chưa chạy trên database cửa hàng.
+
+Kiểm tra hiện tại: BE typecheck + Prisma validate; BE API/unit 109/109 (`fashionhaven_test_1791872674344_6c382deb`); browser/API run 110/110 với `BROWSER_ONLY_MODULES=cms` (`fashionhaven_test_1791873082775_e9f552bf`), gồm luồng thông báo FE, checkout/fulfillment và CMS/hộp thư; FE typecheck/lint/Expo web export 25 routes; admin typecheck/lint/build. Hai test DB được dọn tự động. Lượt đầu cleanup vấp bảng `customernotification` chưa nằm trong allowlist; sau khi thêm bảng vào allowlist, DB của lượt đó được xác minh marker+manifest/0 kết nối và xóa đích danh. Dry-run giữ nguyên hai DB cũ thiếu provenance `fashionhaven_test_1790947556855_6730d9c6`, `fashionhaven_test_1790947607214_dfda8761`.
+
+## Tiếp tục — khôi phục compiler/build backend (13/10/2026)
+
+- Source hiện tại không có conflict marker; `git ls-files -u` rỗng, không có merge/rebase. Bốn manifest `package.json` parse hợp lệ. ProductCard/Products không có import trùng và `Colors` lấy từ theme đúng.
+- TypeScript 6 cảnh báo `moduleResolution: node` đã được sửa sang `module: Node16` + `moduleResolution: Node16`; gỡ cờ bỏ qua deprecation. Với Node/ts-node CommonJS, local test helpers được nạp bằng `require`, giữ nguyên import `fs` builtin.
+- Kiểm tra đạt: BE typecheck, API/unit 109/109, browser/API/unit 110/110, FE typecheck/lint/Expo web export (24 route), admin typecheck/lint/build. Ba database test mới tạo trong các lượt thực hiện (`fashionhaven_test_1791871772083_8bcf2c7b`, `fashionhaven_test_1791871876306_5fe33e8d`, `fashionhaven_test_1791871950269_dd9c0b62`) đã được cleanup. Dry-run tiếp tục giữ 2 database cũ thiếu provenance.
+- Không có VS Code surface để đọc lại Problems panel. Nếu còn hiển thị lỗi cũ, khởi động lại TypeScript server và mở lại file sau khi pull commit.
+
 ## Tiếp tục — hộp thư hỗ trợ có trạng thái và audit (13/10/2026)
 
 | Yêu cầu | FE/admin | API | Dữ liệu/quy tắc | Nghiệm thu | Trạng thái |
@@ -20,7 +38,7 @@ Admin tạo bài ở trạng thái nháp mặc định, có thể xuất bản n
 
 Kiểm tra cuối: `BE npm.cmd run typecheck`, Prisma validate, `BE npm.cmd test` 108/108; `admin_web npm.cmd run typecheck/lint/build`; browser/API suite 109/109. DB `fashionhaven_test_1791866640267_47d0782d` và `fashionhaven_test_1791866695696_822519a1` đã được runner dọn. Lượt E2E trước phát hiện selector test sai và cũng được cleanup; đã sửa rồi chạy lại thành công. Không cập nhật database cửa hàng. Chưa native test.
 
-Việc tiếp theo: đánh giá sau mua và notifications; email/FAQ cho inbox, quản lý brand, scope kho/workflow chuyển kho, ngoại tích hợp và native. Giữ riêng `BaoCao/`, `USECASE.md`, `report_work/`.
+Việc tiếp theo: đánh giá sau mua; email/FAQ cho inbox, quản lý brand, scope kho/workflow chuyển kho, ngoại tích hợp và native push. Giữ riêng `BaoCao/`, `USECASE.md`, `report_work/`.
 
 ## Checkpoint tiếp tục — thuộc tính danh mục và chọn SKU (11/10/2026)
 
@@ -83,7 +101,7 @@ Chưa cấp demo live do thiếu cấu hình của người vận hành. Điền
 1. **Đợt 2 voucher**: thêm model/audit/redemption và migration additive; admin CRUD/ngưng, validity/minimum/limits/scopes; FE apply/remove/reasons; quote + checkout cùng calculation; transaction lock lượt/stock, retry, exact allocation nhiều kho. Chốt và ghi chính sách hoàn lượt toàn/phần, snapshot discount và test race/cancel/stale.
 2. Đợt 3 VNPay sandbox: đọc official docs mới; payment ledger/signatures/IPN/repeated/late/expiry/deep link. Thiếu merchant config vẫn làm contract test, không đánh success giả.
 3. Đợt 4 returns/refund: delivered ownership/qty/window, receive/inspect trước restock, refund ledger≤collected, manual COD có căn cứ.
-4. Đợt 5 verified reviews + in-app/push notifications; đợt 6 carrier/email/support/CMS schedule/cash event reports.
+4. Đợt 5 verified reviews và đánh giá sau mua; in-app notifications đã có, native push còn mở; đợt 6 carrier/email/support/CMS audit/cash event reports.
 5. Native Android/iOS chưa nghiệm thu: adb không có PATH/vị trí SDK thông dụng; chưa chạy emulator/thiết bị. Token còn AsyncStorage, cần SecureStore/deep link/build và test native trước nghiệm thu native. Email/provider/carrier/storage production chưa xác minh.
 6. Brand hiện text; không brand entity CRUD. SKU hết hàng vẫn xem được và chặn mua; không có timestamp tạo sản phẩm, không gọi mã ID là ngày tạo.
 7. Luồng API local cổng4000 chưa chạy tại thời điểm audit; khởi động BE/FE/admin theo README để thao tác với DB phát triển. Không dùng fixtures integration làm tài khoản demo live.

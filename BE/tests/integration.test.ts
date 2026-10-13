@@ -162,7 +162,7 @@ test('Real HTTP API and isolated MySQL', async t => {
     assert.equal((await request(`/users/${id}`, 'DELETE', undefined, adminToken)).status, 409);
   });
   await t.test('forgot password configuration, one-use expiry, race and session revocation', async () => {
-    const { resetOutboxFile } = await import('../src/services/passwordRecovery');
+    const { resetOutboxFile } = require('../src/services/passwordRecovery');
     const { promises: fs } = await import('fs');
     const email = 'account-ui@example.invalid';
     const customer = await prisma.khachHang.findUniqueOrThrow({ where: { Email: email } });
@@ -294,9 +294,19 @@ test('Real HTTP API and isolated MySQL', async t => {
     assert.equal((await prisma.bienTheSanPham.findUniqueOrThrow({ where: { MaBienThe: variantId } })).SoLuong, 4);
     assert.equal(await prisma.dieuChinhTonKho.count({ where: { MaSanPham: product.MaSanPham, Loai: 'ORDER_RESERVE' } }), 1);
     assert.doesNotMatch(JSON.stringify(result.body), /DonGiaNhap|MatKhau/);
+    const notices = await request('/notifications?page=1&pageSize=20', 'GET', undefined, customerToken);
+    assert.equal(notices.status, 200); assert.equal(notices.body.unreadCount, 1);
+    const createdNotice = notices.body.items.find((item: any) => item.resourceType === 'ORDER' && item.resourceId === orderId);
+    assert.equal(createdNotice.title, 'Đã tiếp nhận đơn hàng');
+    assert.equal((await request('/notifications', 'GET', undefined, staffToken)).status, 403);
+    assert.equal((await request('/notifications', 'GET')).status, 401);
+    const read = await request(`/notifications/${createdNotice.id}/read`, 'PUT', {}, customerToken);
+    assert.equal(read.status, 200); assert.equal(read.body.unreadCount, 0); assert.ok(read.body.notification.readAt);
+    assert.equal((await request(`/notifications/${createdNotice.id}/read`, 'PUT', {}, customerToken)).status, 200, 'marking a read notification is idempotent');
+    assert.equal((await request('/notifications/read-all', 'PUT', {}, customerToken)).body.unreadCount, 0);
   });
   await t.test('pre-upgrade checkout receipts still replay without a second reservation', async () => {
-    const { cartInput, hash } = await import('../src/services/checkout');
+    const { cartInput, hash } = require('../src/services/checkout');
     const key = randomUUID();
     await prisma.checkoutRequest.create({ data: { CustomerId: customerId, Key: key, Fingerprint: hash({ items: cartInput(items), shipping, paymentMethod: 'COD' }), OrderIds: [orderId] } });
     const stock = (await prisma.sanPham.findUniqueOrThrow({ where: { MaSanPham: product.MaSanPham } })).SoLuong;
@@ -309,6 +319,7 @@ test('Real HTTP API and isolated MySQL', async t => {
     const priced = await quote(lines);
     const [first, retry] = await Promise.all([submit(lines, key, priced.body.quoteHash), submit(lines, key, priced.body.quoteHash)]);
     assert.deepEqual([first.status, retry.status].sort(), [200, 201]); assert.equal(first.body.order.MaPhieuXuat, retry.body.order.MaPhieuXuat);
+    assert.equal(await prisma.customerNotification.count({ where: { CustomerId: customerId, ResourceType: 'ORDER', ResourceId: first.body.order.MaPhieuXuat } }), 1, 'idempotent checkout creates only one customer notification');
     assert.equal((await prisma.sanPham.findUniqueOrThrow({ where: { MaSanPham: remote.MaSanPham } })).SoLuong, 4);
     const changed = await submit([{ id: remote.MaSanPham, quantity: 2 }], key, priced.body.quoteHash); assert.equal(changed.status, 409); assert.equal(changed.body.code, 'REQUEST_KEY_REUSED');
   });
@@ -320,6 +331,8 @@ test('Real HTTP API and isolated MySQL', async t => {
   });
   await t.test('two customers competing for the final item cannot oversell', async () => {
     const second = await request('/users/register', 'POST', { name: 'Other synthetic customer', email: 'other@example.invalid', password: 'CustomerPass2!' });
+    const privateNotice = await prisma.customerNotification.findFirstOrThrow({ where: { CustomerId: customerId, ResourceId: orderId } });
+    assert.equal((await request(`/notifications/${privateNotice.Id}/read`, 'PUT', {}, second.body.token)).status, 404, 'a different customer cannot mark another customer\'s notification as read');
     const lines = [{ id: single.MaSanPham, quantity: 1 }], priced = await quote(lines);
     const results = await Promise.all([submit(lines, randomUUID(), priced.body.quoteHash), submit(lines, randomUUID(), priced.body.quoteHash, second.body.token)]);
     assert.deepEqual(results.map(result => result.status).sort(), [201, 409]);
@@ -348,6 +361,9 @@ test('Real HTTP API and isolated MySQL', async t => {
     assert.equal((await request(`/orders/${orderId}/status`, 'PUT', { expectedStatus: 'DELIVERED', status: 'CANCELLED', reason: 'Invalid' }, adminToken)).status, 409);
     assert.equal((await request(`/orders/${orderId}`, 'DELETE', undefined, adminToken)).status, 409);
     const history = await request(`/orders/${orderId}`, 'GET', undefined, customerToken); assert.equal(history.body.history.length, 5);
+    const notices = await request('/notifications?page=1&pageSize=50', 'GET', undefined, customerToken);
+    assert.ok(notices.body.items.some((item: any) => item.title === 'Đơn hàng đã được giao' && item.resourceId === orderId));
+    assert.ok(notices.body.items.some((item: any) => item.type === 'PAYMENT' && item.resourceId === orderId));
     assert.equal((await prisma.sanPham.findUniqueOrThrow({ where: { MaSanPham: product.MaSanPham } })).SoLuong, 4);
   });
   await t.test('return inspection restocks once and refund reconciliation is exact and idempotent', async () => {
@@ -359,6 +375,7 @@ test('Real HTTP API and isolated MySQL', async t => {
     const orderLineId = created.body.order.ctDonHangs[0].STT;
     assert.equal((await request(`/returns/orders/${id}`, 'POST', { requestKey: 'return_not_delivered_01', reason: 'Not delivered yet', lines: [{ orderLineId, quantity: 1 }] }, customerToken)).status, 409);
     const other = await request('/users/register', 'POST', { name: 'Return owner check', email: 'return-owner@example.invalid', password: 'ReturnOwnerPass1!' });
+    assert.equal((await request('/notifications', 'GET', undefined, other.body.token)).body.items.length, 0);
     const advance = (expectedStatus: string, status: string, extra: Record<string, unknown> = {}) => request(`/orders/${id}/status`, 'PUT', { expectedStatus, status, reason: 'Synthetic delivery step', ...extra }, adminToken);
     assert.equal((await advance('PENDING', 'PROCESSING')).status, 200);
     assert.equal((await advance('PROCESSING', 'SHIPPING', { shippingProvider: 'Synthetic courier', trackingCode: 'RET-001' })).status, 200);
@@ -401,6 +418,8 @@ test('Real HTTP API and isolated MySQL', async t => {
     const change = (status: string, expectedVersion: number, extra: Record<string, unknown> = {}) => request(`/returns/${returnId}/status`, 'PUT', { expectedVersion, status, reason: 'Synthetic inspection record', ...extra }, adminToken);
     assert.equal((await change('APPROVED', 2)).status, 200);
     assert.equal((await change('APPROVED', 2)).status, 409, 'stale transition cannot overwrite a newer return state');
+    const approvedNotice = await request('/notifications?page=1&pageSize=50', 'GET', undefined, customerToken);
+    assert.ok(approvedNotice.body.items.some((item: any) => item.resourceType === 'RETURN' && item.resourceId === returnId && item.title === 'Yêu cầu trả hàng được duyệt'));
     assert.equal((await change('RECEIVED', 3, { receivedLines: [{ lineId: returnLineId, receivedQuantity: 1 }] })).status, 200);
     assert.equal((await change('INSPECTED', 4, { inspectionLines: [{ lineId: returnLineId, saleableQuantity: 1 }] })).status, 200);
     assert.equal((await prisma.sanPham.findUniqueOrThrow({ where: { MaSanPham: returnProduct.MaSanPham } })).SoLuong, 4, 'only the inspected saleable unit is restocked');
@@ -412,6 +431,7 @@ test('Real HTTP API and isolated MySQL', async t => {
     assert.equal((await refund('return_refund_first_01', 'BANK-RET-001')).status, 200, 'retry returns the original refund ledger row');
     assert.equal((await refund('return_refund_first_01', 'DIFFERENT-REFERENCE')).status, 409);
     assert.equal(await prisma.returnRefund.count({ where: { ReturnId: returnId } }), 1);
+    assert.equal(await prisma.customerNotification.count({ where: { CustomerId: customerId, EventKey: { startsWith: 'return-event:' }, ResourceType: 'RETURN', ResourceId: returnId, Title: 'Đã ghi nhận khoản hoàn tiền' } }), 1, 'refund retry does not duplicate the notification');
 
     const second = await requestReturn('return_flow_request_0002', 'Second unit also wrong'); assert.equal(second.status, 201);
     const secondId = second.body.request.id, secondLineId = second.body.request.lines[0].id;
@@ -566,20 +586,20 @@ test('Real HTTP API and isolated MySQL', async t => {
     const large = await upload(Buffer.alloc(5 * 1024 * 1024 + 1), adminToken);
     assert.equal(large.status, 413); assert.equal((await large.json() as any).code, 'IMAGE_TOO_LARGE');
   });
-  const { testStoreFlows } = await import('./store-flow');
+  const { testStoreFlows } = require('./store-flow');
   await testStoreFlows(t, request, adminToken, customerToken, {warehouseId: warehouse.MaKho,secondWarehouseId: secondWarehouse.MaKho,supplierId:supplier.MaNCC,categoryId:category.MaLoaiHang});
-  const { testContentFlows } = await import('./content-flow');
+  const { testContentFlows } = require('./content-flow');
   await testContentFlows(t, request, adminToken, staffToken);
-  const { testSettingsFlows } = await import('./settings-flow');
+  const { testSettingsFlows } = require('./settings-flow');
   await testSettingsFlows(t, request, adminToken, staffToken);
-  const { runReportFlow } = await import('./report-flow');
-  const { checkDemoDataset } = await import('./demo-data-flow');
+  const { runReportFlow } = require('./report-flow');
+  const { checkDemoDataset } = require('./demo-data-flow');
   await checkDemoDataset(t);
-  const { testCatalogExpansion } = await import('./catalog-expansion-flow');
+  const { testCatalogExpansion } = require('./catalog-expansion-flow');
   await testCatalogExpansion(t,{actorId:admin.MaNhanVien,staffId:legacy.MaNhanVien,warehouseId:warehouse.MaKho,supplierId:supplier.MaNCC});
-  const { testShoppingFlows } = await import('./shopping-flow');
+  const { testShoppingFlows } = require('./shopping-flow');
   await testShoppingFlows(t,request,staffToken,{warehouseId:warehouse.MaKho,supplierId:supplier.MaNCC});
-  const { testVoucherFlows } = await import('./voucher-flow');
+  const { testVoucherFlows } = require('./voucher-flow');
   await testVoucherFlows(t,request,adminToken,staffToken,{warehouseId:warehouse.MaKho,secondWarehouseId:secondWarehouse.MaKho,supplierId:supplier.MaNCC,categoryId:category.MaLoaiHang});
   await t.test('reports aggregate all orders with explicit UTC+7 boundaries and scoped permissions', () => runReportFlow({request,adminToken,customerToken,prisma}));
   if (process.env.PLAYWRIGHT_MODULE) {

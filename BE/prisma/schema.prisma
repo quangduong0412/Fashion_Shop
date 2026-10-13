@@ -198,6 +198,7 @@ model KhachHang {
   SessionEpoch  Int         @default(0)
   phieuXuats    PhieuXuat[]
   returnRequests ReturnRequest[]
+  notifications CustomerNotification[]
 
   @@map("khachhang")
 }
@@ -436,6 +437,23 @@ model OrderEvent {
 
   @@index([OrderId, Id])
   @@map("orderevent")
+}
+
+model CustomerNotification {
+  Id           Int       @id @default(autoincrement())
+  CustomerId   Int
+  EventKey     String    @unique @db.VarChar(120)
+  Type         String    @db.VarChar(30)
+  Title        String    @db.VarChar(120)
+  Message      String    @db.VarChar(500)
+  ResourceType String    @db.VarChar(20)
+  ResourceId   Int
+  ReadAt       DateTime? @db.DateTime(3)
+  CreatedAt    DateTime  @default(now()) @db.DateTime(3)
+  customer     KhachHang @relation(fields: [CustomerId], references: [MaKhachHang], onDelete: Restrict, onUpdate: NoAction, map: "FK_CustomerNotification_Customer")
+
+  @@index([CustomerId, ReadAt, CreatedAt], map: "CustomerNotification_CustomerId_ReadAt_CreatedAt_idx")
+  @@map("customernotification")
 }
 
 // Returns, inspection and manual refund records are separate from order cancellation/payment collection.

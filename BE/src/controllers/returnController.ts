@@ -6,6 +6,7 @@ import { ApiError, positiveId, sendApiError, textValue } from '../services/apiEr
 import { pagination } from '../services/pagination';
 import { money, orderStatus, paymentStatus } from '../services/orderRules';
 import { hashReturn, inspectedQuantities, refundForQuantity, requestKey, requestedLines, returnReason, returnStatuses } from '../services/returnRules';
+import { createCustomerNotification, returnNotification } from '../services/notifications';
 import type { Principal } from '../services/sessions';
 import { evidenceDto } from './returnEvidenceController';
 
@@ -189,8 +190,10 @@ export const updateReturnStatus = async (req: Request, res: Response) => {
       }
       const nextStatus = target === 'INSPECTED' && refundDue === 0 ? 'CLOSED_NO_REFUND' : target;
       await tx.returnRequest.update({ where: { Id: id }, data: { Status: nextStatus, RefundDue: refundDue, Version: { increment: 1 } } });
-      await tx.returnEvent.create({ data: { ReturnId: id, FromStatus: current.Status, ToStatus: nextStatus, ActorRole: user.role, ActorId: user.id,
+      const event = await tx.returnEvent.create({ data: { ReturnId: id, FromStatus: current.Status, ToStatus: nextStatus, ActorRole: user.role, ActorId: user.id,
         Note: note } });
+      const notification = returnNotification(nextStatus, id, current.OrderId);
+      await createCustomerNotification(tx, { customerId: current.CustomerId, eventKey: `return-event:${event.Id}`, ...notification, resourceType: 'RETURN', resourceId: id });
       return loadReturn(tx, id);
     }, transactionOptions);
     res.json({ message: target === 'INSPECTED' && numeric(record?.RefundDue) === 0 ? 'Đã kiểm nhận; không có khoản hoàn vì giá trị hàng trả bằng 0.' : 'Đã cập nhật yêu cầu trả hàng.', request: dto(record) });
@@ -233,10 +236,12 @@ export const recordReturnRefund = async (req: Request, res: Response) => {
       const updatedStatus = numeric(alreadyForOrder._sum.Amount) + amount >= total ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
       await tx.returnRequest.update({ where: { Id: id }, data: { Status: 'REFUNDED', Version: { increment: 1 } } });
       await tx.phieuXuat.update({ where: { MaPhieuXuat: current.OrderId }, data: { TrangThaiThanhToan: updatedStatus } });
-      await tx.returnEvent.create({ data: { ReturnId: id, FromStatus: current.Status, ToStatus: 'REFUNDED', ActorRole: user.role, ActorId: user.id,
+      const event = await tx.returnEvent.create({ data: { ReturnId: id, FromStatus: current.Status, ToStatus: 'REFUNDED', ActorRole: user.role, ActorId: user.id,
         Note: `Đã ghi nhận hoàn ${amount} VND qua ${method}; tham chiếu ${reference}` } });
       await tx.orderEvent.create({ data: { OrderId: current.OrderId, FromStatus: String(order.TrangThai), ToStatus: String(order.TrangThai),
         FromPayment: paidState, ToPayment: updatedStatus, ActorRole: user.role, ActorId: user.id, Note: `Refund #${refund.Id}: ${amount} VND; ${method}; ${reference}` } });
+      const notification = returnNotification('REFUNDED', id, current.OrderId);
+      await createCustomerNotification(tx, { customerId: current.CustomerId, eventKey: `return-event:${event.Id}`, ...notification, resourceType: 'RETURN', resourceId: id });
       return { record: await loadReturn(tx, id), refund, duplicate: false };
     }, transactionOptions);
     res.status(result.duplicate ? 200 : 201).json({ message: result.duplicate ? 'Đối soát hoàn tiền đã được ghi nhận trước đó.' : 'Đã ghi nhận giao dịch hoàn tiền.',

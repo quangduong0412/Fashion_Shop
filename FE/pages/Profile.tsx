@@ -165,6 +165,7 @@ export default function ProfileScreen() {
             onPress={() => router.push('/admin' as never)} last
           /> : <>
             <AccountRow icon="receipt-long" iconColor="#8f2639" iconBackground="#f8e9e7" title="Đơn hàng của tôi" detail="Theo dõi đơn và lịch sử mua sắm" onPress={() => router.push('/orders' as never)} />
+            <AccountRow icon="notifications-none" iconColor="#37675b" iconBackground="#e8f0e9" title="Thông báo" detail="Cập nhật đơn hàng và yêu cầu đổi trả" onPress={() => router.push('/notifications' as never)} />
             <AccountRow icon="shopping-cart" iconColor="#9a6d19" iconBackground="#f7f0dc" title="Giỏ hàng" detail="Xem các thiết kế bạn đã chọn" onPress={() => router.push('/(tabs)/cart' as never)} />
             <AccountRow icon="favorite" iconColor="#8f2639" iconBackground="#f8e9e7" title="Sản phẩm yêu thích" detail="Các thiết kế đã lưu theo tài khoản" onPress={() => router.push('/wishlist' as never)} />
             <AccountRow icon="location-on" iconColor="#37675b" iconBackground="#e8f0e9" title="Địa chỉ nhận hàng" detail={displayAddress} onPress={() => router.push('/addresses' as never)} last />

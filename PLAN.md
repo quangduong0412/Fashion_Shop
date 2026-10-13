@@ -10,7 +10,9 @@ Hoàn thành nghĩa là khách xem sản phẩm/biến thể, dùng giỏ, đặ
 
 ## Checkpoint 13/10/2026 — CMS và hộp thư hỗ trợ
 
-Đối chiếu `COMPLETED_FEATURES.md`: CMS đã hỗ trợ draft/publish/schedule. Hộp thư `ContactsView` cho ADMIN hỗ trợ phân trang/lọc, trạng thái `NEW → IN_PROGRESS → RESOLVED`, mở lại `RESOLVED → IN_PROGRESS`, ghi chú nội bộ và nhật ký actor/thời điểm. Không gửi email tự động; `mailto` chỉ mở ứng dụng email bên ngoài. API/DB và browser suite đã qua 110/110. Migration `db:migrate-contact-workflow` additive; chưa chạy trên database cửa hàng. Review, notification, FAQ, brand và kho vẫn backlog.
+Đối chiếu `COMPLETED_FEATURES.md`: CMS draft/publish/schedule, triage hộp thư và thông báo khách in-app đã được nối qua UI/API/DB. Hộp thư `ContactsView` cho ADMIN có phân trang/lọc, trạng thái hợp lệ, ghi chú nội bộ và nhật ký actor/thời điểm. Không gửi email tự động; `mailto` chỉ mở ứng dụng email bên ngoài. Migration hộp thư/thông báo additive; chưa chạy trên database cửa hàng. Review, FAQ, brand và kho vẫn backlog.
+
+Compiler checkpoint 13/10/2026: mọi `package.json` trong bốn ứng dụng parse được; source working tree không có conflict marker/unmerged entry. BE dùng TypeScript 6 Node16 mode và typecheck không bỏ qua deprecation; API/unit 109/109, browser/API 110/110. Xem [COMPLETED_FEATURES.md](COMPLETED_FEATURES.md) để biết DB test đã dọn và giới hạn VS Code panel chưa được kiểm tra trực tiếp.
 
 ## Checkpoint 11/10/2026 — chọn biến thể theo nghiệp vụ
 
@@ -42,7 +44,7 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 | C12 Yêu thích / đánh giá | `/wishlist`, FavoriteButton; review chưa có | `/shopping/wishlist` page/ids/PUT/DELETE | CustomerWishlist unique/customer snapshot; review chưa có | User only; add idempotent; hidden giữ snapshot và cho bỏ lưu | Concurrent unique/owner; FE lưu/reload/danh sách/ẩn→bỏ lưu | Yêu thích đạt API/MySQL + browser web; đánh giá thiếu |
 | C13 Bài viết | `News`, `/article/[id]` | Public GET `/posts`, `/:id`; admin GET `/admin/posts`, CRUD `/posts` | `BaiViet` | Public chỉ đọc PUBLISHED đã tới giờ; bài mới DRAFT; ADMIN quản lý lịch theo UTC+7 | Nháp bị ẩn, admin-only list, publish/schedule và khách đọc sau giờ hẹn | API/unit 108/108 + browser/API 109/109; lưu ý lịch dùng thời gian máy chủ và timezone Asia/Ho_Chi_Minh |
 | C14 Liên hệ / chính sách | `Contact`, `/policies`, `ContactsView` | POST `/contacts`, GET `/settings`, ADMIN GET `/contacts/:id/events`, PUT `/contacts/:id/status` | LienHe, ContactEvent, StoreSettings | Validation/throttle; status transition có audit; ghi chú nội bộ; không giả gửi email | Khách gửi → ADMIN triage, ghi chú, đổi trạng thái và xem actor/time; xóa sau audit bị chặn | API/unit + browser suite 110/110; outbound email/FAQ chưa có |
-| C15 Thông báo | Chưa có luồng đáp ứng | Chưa có inbox/push | Chưa có notification | Chỉ người nhận; không giả số chưa đọc | Sự kiện đơn → thông báo → đọc/persist; native permission đúng | Thiếu |
+| C15 Thông báo | `Profile` → `Notifications` | Customer GET `/notifications?page&pageSize`; PUT `/:id/read`, `/read-all` | `CustomerNotification` gắn event key với `OrderEvent`/`ReturnEvent` | Chỉ khách sở hữu; đọc lại idempotent; cùng transaction; refund text không khẳng định đã chuyển tiền | API/MySQL owner/auth/retry + browser checkout→đọc→giao/đối soát trên 390px | Đạt in-app web; push/native chưa làm |
 
 ### Quản trị và nhân viên
 
@@ -117,7 +119,7 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 ### P1/P2 — phần còn lại của đồ án
 
 - [x] Wishlist theo tài khoản (đợt 1); pagination/unique/hidden snapshot/FE đã kiểm tra.
-- [ ] Review sau giao với ảnh/ownership; notifications in-app/read marker.
+- [ ] Review sau giao với ảnh/ownership; thông báo in-app đã có, native push còn mở.
 - [x] Lọc brand/price/size/color/sort mã/giá, đổi SKU trong giỏ, sổ nhiều địa chỉ/default và account cart (đợt 1).
 - [ ] Phương thức giao bổ sung nếu có nghiệp vụ; timestamp tạo SP chỉ khi có dữ liệu phù hợp.
 - [x] CMS bài draft/publish/schedule; banner đã có lịch nhưng chưa campaign/voucher. Support handled/reply/audit và FAQ vẫn còn.
@@ -136,7 +138,7 @@ Nêu actor/state/money/stock/validation/errors; nối UI→API→DB thật; tran
 
 ## Thứ tự mới theo yêu cầu 06/10
 
-Đợt 1 đã kiểm tra API/MySQL và web 390×844/1440×1000. Tiếp theo đợt 2 voucher → đợt 3 gateway sandbox → đợt 4 return/refund → đợt 5 review/notifications → đợt 6 vận hành/ledger. Native Android/iOS chưa nghiệm thu; không phát hành hoặc dùng tiền thật. Chi tiết tiếp tục ở docs/IMPLEMENTATION_PROGRESS.md.
+Đợt 1 đã kiểm tra API/MySQL và web 390×844/1440×1000. Voucher, gateway sandbox, return/refund đã có lát cắt; tiếp theo review sau mua → native push → vận hành/ledger. Native Android/iOS chưa nghiệm thu; không phát hành hoặc dùng tiền thật. Chi tiết tiếp tục ở docs/IMPLEMENTATION_PROGRESS.md.
 
 
 ### Chỉ đạo vận hành 08/10/2026

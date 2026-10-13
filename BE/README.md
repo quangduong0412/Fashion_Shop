@@ -16,6 +16,8 @@ npm.cmd run dev
 
 `JWT_SECRET` bắt buộc có ít nhất 32 ký tự. JWT dùng HS256, issuer/audience cố định; quyền được đối chiếu database trên mỗi request. Đổi mật khẩu hoặc ngưng tài khoản thu hồi session cũ. `Account.SessionEpoch` bảo đảm bật lại tài khoản không làm token đã thu hồi sống lại. Mật khẩu mới dùng bcrypt, ít nhất 8 ký tự và tối đa 72 byte UTF-8; phản hồi API không có mật khẩu/hash.
 
+Backend dùng TypeScript 6 với `module` và `moduleResolution` là `Node16`. `package.json` không khai báo `type`, nên mã runtime vẫn là CommonJS; integration test nạp helper TypeScript bằng `require` để tránh Node ESM không phân giải được import không có phần mở rộng. `npm.cmd run typecheck` không bỏ qua cảnh báo deprecation.
+
 Không có endpoint công khai để tự cấp quyền quản trị. Máy mới cần hồ sơ nhân viên/tài khoản quản trị hợp lệ do người vận hành cấp; không dùng mật khẩu seed mặc định cho môi trường triển khai.
 
 ### Seed và chuyển đổi mật khẩu cũ
@@ -174,7 +176,7 @@ Runner còn chạy unit test giỏ hàng, limiter, validation CMS/settings và l
 
 - Đổi trả: tối đa 3 tệp/request, mỗi tệp 5 MB; chữ ký PNG/JPEG/WebP được xác minh, lưu dưới `BE/private-uploads/return-evidence` (hoặc `RETURN_EVIDENCE_DIR`) ngoài static files với quyền file hạn chế. POST `/returns/:id/evidence` chỉ khách sở hữu khi REQUESTED/APPROVED; nội dung trùng SHA-256 không tạo attachment/version lặp. GET `/returns/:id/evidence/:evidenceId` chỉ chủ sở hữu hoặc ADMIN; `private,no-store`. DTO không lộ đường dẫn lưu hay hash. Production cần cấu hình volume riêng và chính sách backup/retention.
 
-Voucher, đổi trả/refund COD, CMS draft/publish/schedule và triage hộp thư hỗ trợ có luồng backend/FE/admin được kiểm tra trong phạm vi ghi nhận. Hộp thư có trạng thái và audit ghi chú nội bộ; chưa có email tự động hoặc FAQ. Review/notifications, brand CRUD, phân quyền kho riêng và ledger thanh toán độc lập vẫn chưa có luồng hoàn chỉnh; xem bảng nghiệm thu [PLAN.md](../PLAN.md). Không đổi dữ liệu cũ để giả lập tính năng.
+Voucher, đổi trả/refund COD, CMS draft/publish/schedule, triage hộp thư và thông báo khách hàng có luồng backend/FE/admin được kiểm tra trong phạm vi ghi nhận. Thông báo dùng GET `/notifications?page&pageSize` và PUT `/:id/read`, `/read-all`; chỉ khách đăng nhập đọc được dữ liệu của mình. Tạo đơn, cập nhật trạng thái/vận đơn, đối soát COD và thay đổi đổi trả/hoàn tiền ghi thông báo bền vững cùng transaction nhật ký sự kiện; retry không tạo bản trùng. Migration `db:migrate-notifications` chỉ tạo bảng/index/FK additive; không chạy migration trên database cửa hàng trong lượt này. Thông báo đổi trả ghi nhận sổ hoàn, không xác nhận tiền đã chuyển. Hộp thư hỗ trợ chưa tự gửi email/FAQ; review, brand CRUD, phân quyền kho riêng và ledger thanh toán độc lập còn mở; xem [PLAN.md](../PLAN.md). Không đổi dữ liệu cũ để giả lập tính năng.
 
 ## Mua sắm theo tài khoản — đợt 1
 

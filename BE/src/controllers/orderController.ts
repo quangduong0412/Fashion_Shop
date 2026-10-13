@@ -10,6 +10,7 @@ import { allocateMoney, lockSettings } from '../services/storeSettings';
 import { money } from '../services/orderRules';
 import { checkCartVersion, checkCartPurchase, checkCheckoutAddress, removePurchasedCart, shoppingQuoteHash } from '../services/customerShopping';
 import { consumeVoucher, releaseVoucherForCancelledOrder } from '../services/vouchers';
+import { createCustomerNotification, orderNotification } from '../services/notifications';
 
 const detailInclude = { ctDonHangs: { include: { sanPham: { select: { TenSanPham: true, Anh: true } } } } } as const;
 const transactionOptions = { timeout: 20000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted };
@@ -91,7 +92,9 @@ export const createOrder = async (req: Request, res: Response) => {
             TenSanPham: line.product.TenSanPham, AnhSanPham: line.variant?.Anh || line.product.Anh, SoLuong: line.quantity, DonGiaBan: line.price, GiamGiaDong: discountByLine.get(line)!, ThanhTien: money(line.total - discountByLine.get(line)!) })) } } });
         ids.push(order.MaPhieuXuat);
         await adjustOrderInventory(tx, lines.map(line => ({ MaSanPham: line.product.MaSanPham, MaBienThe: line.variant?.MaBienThe, SoLuong: line.quantity })), false, `user:${user.id}`, order.MaPhieuXuat);
-        await tx.orderEvent.create({ data: { OrderId: order.MaPhieuXuat, ToStatus: 'PENDING', ToPayment: 'UNPAID', ActorRole: user.role, ActorId: user.id, Note: context.note || 'Đặt hàng COD; tồn khả dụng đã được giữ.' } });
+        const event = await tx.orderEvent.create({ data: { OrderId: order.MaPhieuXuat, ToStatus: 'PENDING', ToPayment: 'UNPAID', ActorRole: user.role, ActorId: user.id, Note: context.note || 'Đặt hàng COD; tồn khả dụng đã được giữ.' } });
+        const notification = orderNotification('PENDING', order.MaPhieuXuat);
+        await createCustomerNotification(tx, { customerId: user.id, eventKey: `order-event:${event.Id}`, ...notification, resourceType: 'ORDER', resourceId: order.MaPhieuXuat });
       }
       await consumeVoucher(tx, quote, user.id, key, ids);
       await tx.checkoutRequest.create({ data: { CustomerId: user.id, Key: key, Fingerprint: fingerprint, OrderIds: ids } });
@@ -166,8 +169,14 @@ async function transition(req: Request, res: Response, customer: boolean) {
       const updated = await tx.phieuXuat.update({ where: { MaPhieuXuat: id }, data: { TrangThai: to, TrangThaiThanhToan: nextPayment,
         DonViVanChuyen: provider, MaVanDon: tracking, ...(!customer ? { MaNhanVien: user.id } : {}) }, include: detailInclude });
       if (to === 'CANCELLED' && from !== 'CANCELLED') await releaseVoucherForCancelledOrder(tx, id, current.MaKhachHang);
-      await tx.orderEvent.create({ data: { OrderId: id, FromStatus: from, ToStatus: to, FromPayment: previousPayment, ToPayment: nextPayment,
+      const event = await tx.orderEvent.create({ data: { OrderId: id, FromStatus: from, ToStatus: to, FromPayment: previousPayment, ToPayment: nextPayment,
         ActorRole: user.role, ActorId: user.id, Note: note || null, ...(shippingChanged ? { Shipping: { provider, tracking } } : {}) } });
+      if (to !== from || nextPayment !== previousPayment || shippingChanged && from === 'SHIPPING') {
+        const notification = nextPayment !== previousPayment && to === from
+          ? { type: 'PAYMENT' as const, title: nextPayment === 'PAID' ? 'Đã đối soát thanh toán COD' : 'Trạng thái thanh toán được cập nhật', message: `Đơn hàng #${id}: cửa hàng ghi nhận trạng thái thanh toán ${nextPayment === 'PAID' ? 'đã thu tiền' : nextPayment}.` }
+          : orderNotification(to, id, provider, tracking);
+        await createCustomerNotification(tx, { customerId: current.MaKhachHang, eventKey: `order-event:${event.Id}`, ...notification, resourceType: 'ORDER', resourceId: id });
+      }
       return updated;
     }, transactionOptions);
     res.json({ message: 'Đã cập nhật đơn hàng.', order: dto(result, !customer) });

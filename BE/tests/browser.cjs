@@ -97,6 +97,14 @@ exports.runBrowser = async ({ base, productId, customerId, customerToken, adminT
     assert.equal((await prisma.sanPham.findUniqueOrThrow({ where: { MaSanPham: retained.MaSanPham } })).SoLuong, 3);
     await page.getByText('Synthetic garment × 1', { exact: true }).first().waitFor();
     await page.screenshot({ path: path.join(directory, 'customer-orders-mobile.png'), fullPage: true });
+    await page.goto(`${customerWeb.url}/profile`, { waitUntil: 'domcontentloaded' });
+    await page.getByText('Thông báo', { exact: true }).click();
+    await page.waitForURL(/\/notifications$/);
+    await page.getByText('Đã tiếp nhận đơn hàng', { exact: true }).first().waitFor();
+    await page.getByRole('button', { name: 'Đọc tất cả' }).click();
+    await page.getByText('Bạn đã đọc hết thông báo', { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'notifications must fit the 390px customer viewport without horizontal overflow');
+    await page.screenshot({ path: path.join(directory, 'customer-notifications-mobile.png'), fullPage: true });
     await page.goto(`${customerWeb.url}/cart`, { waitUntil: 'domcontentloaded' });
     await page.getByText('Browser retained cart item', { exact: true }).waitFor();
     assert.equal(await page.getByRole('checkbox', { name: /^Thanh toán Browser retained cart item/ }).isChecked(), false);
@@ -129,6 +137,12 @@ exports.runBrowser = async ({ base, productId, customerId, customerToken, adminT
     await admin.screenshot({ path: path.join(directory, 'admin-delivered-order.png'), fullPage: true });
     const delivered = await prisma.phieuXuat.findUniqueOrThrow({ where: { MaPhieuXuat: created.MaPhieuXuat } });
     assert.equal(delivered.TrangThai, 'DELIVERED'); assert.equal(delivered.TrangThaiThanhToan, 'PAID');
+    activePage = page;
+    await page.goto(`${customerWeb.url}/notifications`, { waitUntil: 'domcontentloaded' });
+    const orderNotices = page.getByRole('button').filter({ hasText: `Đơn hàng #${created.MaPhieuXuat}` });
+    await orderNotices.filter({ hasText: 'Đơn hàng đã được giao' }).waitFor();
+    await orderNotices.filter({ hasText: 'Đã đối soát thanh toán COD' }).waitFor();
+    await page.screenshot({ path: path.join(directory, 'customer-order-status-notifications-mobile.png'), fullPage: true });
     console.log('Browser: variant inventory editor');
     await dialog.getByRole('button', { name: 'Đóng chi tiết', exact: true }).click();
     await admin.getByRole('button', { name: 'Sản phẩm & Tồn kho', exact: true }).click();

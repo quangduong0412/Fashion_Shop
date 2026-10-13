@@ -13,6 +13,7 @@ import categoryRoutes from './routes/categoryRoutes';
 import shoppingRoutes from './routes/shoppingRoutes';
 import voucherRoutes from './routes/voucherRoutes';
 import returnRoutes from './routes/returnRoutes';
+import notificationRoutes from './routes/notificationRoutes';
 import { authenticateToken, requireAdmin, requireStaff } from './middlewares/authMiddleware';
 
 const app = express();
@@ -53,6 +54,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/shopping', shoppingRoutes);
 app.use('/api/vouchers', voucherRoutes);
 app.use('/api/returns', returnRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 import { getPublicSettings, getInternalSettings, saveSettings } from './controllers/settingsController';
 import { getRetailReport } from './controllers/reportController';

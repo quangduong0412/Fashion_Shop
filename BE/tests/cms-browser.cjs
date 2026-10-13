@@ -62,7 +62,8 @@ exports.checkCmsBrowser = async ({ admin, page, customerUrl, prisma, directory }
   await admin.getByRole('button', { name: 'Liên hệ khách hàng', exact: true }).click();
   await admin.getByLabel('Tìm lời nhắn', { exact: true }).fill('Browser CMS contact');
   await admin.getByText('Synthetic browser support request', { exact: true }).waitFor();
-  await admin.getByRole('button', { name: 'Xem lời nhắn', exact: true }).click();
+  const supportRequest = admin.locator('article').filter({ hasText: 'Synthetic browser support request' });
+  await supportRequest.getByRole('button', { name: 'Xem lời nhắn', exact: true }).click();
   dialog = admin.getByRole('dialog');
   await dialog.getByText('Synthetic browser support request', { exact: true }).waitFor();
   assert.match(await dialog.getByRole('link', { name: 'Mở email phản hồi' }).getAttribute('href'), /^mailto:/);
