@@ -4,11 +4,35 @@ import assert from 'node:assert/strict';
 type RequestApi = (route: string, method?: string, body?: unknown, token?: string) => Promise<{ status: number; body: any }>;
 
 export async function testContentFlows(t: TestContext, request: RequestApi, adminToken: string, staffToken: string) {
-  await t.test('CMS stores canonical payload, preserves omitted images and exposes a real detail endpoint', async () => {
+  await t.test('CMS keeps drafts private, schedules safely, publishes and preserves omitted images', async () => {
     assert.equal((await request('/posts', 'POST', { title: 'Forbidden' }, staffToken)).status, 403);
     assert.equal((await request('/posts', 'POST', { TieuDe: 'Wrong contract' }, adminToken)).status, 400);
+    assert.equal((await request('/admin/posts')).status, 401);
+    assert.equal((await request('/admin/posts', 'GET', undefined, staffToken)).status, 403);
     const created = await request('/posts', 'POST', { title: 'CMS acceptance article', description: 'Synthetic content\nSecond paragraph.', image: '/images/thoi-trang-cong-so.jpg', type: 'Tin tức' }, adminToken);
     assert.equal(created.status, 201); const id = created.body.id;
+    assert.equal(created.body.publicationStatus, 'DRAFT');
+    assert.equal((await request(`/posts/${id}`)).status, 404);
+    const publicDraftSearch = await request('/posts?paginated=true&search=CMS%20acceptance&pageSize=1&page=1');
+    assert.equal(publicDraftSearch.status, 200); assert.equal(publicDraftSearch.body.total, 0);
+    const adminDraftSearch = await request('/admin/posts?search=CMS%20acceptance&pageSize=1&page=1', 'GET', undefined, adminToken);
+    assert.equal(adminDraftSearch.status, 200); assert.equal(adminDraftSearch.body.total, 1); assert.equal(adminDraftSearch.body.items[0].publicationStatus, 'DRAFT');
+    assert.equal((await request(`/posts/${id}`, 'PUT', { publishAt: '2030-01-01T00:00:00+07:00' }, adminToken)).status, 400);
+    assert.equal((await request(`/posts/${id}`, 'PUT', { publicationStatus: 'INVALID' }, adminToken)).status, 400);
+    assert.equal((await request(`/posts/${id}`, 'PUT', { publicationStatus: 'PUBLISHED', publishAt: '2030-01-01T00:00' }, adminToken)).status, 400);
+    const scheduledAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const scheduled = await request(`/posts/${id}`, 'PUT', { publicationStatus: 'PUBLISHED', publishAt: scheduledAt }, adminToken);
+    assert.equal(scheduled.status, 200); assert.equal(scheduled.body.publicationStatus, 'PUBLISHED');
+    assert.equal((await request(`/posts/${id}`)).status, 404);
+    const lifecycleRace = await Promise.all([
+      request(`/posts/${id}`, 'PUT', { publicationStatus: 'DRAFT' }, adminToken),
+      request(`/posts/${id}`, 'PUT', { publicationStatus: 'PUBLISHED', publishAt: scheduledAt }, adminToken)
+    ]);
+    assert.deepEqual(lifecycleRace.map(result => result.status), [200, 200]);
+    const racedArticle = (await request(`/admin/posts?search=CMS%20acceptance`, 'GET', undefined, adminToken)).body.items[0];
+    assert.ok(racedArticle.publicationStatus !== 'DRAFT' || racedArticle.publishAt === null, 'a concurrent edit must not leave a draft with a future publication date');
+    const published = await request(`/posts/${id}`, 'PUT', { publicationStatus: 'PUBLISHED', publishAt: null }, adminToken);
+    assert.equal(published.status, 200); assert.equal(published.body.publishAt, null);
     assert.equal((await request(`/posts/${id}`)).body.description, 'Synthetic content\nSecond paragraph.');
     const updated = await request(`/posts/${id}`, 'PUT', { title: 'CMS acceptance edited' }, adminToken);
     assert.equal(updated.status, 200); assert.equal(updated.body.image, created.body.image); assert.equal(updated.body.type, 'Tin tức');

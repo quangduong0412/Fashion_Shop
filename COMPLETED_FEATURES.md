@@ -2,6 +2,14 @@
 
 Tài liệu tổng hợp nhiều checkpoint có ngày; checkpoint mới nhất ở đầu file là **13/10/2026**. Các mục lịch sử phía dưới ghi phạm vi tại thời điểm tương ứng, không phải tuyên bố toàn hệ thống hoàn chỉnh hay sẵn sàng production. Backlog nền ở [PLAN.md](PLAN.md) được rà ngày 06/10/2026 và cần đối chiếu các checkpoint mới hơn để không triển khai trùng chức năng; cách chạy từ clone ở [README.md](README.md), API/cấu hình ở [BE/README.md](BE/README.md).
 
+## Checkpoint 13/10/2026 — CMS nháp, xuất bản và lên lịch
+
+- Bài mới qua API quản trị mặc định là `DRAFT`. Chỉ ADMIN đọc danh sách đầy đủ qua `GET /api/admin/posts`; STAFF và khách bị từ chối. API công khai chỉ trả bài `PUBLISHED` đã tới thời điểm xuất bản; trang chi tiết draft/lịch tương lai trả 404.
+- PostsView có lọc nháp/đã xuất bản, trạng thái theo từng bài, xuất bản ngay hoặc đặt thời điểm theo giờ `Asia/Ho_Chi_Minh`. Backend yêu cầu timestamp ISO có offset, từ chối trạng thái/lịch không hợp lệ và xóa lịch khi lưu nháp. Bài đến giờ tự hiển thị qua truy vấn công khai, không cần job nền.
+- Migration `db:migrate-post-publication` thêm cột trạng thái/lịch và index một cách additive; trạng thái DB mặc định `PUBLISHED` để giữ nguyên khả năng hiển thị của bài cũ. Không chạy migration trên database cửa hàng trong lượt này.
+- Nghiệm thu: BE typecheck + Prisma validate; admin typecheck/lint/build; API/unit 108/108 (`fashionhaven_test_1791866640267_47d0782d`); browser + API/unit **109/109** (`fashionhaven_test_1791866695696_822519a1`), gồm draft riêng tư → xuất bản → trang FE đọc bài, lên lịch còn ẩn và hiển thị sau thời điểm (đẩy thời gian bằng fixture test). Cả hai database cô lập đã được runner dọn. Android/iOS không liên quan và chưa kiểm tra.
+- Giới hạn: chưa có lịch sử biên tập/actor CMS, FAQ, inbox xử lý/phản hồi, đánh giá sau mua, notification, brand CRUD, scope kho và native acceptance. Toàn dự án chưa hoàn tất.
+
 ## Checkpoint 13/10/2026 — báo cáo dòng tiền theo thời điểm ghi nhận
 
 - API báo cáo giữ riêng hai trục thời gian: đơn, doanh số giao, giảm giá và trạng thái theo ngày tạo đơn; COD đã đối soát theo sự kiện audit `UNPAID → PAID`; refund theo `ReturnRefund.CreatedAt`. Các giao dịch tiền được group theo ngày `Asia/Ho_Chi_Minh` và trả về tổng, số lượt/số đơn cùng bảng ngày.

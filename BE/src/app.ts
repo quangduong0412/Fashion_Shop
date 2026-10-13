@@ -63,7 +63,7 @@ app.get('/api/reports', authenticateToken, requireAdmin, getRetailReport);
 
 // New unified routes
 import {
-  getAdminData, getPostsData, getPostById, getContacts, createContact, createPost, updatePost, deletePost,
+  getAdminData, getAdminPosts, getPostsData, getPostById, getContacts, createContact, createPost, updatePost, deletePost,
   createSupplier, updateSupplier, deleteSupplier, deleteContact,
   createBranch, updateBranch, deleteBranch,
   createRole, updateRole, deleteRole,
@@ -72,6 +72,7 @@ import {
 } from './controllers/dataController';
 
 app.get('/api/admin', authenticateToken, requireStaff, getAdminData);
+app.get('/api/admin/posts', authenticateToken, requireAdmin, getAdminPosts);
 
 app.get('/api/posts', getPostsData);
 app.get('/api/posts/:id', getPostById);

@@ -1,5 +1,17 @@
 # Checkpoint triển khai — 06/10/2026
 
+## Tiếp tục — CMS nháp, xuất bản và lịch (13/10/2026)
+
+| Yêu cầu | FE/admin | API | Dữ liệu/quy tắc | Nghiệm thu | Trạng thái |
+| --- | --- | --- | --- | --- | --- |
+| CMS draft/publish/schedule | Admin `PostsView`; FE News/article giữ contract public | ADMIN `GET /admin/posts`, write `/posts`; public list/detail chỉ PUBLISHED tới hạn | `BaiViet.TrangThaiXuatBan`, `ThoiGianXuatBan`, migration additive; data cũ default PUBLISHED | API xác minh admin-only, draft 404/public absent, schedule ẩn, publish/đến hạn đọc được; API/unit 108/108, browser/API 109/109 | Đạt phạm vi CMS web; thiếu audit biên tập, FAQ, inbox workflow |
+
+Admin tạo bài ở trạng thái nháp mặc định, có thể xuất bản ngay hoặc chọn thời điểm theo `Asia/Ho_Chi_Minh`. Timestamp backend phải có timezone; draft không thể mang ngày hẹn. Bài lịch được lọc ở request công khai nên tự xuất hiện khi giờ server tới hạn, không cần worker. Migration mới chưa chạy trên database cửa hàng trong lượt này; runner kiểm tra schema trên database test cô lập.
+
+Kiểm tra cuối: `BE npm.cmd run typecheck`, Prisma validate, `BE npm.cmd test` 108/108; `admin_web npm.cmd run typecheck/lint/build`; browser/API suite 109/109. DB `fashionhaven_test_1791866640267_47d0782d` và `fashionhaven_test_1791866695696_822519a1` đã được runner dọn. Lượt E2E trước phát hiện selector test sai và cũng được cleanup; đã sửa rồi chạy lại thành công. Không cập nhật database cửa hàng. Chưa native test.
+
+Việc tiếp theo: đánh giá sau mua và notifications; review CMS audit/FAQ/inbox reply, quản lý brand, scope kho/workflow chuyển kho, ngoại tích hợp và native. Giữ riêng `BaoCao/`, `USECASE.md`, `report_work/`.
+
 ## Checkpoint tiếp tục — thuộc tính danh mục và chọn SKU (11/10/2026)
 
 | Yêu cầu | FE/admin | API | Dữ liệu | Quy tắc | Nghiệm thu | Trạng thái |

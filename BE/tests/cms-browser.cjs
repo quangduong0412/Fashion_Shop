@@ -3,24 +3,49 @@ const path = require('node:path');
 
 // Run with the real built apps and the existing isolated HTTP API route.
 exports.checkCmsBrowser = async ({ admin, page, customerUrl, prisma, directory }) => {
-  console.log('Browser: administrator publishes an article and customer reads its detail');
+  console.log('Browser: administrator saves a private draft, publishes it, and customer reads its detail');
   await admin.getByRole('button', { name: 'Bài viết', exact: true }).click();
   await admin.getByRole('button', { name: 'Thêm bài viết', exact: true }).click();
   let dialog = admin.getByRole('dialog');
-  await dialog.getByRole('button', { name: 'Lưu bài viết', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
   await dialog.getByText('Nhập tiêu đề và nội dung bài viết.', { exact: true }).waitFor();
   await dialog.getByLabel('Tiêu đề', { exact: true }).fill('Browser CMS acceptance article');
   await dialog.getByLabel('Nội dung', { exact: true }).fill('Synthetic browser article content.\nSecond paragraph preserved.');
-  await dialog.getByRole('button', { name: 'Lưu bài viết', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Lưu bản nháp', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
   const post = await prisma.baiViet.findFirstOrThrow({ where: { TieuDe: 'Browser CMS acceptance article' } });
   assert.equal(post.MoTa, 'Synthetic browser article content.\nSecond paragraph preserved.');
+  assert.equal(post.TrangThaiXuatBan, 'DRAFT');
+  await page.goto(`${customerUrl}/news`, { waitUntil: 'domcontentloaded' });
+  await page.getByText('Browser CMS acceptance article', { exact: true }).waitFor({ state: 'detached' });
+  await admin.getByRole('button', { name: 'Sửa Browser CMS acceptance article', exact: true }).click();
+  dialog = admin.getByRole('dialog');
+  await dialog.getByLabel('Trạng thái xuất bản', { exact: true }).selectOption('NOW');
+  await dialog.getByRole('button', { name: 'Xuất bản ngay', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  assert.equal((await prisma.baiViet.findUniqueOrThrow({ where: { MaBaiViet: post.MaBaiViet } })).TrangThaiXuatBan, 'PUBLISHED');
   await page.goto(`${customerUrl}/news`, { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Đọc bài viết Browser CMS acceptance article', exact: true }).click();
   await page.waitForURL(new RegExp(`/article/${post.MaBaiViet}$`));
   await page.getByRole('heading', { name: 'Browser CMS acceptance article', exact: true }).waitFor();
   await page.getByText(/Second paragraph preserved/).filter({ visible: true }).waitFor();
   await page.screenshot({ path: path.join(directory, 'customer-article-mobile.png'), fullPage: true });
+
+  console.log('Browser: scheduled articles remain private until their publication time');
+  await admin.getByRole('button', { name: 'Sửa Browser CMS acceptance article', exact: true }).click();
+  dialog = admin.getByRole('dialog');
+  await dialog.getByLabel('Trạng thái xuất bản', { exact: true }).selectOption('SCHEDULED');
+  const future = new Date(Date.now() + 48 * 60 * 60 * 1000);
+  const futureLocal = new Date(future.getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 16);
+  await dialog.getByLabel('Thời điểm xuất bản', { exact: true }).fill(futureLocal);
+  await dialog.getByRole('button', { name: 'Lên lịch xuất bản', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  assert.equal((await prisma.baiViet.findUniqueOrThrow({ where: { MaBaiViet: post.MaBaiViet } })).TrangThaiXuatBan, 'PUBLISHED');
+  await page.goto(`${customerUrl}/news`, { waitUntil: 'domcontentloaded' });
+  await page.getByText('Browser CMS acceptance article', { exact: true }).waitFor({ state: 'detached' });
+  await prisma.baiViet.update({ where: { MaBaiViet: post.MaBaiViet }, data: { ThoiGianXuatBan: new Date(Date.now() - 60 * 1000) } });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Đọc bài viết Browser CMS acceptance article', exact: true }).waitFor();
 
   console.log('Browser: customer submits contact and administrator sees the real inbox');
   await page.goto(`${customerUrl}/contact`, { waitUntil: 'domcontentloaded' });

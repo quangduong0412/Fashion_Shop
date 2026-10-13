@@ -36,7 +36,7 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 | C10 Theo dõi / hủy đơn | `Orders` | `/orders/me`, `/:id`, `/:id/cancel` | Đơn, `OrderEvent` | Ownership; chỉ hủy PENDING; lý do; hoàn tồn một lần | Refresh trạng thái đã giao, xem vận đơn; không xem đơn người khác | Đạt HTTP/browser |
 | C11 Thanh toán online | Chưa có màn hình thật | Chưa có gateway/webhook | Chưa có giao dịch payment provider | Không tin callback/client; đối soát chữ ký | Thanh toán/retry/webhook/refund chạy sandbox thật | Thiếu; COD là luồng đang hỗ trợ |
 | C12 Yêu thích / đánh giá | `/wishlist`, FavoriteButton; review chưa có | `/shopping/wishlist` page/ids/PUT/DELETE | CustomerWishlist unique/customer snapshot; review chưa có | User only; add idempotent; hidden giữ snapshot và cho bỏ lưu | Concurrent unique/owner; FE lưu/reload/danh sách/ẩn→bỏ lưu | Yêu thích đạt API/MySQL + browser web; đánh giá thiếu |
-| C13 Bài viết | `News`, `/article/[id]` | GET paginated `/posts`, `/:id` | `BaiViet` | Data thật, paging/type/search; ADMIN sửa | Admin tạo → FE đọc chi tiết; giữ ảnh omitted | Đạt API/MySQL + browser trong phạm vi nêu; draft/schedule bài thiếu |
+| C13 Bài viết | `News`, `/article/[id]` | Public GET `/posts`, `/:id`; admin GET `/admin/posts`, CRUD `/posts` | `BaiViet` | Public chỉ đọc PUBLISHED đã tới giờ; bài mới DRAFT; ADMIN quản lý lịch theo UTC+7 | Nháp bị ẩn, admin-only list, publish/schedule và khách đọc sau giờ hẹn | API/unit 108/108 + browser/API 109/109; lưu ý lịch dùng thời gian máy chủ và timezone Asia/Ho_Chi_Minh |
 | C14 Liên hệ / chính sách | `Contact`, `/policies` | POST `/contacts`, GET `/settings` | LienHe, StoreSettings | Validation/throttle; contact/policy thật, không số giả | Loading/error/success, admin inbox; chưa reply workflow | Đạt API/MySQL + browser trong phạm vi nêu |
 | C15 Thông báo | Chưa có luồng đáp ứng | Chưa có inbox/push | Chưa có notification | Chỉ người nhận; không giả số chưa đọc | Sự kiện đơn → thông báo → đọc/persist; native permission đúng | Thiếu |
 
@@ -58,7 +58,7 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 | A12 Nhà cung cấp | `SuppliersView` | `/suppliers` cũ + bootstrap | `NhaCungCap`, sản phẩm/nhập | ADMIN; không xóa/gán lại khi có lịch sử | CRUD await/error/validation/pagination; delete refs 409 | Đạt HTTP bảo vệ delete; UI còn cần nghiệm thu |
 | A13 Nhập hàng | `ImportsView` | GET/POST `/imports`, PUT `/:id/status` | Phiếu/dòng nhập, snapshot, nhật ký | DRAFT→RECEIVED/CANCELLED; nhận một lần đúng kho/NCC/SKU | Nháp không cộng; receive +3 đúng cha/biến thể, tổng 153000 | Đạt HTTP/browser |
 | A14 Yêu cầu nhập / duyệt | Chưa có màn hình thật | Chưa có luồng request/approve | Có model `YeuCauNhapHang` | STAFF yêu cầu, ADMIN duyệt; không cộng tồn trước receive | Yêu cầu→duyệt→phiếu nháp và lịch sử | Có model, thiếu API/UI |
-| A15 Bài viết/CMS | `PostsView` | Paged GET/detail + CRUD `/posts` | BaiViet | Canonical fields, ADMIN, validate; omitted image giữ | Save/upload thật, lỗi giữ form; FE đọc chi tiết | Đạt API/MySQL + browser trong phạm vi nêu; draft/schedule bài thiếu |
+| A15 Bài viết/CMS | `PostsView` | GET `/admin/posts`; ADMIN CRUD `/posts` | BaiViet + publication status/time | ADMIN; draft, publish now, schedule; public query time-gated; omitted image giữ | Private draft, invalid timezone/status, schedule hidden until due, publish FE detail | API/unit + browser suite đạt 109/109; chưa có edit audit |
 | A16 Hộp thư liên hệ | `ContactsView` | Paged GET `/contacts`, POST/DELETE | LienHe | ADMIN; không pending giả, await lỗi | FE submit → admin search/read, không fake reply | Đạt API/MySQL + browser trong phạm vi nêu; handled/reply/audit thiếu |
 
 ### Voucher, đổi/trả, báo cáo và cấu hình
@@ -89,7 +89,7 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 - [x] API tài khoản khách an toàn, audit, token recovery dùng một lần/expiry/race/session; không cột xem password/hash.
 - [x] Script demo riêng local/opt-in/nonprod; không reset existing. **Chưa cấp tài khoản thực** vì chưa có mật khẩu do operator đặt.
 - [x] Schema media additive, bộ ảnh/primary/ảnh SKU, danh mục ảnh/icon/ẩn/thứ tự; sửa giá/tồn giữ ảnh; URL validation và fallback trung tính.
-- [x] CMS payload/paging/detail và inbox contact validation thật; bỏ stats/nút giả. Bài viết chưa có draft/publish schedule.
+- [x] CMS payload/paging/detail, inbox validation; bài viết nháp/xuất bản/lên lịch có API và form quản trị; FE chỉ lộ bài đã xuất bản đến hạn.
 - [x] Settings version/audit, thông tin/chính sách/banner có lịch; phí một lần checkout, phân bổ exact VND nhiều kho, full quote/request context, giữ snapshot/retry cũ.
 - [x] Reports aggregate đơn theo ngày tạo UTC+7, COD thu theo sự kiện đối soát UNPAID→PAID, hoàn theo ngày ghi sổ, CSV và tồn từng SKU; snapshot tiền thiếu để null, không giả 0.
 - [x] 79/79 test đạt: 52 integration API/MySQL, 25 unit, browser thật và nhóm cha; typecheck/lint/build/export đạt.
@@ -116,7 +116,7 @@ Trạng thái được cập nhật từ mã và kiểm tra thực: **Đạt ph�
 - [ ] Review sau giao với ảnh/ownership; notifications in-app/read marker.
 - [x] Lọc brand/price/size/color/sort mã/giá, đổi SKU trong giỏ, sổ nhiều địa chỉ/default và account cart (đợt 1).
 - [ ] Phương thức giao bổ sung nếu có nghiệp vụ; timestamp tạo SP chỉ khi có dữ liệu phù hợp.
-- [ ] CMS bài draft/publish/schedule; banner đã có lịch nhưng chưa campaign/voucher. Support handled/reply/audit và FAQ.
+- [x] CMS bài draft/publish/schedule; banner đã có lịch nhưng chưa campaign/voucher. Support handled/reply/audit và FAQ vẫn còn.
 - [ ] Brand management entity; CRUD chức danh/chi nhánh/NCC/nhân sự còn cần validation/paging/browser đủ nhánh; chuyển kho và request nhập→duyệt thiếu.
 - [ ] Hoàn thiện đối soát tài chính sau bán: ledger COD/refund theo event đã có; giảm giá vẫn gắn kỳ đơn, sự kiện lịch sử thiếu snapshot phải để chưa khả dụng; xác nhận chuyển khoản/ngân hàng, lợi nhuận/giá vốn và lịch sử tồn cần nguồn dữ liệu riêng.
 - [ ] Native Android/iOS thật; mọi form/kích thước/empty/error/success; đo hiệu năng và paginate các bootstrap legacy còn giới hạn.

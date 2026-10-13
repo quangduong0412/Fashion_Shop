@@ -5,7 +5,7 @@ import { readVariantAttributeDefinitions, serializeVariant } from '../services/p
 import { deleteOrder } from './orderController';
 import { employeeInclude, employeeResponse, saveEmployee, deactivateEmployee } from '../services/employees';
 import { ApiError, positiveId, sendApiError } from '../services/apiErrors';
-import { contentPage, contactInput, contactResponse, postChanges, postResponse, postTypes } from '../services/content';
+import { adminPostResponse, contentPage, contactInput, contactResponse, postChanges, postResponse, postTypes } from '../services/content';
 
 export const getAdminData = async (req: Request, res: Response) => {
   try {
@@ -179,7 +179,7 @@ export const getPostsData = async (req: Request, res: Response) => {
     const { page, pageSize, search } = contentPage(req.query);
     const type = req.query.type;
     if (type !== undefined && (typeof type !== 'string' || !(postTypes as readonly string[]).includes(type))) throw new ApiError(400, 'VALIDATION_ERROR', 'Thể loại không hợp lệ.');
-    const where = { ...(search ? { TieuDe: { contains: search } } : {}), ...(type ? { TheLoai: String(type) } : {}) };
+    const where = { TrangThaiXuatBan: 'PUBLISHED', OR: [{ ThoiGianXuatBan: null }, { ThoiGianXuatBan: { lte: new Date() } }], ...(search ? { TieuDe: { contains: search } } : {}), ...(type ? { TheLoai: String(type) } : {}) };
     if (req.query.paginated !== 'true') {
       const posts = await prisma.baiViet.findMany({ where, orderBy: [{ NgayTao: 'desc' }, { MaBaiViet: 'desc' }], take: 100 });
       res.json(posts.map(postResponse)); return;
@@ -192,9 +192,24 @@ export const getPostsData = async (req: Request, res: Response) => {
   } catch (error) { sendApiError(res, error); }
 };
 
+export const getAdminPosts = async (req: Request, res: Response) => {
+  try {
+    const { page, pageSize, search } = contentPage(req.query);
+    const type = req.query.type, status = req.query.status;
+    if (type !== undefined && (typeof type !== 'string' || !(postTypes as readonly string[]).includes(type))) throw new ApiError(400, 'VALIDATION_ERROR', 'Thể loại không hợp lệ.');
+    if (status !== undefined && status !== 'DRAFT' && status !== 'PUBLISHED') throw new ApiError(400, 'VALIDATION_ERROR', 'Trạng thái xuất bản không hợp lệ.');
+    const where = { ...(search ? { TieuDe: { contains: search } } : {}), ...(type ? { TheLoai: String(type) } : {}), ...(status ? { TrangThaiXuatBan: String(status) } : {}) };
+    const [posts, total] = await prisma.$transaction([
+      prisma.baiViet.findMany({ where, orderBy: [{ NgayTao: 'desc' }, { MaBaiViet: 'desc' }], skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.baiViet.count({ where })
+    ]);
+    res.json({ items: posts.map(adminPostResponse), page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) });
+  } catch (error) { sendApiError(res, error); }
+};
+
 export const getPostById = async (req: Request, res: Response) => {
   try {
-    const post = await prisma.baiViet.findUnique({ where: { MaBaiViet: positiveId(req.params.id, 'Mã bài viết') } });
+    const post = await prisma.baiViet.findFirst({ where: { MaBaiViet: positiveId(req.params.id, 'Mã bài viết'), TrangThaiXuatBan: 'PUBLISHED', OR: [{ ThoiGianXuatBan: null }, { ThoiGianXuatBan: { lte: new Date() } }] } });
     if (!post) throw new ApiError(404, 'POST_NOT_FOUND', 'Bài viết không tồn tại hoặc đã được gỡ.');
     res.json(postResponse(post));
   } catch (error) { sendApiError(res, error); }
@@ -222,15 +237,31 @@ export const createContact = async (req: Request, res: Response) => {
 export const createPost = async (req: Request, res: Response) => {
   try {
     const changes = postChanges(req.body);
-    const post = await prisma.baiViet.create({ data: { TieuDe: changes.TieuDe!, MoTa: changes.MoTa!, Anh: changes.Anh!, TheLoai: changes.TheLoai! } });
-    res.status(201).json(postResponse(post));
+    const status = changes.TrangThaiXuatBan ?? 'DRAFT', publishAt = changes.ThoiGianXuatBan ?? null;
+    if (status === 'DRAFT' && publishAt) throw new ApiError(400, 'VALIDATION_ERROR', 'Bài nháp không thể có lịch xuất bản.');
+    const post = await prisma.baiViet.create({ data: { TieuDe: changes.TieuDe!, MoTa: changes.MoTa!, Anh: changes.Anh!, TheLoai: changes.TheLoai!, TrangThaiXuatBan: status, ThoiGianXuatBan: publishAt } });
+    res.status(201).json(adminPostResponse(post));
   } catch (error) { sendApiError(res, error); }
 };
 
 export const updatePost = async (req: Request, res: Response) => {
   try {
-    const post = await prisma.baiViet.update({ where: { MaBaiViet: positiveId(req.params.id, 'Mã bài viết') }, data: postChanges(req.body, true) });
-    res.json(postResponse(post));
+    const id = positiveId(req.params.id, 'Mã bài viết'), changes = postChanges(req.body, true);
+    const post = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT MaBaiViet FROM baiviet WHERE MaBaiViet = ${id} FOR UPDATE`;
+      const existing = await tx.baiViet.findUnique({ where: { MaBaiViet: id } });
+      if (!existing) throw new ApiError(404, 'POST_NOT_FOUND', 'Bài viết không tồn tại hoặc đã được gỡ.');
+      const status = changes.TrangThaiXuatBan ?? existing.TrangThaiXuatBan;
+      const publishAt = changes.ThoiGianXuatBan === undefined ? existing.ThoiGianXuatBan : changes.ThoiGianXuatBan;
+      if (status === 'DRAFT' && publishAt) throw new ApiError(400, 'VALIDATION_ERROR', 'Bài nháp không thể có lịch xuất bản.');
+      const data = { ...changes };
+      if (changes.TrangThaiXuatBan !== undefined || changes.ThoiGianXuatBan !== undefined) {
+        data.TrangThaiXuatBan = status;
+        data.ThoiGianXuatBan = publishAt;
+      }
+      return tx.baiViet.update({ where: { MaBaiViet: id }, data });
+    });
+    res.json(adminPostResponse(post));
   } catch (error) { sendApiError(res, error); }
 };
 

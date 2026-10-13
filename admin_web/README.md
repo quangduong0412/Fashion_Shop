@@ -26,6 +26,8 @@ Danh sách sản phẩm/đơn/nhập dùng API phân trang thật. Bootstrap `/a
 
 Reports, Settings, Voucher và Returns có màn hình/API. Reports aggregate đơn theo ngày tạo và trạng thái hiện tại; sổ tiền riêng aggregate sự kiện COD `UNPAID → PAID` cùng refund ledger theo ngày ghi nhận UTC+7. CSV bao gồm cả hai cơ sở ngày. Giá trị lịch sử thiếu snapshot tiền được để chưa khả dụng; báo cáo không tuyên bố doanh thu thuần/lợi nhuận hay lịch sử tồn. Voucher có CRUD và áp dụng ở FE. Đổi trả có xem ảnh qua API xác thực, nhận/kiểm hàng, nhập lại lượng bán được và ghi sổ hoàn COD. Full browser + API/unit suite đạt 108/108 ngày 13/10/2026. Một số CRUD ít dùng và native vẫn cần nghiệm thu riêng; xem [COMPLETED_FEATURES.md](../COMPLETED_FEATURES.md) và [PLAN.md](../PLAN.md).
 
+CMS `Bài viết & nội dung` lưu nháp mặc định, cho xuất bản ngay hoặc lên lịch theo giờ Việt Nam, hiển thị trạng thái/lọc trong danh sách. API đọc toàn bộ nháp yêu cầu ADMIN; FE chỉ thấy nội dung đã xuất bản tới thời điểm hẹn. Browser test xác nhận nháp bị ẩn và bài hẹn giờ xuất hiện khi tới lịch.
+
 ## Kiểm tra và build
 
 ```powershell

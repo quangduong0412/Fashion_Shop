@@ -511,13 +511,16 @@ model ReturnRefund {
 }
 
 model BaiViet {
-  MaBaiViet Int      @id @default(autoincrement())
-  TieuDe    String   @db.VarChar(255)
-  MoTa      String   @db.Text
-  Anh       String   @db.Text
-  TheLoai   String   @db.VarChar(50)
-  NgayTao   DateTime @default(now())
+  MaBaiViet        Int       @id @default(autoincrement())
+  TieuDe           String    @db.VarChar(255)
+  MoTa             String   @db.Text
+  Anh              String   @db.Text
+  TheLoai          String   @db.VarChar(50)
+  NgayTao          DateTime @default(now())
+  TrangThaiXuatBan String   @default("PUBLISHED") @db.VarChar(20)
+  ThoiGianXuatBan  DateTime? @db.DateTime(3)
 
+  @@index([TrangThaiXuatBan, ThoiGianXuatBan, NgayTao], map: "BaiViet_Publication_Idx")
   @@map("baiviet")
 }
 
